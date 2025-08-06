@@ -18,6 +18,14 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/Orders.vue'),
         meta: { requiresAuth: true }
       },
+      // --- ROTA DE ENTREGA ADICIONADA AQUI ---
+      {
+        path: 'entrega',
+        name: 'Delivery',
+        component: () => import('@/views/Delivery.vue'),
+        meta: { requiresAuth: true }
+      },
+      // --- FIM DA ADIÇÃO ---
       {
         path: 'novo-pedido',
         name: 'NewOrder',
@@ -42,13 +50,11 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/orders/ApproveOrder.vue'),
         meta: { roles: ['vendedor', 'admin'] }
       },
-      // --- ROTA DO CHAT DE VOLTA AO LUGAR CERTO ---
       {
         path: 'chat',
         name: 'Chat',
         component: () => import('@/views/Chat.vue'),
       },
-      // --- FIM DA ALTERAÇÃO ---
       {
         path: 'tasks',
         name: 'Tasks',

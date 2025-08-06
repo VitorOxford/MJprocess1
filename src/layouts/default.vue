@@ -176,7 +176,10 @@ const hasReadNotifications = computed(() => notifications.value.some(n => n.is_r
 
 const allNavItems = [
   { icon: 'mdi-view-dashboard-outline', title: 'Dashboard', value: 'home', to: { name: 'Home' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-  { icon: 'mdi-calendar-check-outline', title: 'Pedidos', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  { icon: 'mdi-calendar-check-outline', title: 'Agenda', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  // --- ITEM DE ENTREGA ADICIONADO AQUI ---
+  { icon: 'mdi-truck-delivery-outline', title: 'Entrega', value: 'delivery', to: { name: 'Delivery' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  // --- FIM DA ADIÇÃO ---
   { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
   { icon: 'mdi-palette-swatch-outline', title: 'Fila de Design', value: 'design-kanban', to: { name: 'DesignKanban' }, roles: ['designer', 'admin'] },
   { icon: 'mdi-factory', title: 'Produção', value: 'production-kanban', to: { name: 'ProductionKanban' }, roles: ['producao', 'admin'] },
@@ -318,5 +321,10 @@ onUnmounted(() => {
 .app-bar-title {
   display: flex;
   align-items: center;
+}
+
+.toast-notification .v-snackbar__content {
+  color: #FFFFFF !important; // Força o texto a ser branco
+  font-weight: 500;
 }
 </style>

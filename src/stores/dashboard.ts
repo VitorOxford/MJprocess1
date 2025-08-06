@@ -1,16 +1,14 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
 
-// Tipagem atualizada para incluir tudo que precisamos
 export type Order = {
   id: string;
   status: string;
   quantity_meters: number;
-  value: number;
   created_at: string;
   created_by: string;
-  customer_name: string; // Adicionado
-  stores: { // Adicionado para o nome da loja
+  customer_name: string;
+  stores: {
     name: string;
   } | null;
 };
@@ -32,13 +30,6 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   getters: {
-    // Getters de KPI (sem alteração)
-    totalValueInProduction: (state) => {
-      const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
-      return state.orders
-        .filter(o => productionStatuses.includes(o.status))
-        .reduce((sum, order) => sum + (order.value || 0), 0);
-    },
     ordersInProduction: (state) => {
         const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
         return state.orders.filter(o => productionStatuses.includes(o.status)).length;
@@ -61,7 +52,6 @@ export const useDashboardStore = defineStore('dashboard', {
       this.loading = true;
       try {
         const [ordersResponse, tasksResponse] = await Promise.all([
-          // ATUALIZADO: Busca todas as colunas de 'orders' e o nome da loja relacionada
           supabase.from('orders').select('*, stores(name)'),
           supabase.from('tasks').select('*'),
         ]);
@@ -69,7 +59,7 @@ export const useDashboardStore = defineStore('dashboard', {
         if (ordersResponse.error) throw ordersResponse.error;
         if (tasksResponse.error) throw tasksResponse.error;
 
-        this.orders = ordersResponse.data as any[]; // Usamos 'any' temporariamente pois Supabase V2 infere tipos
+        this.orders = ordersResponse.data as any[];
         this.tasks = tasksResponse.data as Task[];
         this.lastFetched = new Date();
 

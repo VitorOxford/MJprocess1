@@ -27,7 +27,6 @@
                     <v-chip size="small" :color="getStatusColor(order.status)" variant="flat">{{ statusDisplayMap[order.status] || order.status }}</v-chip>
                  </template>
               </v-list-item>
-              <v-list-item title="Valor do Pedido" :subtitle="`R$ ${order.value.toLocaleString('pt-BR')}`"></v-list-item>
               <v-list-item title="Criado por" :subtitle="order.profiles?.full_name || 'N/A'"></v-list-item>
               <v-list-item title="Loja de Origem" :subtitle="order.stores?.name || 'N/A'"></v-list-item>
               <v-list-item title="Data de Criação" :subtitle="formatDateSafe(order.created_at)"></v-list-item>
@@ -78,19 +77,16 @@ import { supabase } from '@/api/supabase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// ---- PROPS E EMITS (sem alteração) ----
 const props = defineProps({
   show: Boolean,
   orderId: String,
 });
 const emit = defineEmits(['close']);
 
-// ---- TIPAGEM (sem alteração) ----
 type OrderDetails = {
   id: string;
   customer_name: string;
   status: string;
-  value: number;
   created_at: string;
   production_date: string | null;
   quantity_meters: number;
@@ -103,43 +99,30 @@ type OrderDetails = {
   stores: { name: string; } | null;
 };
 
-// ---- ESTADO (sem alteração) ----
 const order = ref<OrderDetails | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
 const statusDisplayMap: Record<string, string> = {
-    design_pending: 'Aguardando Design',
-    in_design: 'Em Design',
-    customer_approval: 'Aguardando Aprovação',
-    production_queue: 'Na Fila de Produção',
-    in_printing: 'Em Impressão',
-    in_cutting: 'Corte e Acabamento',
+    design_pending: 'Aguardando Design', in_design: 'Em Design', customer_approval: 'Aguardando Aprovação',
+    production_queue: 'Na Fila de Produção', in_printing: 'Em Impressão', in_cutting: 'Corte e Acabamento',
     completed: 'Pronto para Envio'
 };
 
 const statusColorMap: Record<string, string> = {
-    design_pending: 'blue-grey',
-    in_design: 'blue',
-    customer_approval: 'orange',
-    production_queue: 'grey',
-    in_printing: 'blue',
-    in_cutting: 'orange',
-    completed: 'green'
+    design_pending: 'blue-grey', in_design: 'blue', customer_approval: 'orange',
+    production_queue: 'grey', in_printing: 'blue', in_cutting: 'orange', completed: 'green'
 };
 
-// ---- FUNÇÕES ----
 const getStatusColor = (status: string) => statusColorMap[status] || 'grey';
 
-// NOVO: Função de formatação segura
 const formatDateSafe = (dateString: string | null | undefined) => {
-    if (!dateString) return 'N/A'; // Se a data for nula, retorna 'N/A'
+    if (!dateString) return 'N/A';
     try {
-        // Formata a data com a string de formato correta
         return format(new Date(dateString), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
     } catch (e) {
         console.error("Erro ao formatar data:", e);
-        return dateString; // Retorna a string original em caso de erro
+        return dateString;
     }
 }
 
@@ -170,7 +153,6 @@ watch(() => props.orderId, (newId) => {
     order.value = null;
   }
 });
-
 </script>
 
 <style scoped lang="scss">

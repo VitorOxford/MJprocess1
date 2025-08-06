@@ -24,7 +24,6 @@
             <v-list density="compact" bg-color="transparent">
               <v-list-item title="Tecido" :subtitle="order.details.fabric_type"></v-list-item>
               <v-list-item title="Metragem" :subtitle="`${order.quantity_meters}m`"></v-list-item>
-              <v-list-item title="Valor" :subtitle="`R$ ${order.value.toLocaleString('pt-BR')}`"></v-list-item>
               <v-list-item title="Status Atual">
                  <template v-slot:subtitle>
                     <v-chip size="small" variant="flat" color="orange">Aguardando Aprovação</v-chip>
@@ -109,7 +108,6 @@ type Order = {
   id: string;
   customer_name: string;
   quantity_meters: number;
-  value: number;
   status: string;
   designer_id: string;
   details: {
@@ -149,7 +147,6 @@ const approveOrder = async () => {
     if (!order.value || !userStore.profile) return;
     isSubmitting.value = true;
     try {
-        // Chama a nova RPC que contém toda a lógica de aprovação
         const { error: rpcError } = await supabase.rpc('approve_order_and_schedule', {
             p_order_id: order.value.id
         });

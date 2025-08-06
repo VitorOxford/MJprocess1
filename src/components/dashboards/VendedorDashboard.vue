@@ -1,15 +1,7 @@
 <template>
   <v-container fluid>
     <v-row>
-      <v-col cols="12" sm="4">
-        <v-card class="kpi-card text-center" color="rgba(76, 175, 80, 0.3)">
-          <v-card-text>
-            <div class="text-h4 font-weight-bold">R$ {{ totalValueSold.toLocaleString('pt-BR') }}</div>
-            <div class="text-subtitle-2 text-white-50">Minhas Vendas (Total)</div>
-          </v-card-text>
-        </v-card>
-      </v-col>
-      <v-col cols="12" sm="4">
+      <v-col cols="12" sm="6">
         <v-card class="kpi-card text-center" color="rgba(255, 152, 0, 0.3)">
           <v-card-text>
             <div class="text-h4 font-weight-bold">{{ ordersPendingApproval }}</div>
@@ -17,7 +9,7 @@
           </v-card-text>
         </v-card>
       </v-col>
-      <v-col cols="12" sm="4">
+      <v-col cols="12" sm="6">
         <v-card class="kpi-card text-center" color="rgba(3, 169, 244, 0.3)">
           <v-card-text>
             <div class="text-h4 font-weight-bold">{{ totalOrdersCreated }}</div>
@@ -41,7 +33,6 @@
             class="bg-transparent"
             density="compact"
           >
-            <template v-slot:item.value="{ value }">R$ {{ value.toLocaleString('pt-BR') }}</template>
             <template v-slot:item.status="{ value, item }">
               <v-chip v-if="value !== 'customer_approval'" size="small" :color="statusColorMap[value]" label>{{ statusDisplayMap[value] }}</v-chip>
               <v-btn v-else :to="{ name: 'ApproveOrder', params: { id: item.id } }" color="orange" size="small" variant="tonal">
@@ -79,7 +70,6 @@ const userStore = useUserStore();
 
 const headers = [
   { title: 'Cliente', key: 'customer_name' },
-  { title: 'Valor', key: 'value' },
   { title: 'Status', key: 'status', width: '180px' },
 ];
 
@@ -101,7 +91,6 @@ const myOrders = computed((): Order[] => {
 
 const myActiveOrders = computed((): Order[] => myOrders.value.filter(order => order.status !== 'completed'));
 const ordersPendingApproval = computed(() => myActiveOrders.value.filter(order => order.status === 'customer_approval').length);
-const totalValueSold = computed(() => myOrders.value.reduce((sum, order) => sum + (order.value || 0), 0));
 const totalOrdersCreated = computed(() => myOrders.value.length);
 
 const salesFunnel = computed(() => {

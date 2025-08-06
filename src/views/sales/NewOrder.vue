@@ -92,39 +92,11 @@
           </v-card>
         </template>
 
-        <template v-slot:item.4>
-          <v-card flat color="transparent">
-            <v-card-text>
-              <h3 class="text-h6 font-weight-bold mb-6 text-center">Valor e Revisão</h3>
-               <v-text-field
-                v-model.number="order.value"
-                label="Valor Total do Pedido (R$)"
-                type="number"
-                prefix="R$"
-                variant="outlined"
-                prepend-inner-icon="mdi-cash"
-                :rules="[rules.required, rules.positive]"
-              ></v-text-field>
-
-              <v-divider class="my-6"></v-divider>
-
-              <h4 class="text-subtitle-1 font-weight-bold mb-2">Confira os dados do pedido:</h4>
-                <v-list class="bg-transparent" lines="two" density="compact">
-                    <v-list-item title="Cliente" :subtitle="order.customer_name || 'Não informado'"></v-list-item>
-                    <v-list-item title="Tecido" :subtitle="order.fabric_type || 'Não informado'"></v-list-item>
-                    <v-list-item title="Metragem" :subtitle="`${order.quantity_meters || 0}m`"></v-list-item>
-                    <v-list-item title="Valor" :subtitle="`R$ ${(order.value || 0).toLocaleString('pt-BR')}`"></v-list-item>
-                    <v-list-item title="Observações da Estampa" :subtitle="order.stamp_details || 'Nenhuma'" subtitle-class="text-wrap"></v-list-item>
-                </v-list>
-            </v-card-text>
-          </v-card>
-        </template>
-
         <template v-slot:actions>
             <div class="d-flex w-100 pa-4">
                 <v-btn v-if="step > 1" @click="step--" variant="tonal">Voltar</v-btn>
                 <v-spacer></v-spacer>
-                <v-btn v-if="step < 4" @click="step++" :disabled="!isStepValid">Continuar</v-btn>
+                <v-btn v-if="step < 3" @click="step++" :disabled="!isStepValid">Continuar</v-btn>
                 <v-btn v-else @click="submitOrder" :loading="isSubmitting" :disabled="!isFormValid" color="primary" variant="flat">
                     <v-icon left>mdi-rocket-launch</v-icon>
                     Enviar para o Design
@@ -157,7 +129,6 @@ type Order = {
   stamp_details: string;
   fabric_type: string | null;
   quantity_meters: number | null;
-  value: number | null;
 };
 
 type Feedback = {
@@ -177,7 +148,6 @@ const order = reactive<Order>({
   stamp_details: '',
   fabric_type: null,
   quantity_meters: null,
-  value: null,
 });
 
 const feedback = reactive<Feedback>({ message: '', type: 'success' });
@@ -186,7 +156,6 @@ const stepperItems = [
     { title: 'Cliente', icon: 'mdi-account-outline' },
     { title: 'Estampa', icon: 'mdi-palette-swatch-outline' },
     { title: 'Material', icon: 'mdi-layers-triple-outline' },
-    { title: 'Revisão', icon: 'mdi-check-circle-outline' },
 ];
 
 const rules = {
@@ -211,7 +180,7 @@ const isStepValid = computed(() => {
 });
 
 const isFormValid = computed(() => {
-    return isStepValid.value && !!(order.value && order.value > 0);
+    return isStepValid.value;
 });
 
 const stockUsageColor = computed(() => {
@@ -245,7 +214,6 @@ const submitOrder = async () => {
   if (!isFormValid.value || !userStore.profile) return;
   isSubmitting.value = true;
 
-  // Parâmetros para a RPC simplificada
   const params = {
     p_customer_name: order.customer_name,
     p_quantity_meters: order.quantity_meters,
@@ -255,11 +223,10 @@ const submitOrder = async () => {
     },
     p_store_id: userStore.profile.store_id,
     p_created_by: userStore.profile.id,
-    p_value: order.value,
+    p_value: 0, // Envia 0 como valor padrão
   };
 
   try {
-    // Chamando a nova versão da RPC sem p_initial_status
     const { error } = await supabase.rpc('create_order_and_update_stock', params);
     if (error) throw error;
 
@@ -276,7 +243,7 @@ const submitOrder = async () => {
 };
 
 const resetForm = () => {
-    Object.assign(order, { customer_name: '', stamp_details: '', fabric_type: null, quantity_meters: null, value: null });
+    Object.assign(order, { customer_name: '', stamp_details: '', fabric_type: null, quantity_meters: null });
     step.value = 1;
 }
 

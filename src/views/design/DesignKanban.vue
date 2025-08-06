@@ -29,9 +29,8 @@
                   <v-card
                      class="order-card mb-3"
                      elevation="2"
-                     @click="openDetailModal(order.id)"
                   >
-                     <v-card-text>
+                     <v-card-text @click="openDetailModal(order.id)">
                        <div class="d-flex justify-space-between align-center">
                           <p class="font-weight-bold text-body-1">{{ order.customer_name }}</p>
                           <v-chip size="x-small" :color="getStatusColor(order.status)" variant="flat">{{ statusDisplayMap[order.status] }}</v-chip>
@@ -42,6 +41,19 @@
                        <v-divider class="my-2"></v-divider>
                        <p class="text-caption text-truncate">{{ order.details.stamp_details }}</p>
                      </v-card-text>
+
+                     <v-card-actions v-if="['finalizing', 'customer_approval'].includes(order.status)" class="pa-2">
+                       <v-spacer></v-spacer>
+                       <v-btn
+                         size="small"
+                         variant="tonal"
+                         color="cyan"
+                         @click.stop="openUploadModalForOrder(order)"
+                       >
+                         <v-icon start size="small">mdi-upload-outline</v-icon>
+                         Anexar Arte
+                       </v-btn>
+                     </v-card-actions>
                   </v-card>
                </div>
             </template>
@@ -60,13 +72,12 @@
      </div>
 
     <OrderDetailModal :show="showDetailModal" :order-id="selectedOrderId" @close="showDetailModal = false" />
-    <FileUploadModal :show="showUploadModal" :order="selectedOrder" :title="uploadModalTitle" @close="cancelMove" @uploaded="handleUploadSuccess" />
+    <FileUploadModal :show="showUploadModal" :order="selectedOrder" :title="uploadModalTitle" @close="showUploadModal = false" @uploaded="handleUploadSuccess" />
 
   </v-container>
 </template>
 
 <script setup lang="ts">
-// SEU SCRIPT ATUAL SEM ALTERAÇÕES
 import { ref, onMounted } from 'vue';
 import { supabase } from '@/api/supabase';
 import draggable from 'vuedraggable';
@@ -96,14 +107,13 @@ const selectedOrderId = ref<string | null>(null);
 const showUploadModal = ref(false);
 const selectedOrder = ref<Order | null>(null);
 const uploadModalTitle = ref('');
-const pendingMove = ref<{ order: Order; newStatus: DesignStatus } | null>(null);
 
 const columns = ref([
   { id: 1, title: 'Fila de Espera', icon: 'mdi-clock-outline', color: 'blue-grey', statuses: ['design_pending'] },
   { id: 2, title: 'Em Desenvolvimento', icon: 'mdi-pencil-ruler', color: 'blue', statuses: ['in_design'] },
   { id: 3, title: 'Alteração Solicitada', icon: 'mdi-alert-circle-outline', color: 'red', statuses: ['changes_requested'] },
-  { id: 4, title: 'Finalização', icon: 'mdi-star-outline', color: 'purple', statuses: ['finalizing'], requiresUpload: true },
-  { id: 5, title: 'Aprovação Pendente', icon: 'mdi-send-check-outline', color: 'orange', statuses: ['customer_approval'], requiresUpload: true },
+  { id: 4, title: 'Finalização', icon: 'mdi-star-outline', color: 'purple', statuses: ['finalizing'] },
+  { id: 5, title: 'Aprovação Pendente', icon: 'mdi-send-check-outline', color: 'orange', statuses: ['customer_approval'] },
 ]);
 
 const statusDisplayMap: Record<DesignStatus, string> = {
@@ -122,68 +132,41 @@ const openDetailModal = (orderId: string) => {
     showDetailModal.value = true;
 };
 
+const openUploadModalForOrder = (order: Order) => {
+  selectedOrder.value = order;
+  uploadModalTitle.value = `Anexar Arte para "${order.customer_name}"`;
+  showUploadModal.value = true;
+};
+
 const onDragEnd = async (event: any) => {
-    const { item, to, from } = event;
+    const { item, to } = event;
     const orderId = item.dataset?.id;
-
-    if (!orderId) {
-      console.error('ID do pedido não encontrado no elemento arrastado.');
-      return;
-    }
-
-    if (!userStore.profile) {
-      console.error('Perfil do usuário não carregado, abortando ação de drag-and-drop.');
-      return;
-    }
-
-    const order = orders.value.find(o => o.id === orderId);
-    if (!order) return;
-
-    const fromStatus = from.getAttribute('data-status') as DesignStatus;
     const newStatus = to.getAttribute('data-status') as DesignStatus;
 
-    if (fromStatus === newStatus) return;
+    if (!orderId || !newStatus) return;
 
-    const destinationColumn = columns.value.find(c => c.statuses.includes(newStatus));
+    const order = orders.value.find(o => o.id === orderId);
+    if (!order || order.status === newStatus) return;
 
-    if (destinationColumn?.requiresUpload) {
-        const orderIndex = orders.value.findIndex(o => o.id === orderId);
-        if(orderIndex !== -1) {
-            orders.value[orderIndex].status = fromStatus;
-        }
-
-        pendingMove.value = { order, newStatus };
-        uploadModalTitle.value = `Anexar Arte para "${destinationColumn.title}"`;
-        selectedOrder.value = order;
-        showUploadModal.value = true;
-    } else {
-        await updateOrderStatus(order.id, newStatus, order);
-    }
+    await updateOrderStatus(order.id, newStatus, order);
 };
 
 const handleUploadSuccess = async (fileUrl: string) => {
-    if (!pendingMove.value) return;
-    const { order, newStatus } = pendingMove.value;
+    if (!selectedOrder.value) return;
 
-    const success = await updateOrderStatus(order.id, newStatus, order, fileUrl);
+    const success = await updateOrderStatus(selectedOrder.value.id, selectedOrder.value.status, selectedOrder.value, fileUrl);
 
     if (success) {
-      const orderIndex = orders.value.findIndex(o => o.id === order.id);
-      if(orderIndex !== -1) {
-          orders.value[orderIndex].status = newStatus;
+      const orderIndex = orders.value.findIndex(o => o.id === selectedOrder.value?.id);
+      if(orderIndex !== -1 && orders.value[orderIndex].details) {
+          orders.value[orderIndex].details.final_art_url = fileUrl;
       }
     }
 
     showUploadModal.value = false;
-    pendingMove.value = null;
     selectedOrder.value = null;
 };
 
-const cancelMove = () => {
-    showUploadModal.value = false;
-    pendingMove.value = null;
-    selectedOrder.value = null;
-};
 
 const updateOrderStatus = async (orderId: string, newStatus: DesignStatus, order: Order, fileUrl?: string): Promise<boolean> => {
   try {
@@ -260,41 +243,39 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
-// Adicionado um container para controlar a rolagem
 .kanban-board-container {
   width: 100%;
-  overflow-x: auto; // A rolagem acontece aqui
-  padding-bottom: 16px; // Espaço para a barra de rolagem não colar no fundo
+  overflow-x: auto;
+  padding-bottom: 16px;
 }
 
 .kanban-board {
   display: flex;
   gap: 16px;
-  // min-width é importante para que o flexbox não esprema o conteúdo
   min-width: fit-content;
 }
 .kanban-column {
-  width: 300px; // Largura padrão para desktop
-  min-width: 300px; // Não permite que a coluna fique menor que isso
+  width: 300px;
+  min-width: 300px;
   background-color: rgba(25, 25, 30, 0.5);
   border-radius: 12px;
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 200px); // Limita a altura para caber na tela
+  max-height: calc(100vh - 200px);
 }
 .column-header {
   padding: 12px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
-  flex-shrink: 0; // Impede que o header encolha
+  flex-shrink: 0;
   .column-title { font-size: 1rem; font-weight: bold; }
 }
 .column-content {
   padding: 16px;
   flex-grow: 1;
   min-height: 200px;
-  overflow-y: auto; // Rolagem vertical para colunas com muitos cards
+  overflow-y: auto;
 }
 .order-card {
   cursor: grab;
@@ -307,17 +288,13 @@ onMounted(async () => {
 }
 .empty-column { padding: 2rem; }
 
-// Media query para telas mobile
 @media (max-width: 600px) {
     .kanban-column {
-        width: 80vw; // Coluna ocupa 80% da largura da tela
+        width: 80vw;
         min-width: 80vw;
     }
-
-    // Diminui um pouco o padding dos cards no mobile
     .order-card .v-card-text {
         padding: 12px;
     }
 }
-
 </style>

@@ -26,9 +26,6 @@
               hide-details
             ></v-text-field>
           </template>
-          <template v-slot:item.value="{ item }">
-              R$ {{ item.value.toLocaleString('pt-BR') }}
-          </template>
           <template v-slot:item.created_at="{ item }">
               {{ formatDate(item.created_at) }}
           </template>
@@ -92,7 +89,7 @@ import { ptBR } from 'date-fns/locale';
 import AdminChatAudit from '@/components/admin/AdminChatAudit.vue';
 
 // Types
-type Order = { id: string; customer_name: string; status: string; value: number; created_at: string; };
+type Order = { id: string; customer_name: string; status: string; created_at: string; };
 type OrderLog = {
   id: number;
   created_at: string;
@@ -113,7 +110,6 @@ const orderHistory = ref<OrderLog[]>([]);
 const headers = [
   { title: 'Cliente', key: 'customer_name' },
   { title: 'Status', key: 'status' },
-  { title: 'Valor', key: 'value' },
   { title: 'Data Criação', key: 'created_at' },
   { title: 'Ações', key: 'actions', sortable: false, align: 'end' },
 ];
@@ -129,8 +125,6 @@ const statusColorMap: Record<string, string> = {
     in_printing: 'blue', in_cutting: 'orange', completed: 'green'
 };
 
-
-// Methods
 const fetchOrders = async () => {
   loading.value = true;
   const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
