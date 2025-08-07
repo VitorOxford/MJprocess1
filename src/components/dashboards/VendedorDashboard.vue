@@ -18,58 +18,7 @@
         </v-card>
       </v-col>
 
-      <v-col cols="12">
-        <v-card class="dashboard-card training-portal" color="rgba(30,30,35,0.8)">
-          <v-card-title class="text-h5 font-weight-bold">
-            <v-icon start>mdi-school-outline</v-icon>
-            Portal de Treinamento do Vendedor
-          </v-card-title>
-          <v-row class="pa-4">
-            <v-col cols="12" md="8">
-              <v-card class="video-player-card" color="black">
-                <video ref="videoPlayer" :src="selectedVideo.url" controls class="main-video"></video>
-              </v-card>
-              <h2 class="text-h6 mt-4 font-weight-bold">{{ selectedVideo.title }}</h2>
-            </v-col>
-
-            <v-col cols="12" md="4" class="modules-list-col">
-              <div class="modules-list">
-                <v-expansion-panels variant="accordion" v-model="panel">
-                  <v-expansion-panel
-                    v-for="module in trainingModules"
-                    :key="module.title"
-                    class="module-panel"
-                    bg-color="rgba(45,45,55,0.8)"
-                  >
-                    <v-expansion-panel-title class="font-weight-bold">
-                      <v-icon start>{{ module.icon }}</v-icon>
-                      {{ module.title }}
-                    </v-expansion-panel-title>
-                    <v-expansion-panel-text>
-                      <v-list dense nav bg-color="transparent" class="video-playlist">
-                        <v-list-item
-                          v-for="video in module.videos"
-                          :key="video.title"
-                          @click="playVideo(video)"
-                          :active="selectedVideo.title === video.title"
-                          rounded="lg"
-                        >
-                          <template v-slot:prepend>
-                            <v-icon size="small">{{ selectedVideo.title === video.title ? 'mdi-play-circle' : 'mdi-play-circle-outline' }}</v-icon>
-                          </template>
-                          <v-list-item-title>{{ video.title }}</v-list-item-title>
-                        </v-list-item>
-                      </v-list>
-                    </v-expansion-panel-text>
-                  </v-expansion-panel>
-                </v-expansion-panels>
-              </div>
-            </v-col>
-          </v-row>
-        </v-card>
-      </v-col>
-
-      <v-col cols="12">
+      <v-col cols="12" md="8">
         <v-card class="dashboard-card" color="rgba(30,30,35,0.8)">
           <v-card-title class="d-flex align-center">
             Meus Pedidos Ativos
@@ -93,6 +42,72 @@
           </v-data-table>
         </v-card>
       </v-col>
+      <v-col cols="12" md="4">
+        <v-card class="dashboard-card" color="rgba(30,30,35,0.8)">
+          <v-card-title>Funil de Pedidos</v-card-title>
+          <v-card-text>
+            <div v-for="stage in salesFunnel" :key="stage.name" class="mb-4">
+              <div class="d-flex justify-space-between mb-1">
+                <span class="font-weight-bold">{{ stage.name }}</span>
+                <span class="text-grey">{{ stage.count }} pedido(s)</span>
+              </div>
+              <v-progress-linear :model-value="stage.percentage" :color="stage.color" height="8" rounded></v-progress-linear>
+            </div>
+          </v-card-text>
+        </v-card>
+      </v-col>
+
+      <v-col cols="12">
+        <v-card class="training-center-card" color="rgba(30,30,35,0.8)">
+            <v-card-title class="text-h5 font-weight-bold d-flex align-center">
+                <v-icon start size="32" color="primary">mdi-school-outline</v-icon>
+                Central de Treinamento
+            </v-card-title>
+            <v-card-subtitle>Capacitação para Vendedores de Elite</v-card-subtitle>
+
+             <v-card-text>
+                <div class="main-video-container mb-6">
+                    <h3 class="video-title">
+                        <v-icon :color="completedVideos.has(trainingModules[0].url) ? 'success' : 'grey-lighten-1'">
+                            {{ completedVideos.has(trainingModules[0].url) ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+                        </v-icon>
+                        {{ trainingModules[0].title }}
+                    </h3>
+                    <video
+                        :src="trainingModules[0].url"
+                        controls
+                        class="video-player"
+                        @ended="markAsCompleted(trainingModules[0].url)"
+                    ></video>
+                </div>
+
+                <v-expansion-panels variant="accordion" class="training-modules">
+                    <v-expansion-panel
+                        v-for="topic in trainingModules.slice(1)"
+                        :key="topic.title"
+                        class="module-panel"
+                    >
+                        <v-expansion-panel-title class="panel-title">
+                           <v-icon start :color="isTopicCompleted(topic) ? 'success' : 'primary'">{{ topic.icon }}</v-icon>
+                           {{ topic.title }}
+                        </v-expansion-panel-title>
+                        <v-expansion-panel-text>
+                            <div v-for="video in topic.videos" :key="video.url" class="video-item">
+                               <h3 class="video-title">
+                                    <v-icon :color="completedVideos.has(video.url) ? 'success' : 'grey-lighten-1'">
+                                        {{ completedVideos.has(video.url) ? 'mdi-check-circle' : 'mdi-circle-outline' }}
+                                    </v-icon>
+                                    {{ video.title }}
+                                </h3>
+                                <video :src="video.url" controls class="video-player" @ended="markAsCompleted(video.url)"></video>
+                            </div>
+                        </v-expansion-panel-text>
+                    </v-expansion-panel>
+                </v-expansion-panels>
+            </v-card-text>
+        </v-card>
+      </v-col>
+
     </v-row>
   </v-container>
 </template>
@@ -105,7 +120,7 @@ import { useUserStore } from '@/stores/user';
 const dashboardStore = useDashboardStore();
 const userStore = useUserStore();
 
-// --- LÓGICA EXISTENTE DO DASHBOARD ---
+// --- LÓGICA DOS PEDIDOS (SEM ALTERAÇÃO) ---
 const headers = [
   { title: 'Cliente', key: 'customer_name' },
   { title: 'Status', key: 'status', width: '180px' },
@@ -131,67 +146,86 @@ const myActiveOrders = computed((): Order[] => myOrders.value.filter(order => or
 const ordersPendingApproval = computed(() => myActiveOrders.value.filter(order => order.status === 'customer_approval').length);
 const totalOrdersCreated = computed(() => myOrders.value.length);
 
-// --- NOVA LÓGICA DO PORTAL DE TREINAMENTO ---
-const panel = ref(0); // Mantém o primeiro painel aberto por padrão
-const videoPlayer = ref<HTMLVideoElement | null>(null);
+const salesFunnel = computed(() => {
+    const total = myActiveOrders.value.length;
+    if (total === 0) return [];
+    const designCount = myActiveOrders.value.filter(o => ['design_pending', 'in_design', 'changes_requested', 'finalizing'].includes(o.status)).length;
+    const approvalCount = ordersPendingApproval.value;
+    const productionCount = myActiveOrders.value.filter(o => ['production_queue', 'in_printing', 'in_cutting'].includes(o.status)).length;
 
-const presentationVideo = {
-  title: 'Apresentação do Processo de Vendas',
-  url: 'https://cdn.shopify.com/videos/c/o/v/3cad9212989d41a29eb30d4655d4f1bc.mp4'
-};
+    return [
+        { name: 'Em Design', count: designCount, percentage: (designCount / total) * 100, color: 'blue' },
+        { name: 'Aguardando Aprovação', count: approvalCount, percentage: (approvalCount / total) * 100, color: 'orange' },
+        { name: 'Em Produção', count: productionCount, percentage: (productionCount / total) * 100, color: 'purple' },
+    ];
+});
 
-const selectedVideo = ref(presentationVideo);
+
+// --- AAAAAAAAAAAAAAAAAAA LÓGICA DOS VÍDEOS AAAAAAAAAAAAAAAAAAAAAAAAA ---
+
+const completedVideos = ref(new Set<string>());
 
 const trainingModules = ref([
-  {
-    icon: 'mdi-play-box-outline',
-    title: 'Módulo 1: Introdução',
-    videos: [
-      presentationVideo,
-      {
-        title: 'Entendendo o Fluxo do Pedido',
-        url: 'https://cdn.shopify.com/videos/c/o/v/14f0a2cc4cb14feb9624311779424997.mp4'
-      },
-      {
-        title: 'Detalhes da Aprovação',
-        url: 'https://cdn.shopify.com/videos/c/o/v/37fd779c56b0417d97e648f48eb7c0b1.mp4'
-      },
-    ]
-  },
-  {
-    icon: 'mdi-lightbulb-on-outline',
-    title: 'Módulo 2: Dicas e Estratégias',
-    videos: [
-      {
-        title: 'Como Lançar um Pedido Corretamente',
-        url: 'https://cdn.shopify.com/videos/c/o/v/6421e9733ba640b58e2728e5e0cd6f37.mp4'
-      },
-      {
-        title: 'Argumentação de Vendas',
-        url: 'https://cdn.shopify.com/videos/c/o/v/e2c3608e44bd4044a7a900bb27eacb56.mp4'
-      },
-    ]
-  },
-  {
-    icon: 'mdi-cogs',
-    title: 'Módulo 3: Ferramentas e Sistema',
-    videos: [
-      {
-        title: 'Navegando no Dashboard',
-        url: 'https://cdn.shopify.com/videos/c/o/v/4c1c47e0216c4ecab1c7fa222fb5304a.mp4'
-      },
-      {
-        title: 'Utilizando o Chat Interno',
-        url: 'https://cdn.shopify.com/videos/c/o/v/647388af7c8d4a7b9ef6722b0b33ca56.mp4'
-      },
-    ]
-  }
+    {
+        title: 'Apresentação Principal da Empresa',
+        url: 'https://cdn.shopify.com/videos/c/o/v/3cad9212989d41a29eb30d4655d4f1bc.mp4',
+    },
+    {
+        title: 'Conhecendo os Materiais',
+        icon: 'mdi-layers-triple-outline',
+        videos: [
+            {
+                title: 'Tipos de Tecido (Plano, Malha e Viscose)',
+                url: 'https://cdn.shopify.com/videos/c/o/v/14f0a2cc4cb14feb9624311779424997.mp4'
+            },
+            {
+                title: 'Tipos de Poliéster e Viscose',
+                url: 'https://cdn.shopify.com/videos/c/o/v/37fd779c56b0417d97e648f48eb7c0b1.mp4'
+            },
+        ]
+    },
+    {
+        title: 'Termos Técnicos',
+        icon: 'mdi-book-open-page-variant-outline',
+        videos: [
+            {
+                title: 'O que é Ourela?',
+                url: 'https://cdn.shopify.com/videos/c/o/v/6421e9733ba640b58e2728e5e0cd6f37.mp4'
+            }
+        ]
+    },
+    {
+        title: 'Processos e Prazos',
+        icon: 'mdi-timeline-clock-outline',
+        videos: [
+            {
+                title: 'Impressão e Prazos',
+                url: 'https://cdn.shopify.com/videos/c/o/v/e2c3608e44bd4044a7a900bb27eacb56.mp4'
+            }
+        ]
+    },
+    {
+        title: 'Comercial',
+        icon: 'mdi-finance',
+        videos: [
+            {
+                title: 'Tipos de Serviços',
+                url: 'https://cdn.shopify.com/videos/c/o/v/4c1c47e0216c4ecab1c7fa222fb5304a.mp4'
+            },
+            {
+                title: 'Formas de Pagamento',
+                url: 'https://cdn.shopify.com/videos/c/o/v/647388af7c8d4a7b9ef6722b033ca56.mp4'
+            }
+        ]
+    }
 ]);
 
-const playVideo = (video: { title: string, url: string }) => {
-  selectedVideo.value = video;
-  videoPlayer.value?.load();
-  videoPlayer.value?.play();
+const markAsCompleted = (url: string) => {
+    completedVideos.value.add(url);
+};
+
+const isTopicCompleted = (topic: any) => {
+    return topic.videos.every((video: any) => completedVideos.value.has(video.url));
 };
 
 </script>
@@ -212,43 +246,53 @@ const playVideo = (video: { title: string, url: string }) => {
     background-color: transparent !important;
 }
 
-// --- NOVOS ESTILOS PARA O PORTAL DE TREINAMENTO ---
-.training-portal {
-  .video-player-card {
-    border-radius: 12px;
-    overflow: hidden;
-    aspect-ratio: 16/9;
-  }
-  .main-video {
-    width: 100%;
-    height: 100%;
-    background-color: black;
-  }
-  .modules-list-col {
-    max-height: 500px; // Altura máxima para a lista de vídeos
-    @media (min-width: 960px) {
-      height: 100%;
-    }
-  }
-  .modules-list {
-    height: 100%;
-    overflow-y: auto;
-  }
-  .module-panel {
-    border-radius: 8px !important;
-    margin-bottom: 8px;
-    &:before {
-      display: none; // Remove a linha feia do expansion-panel
-    }
-  }
-  .video-playlist {
-    .v-list-item {
-      margin-bottom: 4px;
-      &--active {
-        background-color: rgba(var(--v-theme-primary), 0.2) !important;
-        color: rgba(var(--v-theme-primary)) !important;
-      }
-    }
-  }
+// ===== ESTILOS PARA O CENTRO DE TREINAMENTO =====
+.training-center-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
 }
+
+.main-video-container {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 16px;
+  background-color: rgba(0,0,0,0.1);
+}
+
+.video-player {
+    width: 100%;
+    border-radius: 8px;
+    margin-top: 12px;
+    background-color: #000;
+}
+
+.video-title {
+    font-size: 1.1rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.video-item {
+    margin-bottom: 24px;
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+.training-modules {
+    :deep(.v-expansion-panel) {
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        backdrop-filter: blur(10px);
+        color: #FFFFFF;
+        &:before {
+            box-shadow: none !important;
+        }
+    }
+    .panel-title {
+        font-weight: bold;
+    }
+}
+
 </style>
