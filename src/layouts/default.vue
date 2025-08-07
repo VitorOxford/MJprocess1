@@ -286,6 +286,24 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
+// ===== A CORREÇÃO ESTÁ AQUI =====
+// Garante que o container principal da aplicação não passe da altura da tela
+// e que a rolagem aconteça apenas na área de conteúdo principal.
+.v-application__wrap {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.v-main {
+  overflow-y: auto; // Apenas o <v-main> terá rolagem vertical
+  flex: 1 1 auto;
+  // Adiciona um padding para a barra de rolagem não colar no canto
+  padding-right: 4px;
+}
+// ===== FIM DA CORREÇÃO =====
+
 .app-background-container {
   position: fixed;
   top: 0; left: 0;
@@ -324,12 +342,5 @@ onUnmounted(() => {
 .toast-notification .v-snackbar__content {
   color: #FFFFFF !important;
   font-weight: 500;
-}
-
-// ===== A CORREÇÃO ESTÁ AQUI =====
-.v-navigation-drawer {
-  // Isso garante que o drawer (tanto mobile quanto desktop)
-  // use a altura da janela (vh) e não estique com o conteúdo.
-  height: 100vh !important;
 }
 </style>
