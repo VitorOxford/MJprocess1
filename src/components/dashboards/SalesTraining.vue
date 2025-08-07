@@ -4,170 +4,109 @@
       <v-icon start color="primary">mdi-school-outline</v-icon>
       Central de Treinamento
       <v-spacer></v-spacer>
-      <v-progress-circular
-        :model-value="completionPercentage"
-        :rotate="360"
-        :size="40"
-        :width="4"
-        color="primary"
-      >
-        <template v-slot:default>
+      <div class="d-flex align-center">
+        <span class="text-caption mr-2">Progresso</span>
+        <v-progress-circular
+          :model-value="completionPercentage"
+          :size="32"
+          :width="3"
+          color="primary"
+        >
           <span class="text-caption">{{ Math.round(completionPercentage) }}%</span>
-        </template>
-      </v-progress-circular>
+        </v-progress-circular>
+      </div>
     </v-card-title>
     <v-divider></v-divider>
 
-    <v-card-text>
-      <div class="mb-6">
-        <h3 class="text-h6 font-weight-bold mb-3">{{ mainVideo.title }}</h3>
+    <v-row no-gutters class="fill-height">
+      <v-col cols="12" md="8" class="video-panel pa-4">
         <div class="video-player-wrapper">
           <video
-            :key="mainVideo.url"
-            :src="mainVideo.url"
+            :key="activeVideo.url"
+            :src="activeVideo.url"
             controls
+            controlslist="nodownload"
             class="main-video-player"
-            @ended="markAsCompleted(mainVideo.id)"
+            @ended="markAsCompleted(activeVideo.id)"
           ></video>
-          <v-icon
-            v-if="isCompleted(mainVideo.id)"
-            class="check-overlay"
-            color="success"
-            size="x-large"
-          >mdi-check-circle</v-icon>
         </div>
-      </div>
+        <h3 class="text-h6 font-weight-bold mt-4">{{ activeVideo.title }}</h3>
+      </v-col>
 
-      <v-expansion-panels variant="accordion">
-        <v-expansion-panel
-          v-for="topic in videoTopics"
-          :key="topic.id"
-          class="topic-panel"
-        >
-          <v-expansion-panel-title class="font-weight-bold">
-            <v-icon start :color="isTopicCompleted(topic) ? 'success' : 'primary'">{{ topic.icon }}</v-icon>
-            {{ topic.title }}
-          </v-expansion-panel-title>
-          <v-expansion-panel-text>
-            <v-list class="bg-transparent" lines="two">
-              <v-list-item class="video-list-item">
-                <div class="video-container">
-                  <div class="video-player-wrapper small">
-                    <video
-                      :key="topic.url"
-                      :src="topic.url"
-                      controls
-                      @ended="markAsCompleted(topic.id)"
-                    ></video>
-                     <v-icon
-                      v-if="isCompleted(topic.id)"
-                      class="check-overlay small"
-                      color="success"
-                      size="large"
-                    >mdi-check-circle</v-icon>
-                  </div>
-                  <div class="video-info">
-                    <v-list-item-title class="font-weight-bold">{{ topic.title }}</v-list-item-title>
-                    <v-list-item-subtitle>Lição principal do tópico.</v-list-item-subtitle>
-                  </div>
-                </div>
-              </v-list-item>
-              <v-list-item
-                v-for="subvideo in topic.subvideos"
-                :key="subvideo.id"
-                class="video-list-item"
-              >
-                 <div class="video-container">
-                  <div class="video-player-wrapper small">
-                    <video
-                      :key="subvideo.url"
-                      :src="subvideo.url"
-                      controls
-                      @ended="markAsCompleted(subvideo.id)"
-                    ></video>
-                     <v-icon
-                      v-if="isCompleted(subvideo.id)"
-                      class="check-overlay small"
-                      color="success"
-                      size="large"
-                    >mdi-check-circle</v-icon>
-                  </div>
-                  <div class="video-info">
-                    <v-list-item-title>{{ subvideo.title }}</v-list-item-title>
-                  </div>
-                </div>
-              </v-list-item>
-            </v-list>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
-    </v-card-text>
+      <v-col cols="12" md="4" class="playlist-panel">
+        <v-list class="bg-transparent" nav>
+          <v-list-item
+            v-for="video in allVideos"
+            :key="video.id"
+            @click="playVideo(video)"
+            :active="activeVideo.id === video.id"
+            class="video-list-item"
+            :prepend-icon="video.icon"
+          >
+            <v-list-item-title :class="{'sub-item': video.isSubtopic}">{{ video.title }}</v-list-item-title>
+            <template v-slot:append>
+              <v-icon v-if="isCompleted(video.id)" color="success">mdi-check-circle</v-icon>
+            </template>
+          </v-list-item>
+        </v-list>
+      </v-col>
+    </v-row>
   </v-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, reactive } from 'vue';
 
-const mainVideo = {
-  id: 'main-presentation',
-  title: 'Apresentação Principal da Empresa',
-  url: 'https://cdn.shopify.com/videos/c/o/v/3cad9212989d41a29eb30d4655d4f1bc.mp4',
+type Video = {
+  id: string;
+  title: string;
+  url: string;
+  icon?: string;
+  isSubtopic?: boolean;
 };
 
-const videoTopics = ref([
-  {
-    id: 'topic-1',
-    title: 'Tipos de Tecido',
-    icon: 'mdi-hanger',
-    url: 'https://cdn.shopify.com/videos/c/o/v/14f0a2cc4cb14feb9624311779424997.mp4',
-    subvideos: [
-      {
-        id: 'subtopic-1-1',
-        title: 'Tipos de Poliéster e Viscose',
-        url: 'https://cdn.shopify.com/videos/c/o/v/37fd779c56b0417d97e648f48eb7c0b1.mp4',
-      },
-    ],
-  },
-  {
-    id: 'topic-2',
-    title: 'O que é Ourela?',
-    icon: 'mdi-vector-polyline',
-    url: 'https://cdn.shopify.com/videos/c/o/v/6421e9733ba640b58e2728e5e0cd6f37.mp4',
-    subvideos: [],
-  },
-  {
-    id: 'topic-3',
-    title: 'Impressão e Prazos',
-    icon: 'mdi-printer-3d-nozzle-outline',
-    url: 'https://cdn.shopify.com/videos/c/o/v/e2c3608e44bd4044a7a900bb27eacb56.mp4',
-    subvideos: [],
-  },
-  {
-    id: 'topic-4',
-    title: 'Tipos de Serviços',
-    icon: 'mdi-room-service-outline',
-    url: 'https://cdn.shopify.com/videos/c/o/v/4c1c47e0216c4ecab1c7fa222fb5304a.mp4',
-    subvideos: [],
-  },
-  {
-    id: 'topic-5',
-    title: 'Formas de Pagamento',
-    icon: 'mdi-credit-card-outline',
-    url: 'https://cdn.shopify.com/videos/c/o/v/647388af7c8d4a7b9ef6722b0b33ca56.mp4',
-    subvideos: [],
-  },
-]);
-
+const allVideos = reactive<Video[]>([]);
+const activeVideo = ref<Video>({ id: '', title: '', url: '' });
 const completedVideos = ref<Set<string>>(new Set());
 
-const totalVideos = computed(() => {
-  return 1 + videoTopics.value.reduce((acc, topic) => acc + 1 + topic.subvideos.length, 0);
+const completionPercentage = computed(() => {
+  if (allVideos.length === 0) return 0;
+  return (completedVideos.value.size / allVideos.length) * 100;
 });
 
-const completionPercentage = computed(() => {
-  if (totalVideos.value === 0) return 0;
-  return (completedVideos.value.size / totalVideos.value) * 100;
-});
+const initializeVideos = () => {
+  const mainVideo = {
+    id: 'main-presentation',
+    title: 'Apresentação Principal',
+    url: 'https://cdn.shopify.com/videos/c/o/v/3cad9212989d41a29eb30d4655d4f1bc.mp4',
+    icon: 'mdi-play-circle-outline'
+  };
+
+  const topics: any[] = [
+    { id: 'topic-1', title: 'Tipos de Tecido', icon: 'mdi-hanger', url: 'https://cdn.shopify.com/videos/c/o/v/14f0a2cc4cb14feb9624311779424997.mp4', subvideos: [{ id: 'subtopic-1-1', title: 'Poliéster e Viscose', url: 'https://cdn.shopify.com/videos/c/o/v/37fd779c56b0417d97e648f48eb7c0b1.mp4' }] },
+    { id: 'topic-2', title: 'O que é Ourela?', icon: 'mdi-vector-polyline', url: 'https://cdn.shopify.com/videos/c/o/v/6421e9733ba640b58e2728e5e0cd6f37.mp4', subvideos: [] },
+    { id: 'topic-3', title: 'Impressão e Prazos', icon: 'mdi-printer-3d-nozzle-outline', url: 'https://cdn.shopify.com/videos/c/o/v/e2c3608e44bd4044a7a900bb27eacb56.mp4', subvideos: [] },
+    { id: 'topic-4', title: 'Tipos de Serviços', icon: 'mdi-room-service-outline', url: 'https://cdn.shopify.com/videos/c/o/v/4c1c47e0216c4ecab1c7fa222fb5304a.mp4', subvideos: [] },
+    { id: 'topic-5', title: 'Formas de Pagamento', icon: 'mdi-credit-card-outline', url: 'https://cdn.shopify.com/videos/c/o/v/647388af7c8d4a7b9ef6722b0b33ca56.mp4', subvideos: [] },
+  ];
+
+  const videoList: Video[] = [mainVideo];
+  topics.forEach(topic => {
+    videoList.push({ id: topic.id, title: topic.title, url: topic.url, icon: topic.icon });
+    topic.subvideos.forEach((sub: any) => {
+      videoList.push({ id: sub.id, title: sub.title, url: sub.url, icon: 'mdi-circle-small', isSubtopic: true });
+    });
+  });
+
+  allVideos.splice(0, allVideos.length, ...videoList);
+  if (allVideos.length > 0) {
+    activeVideo.value = allVideos[0];
+  }
+};
+
+const playVideo = (video: Video) => {
+  activeVideo.value = video;
+};
 
 const loadProgress = () => {
   const progress = localStorage.getItem('video-training-progress');
@@ -187,16 +126,10 @@ const markAsCompleted = (videoId: string) => {
   }
 };
 
-const isCompleted = (videoId: string) => {
-  return completedVideos.value.has(videoId);
-};
-
-const isTopicCompleted = (topic: any) => {
-  const allTopicVideos = [topic, ...topic.subvideos];
-  return allTopicVideos.every(video => isCompleted(video.id));
-};
+const isCompleted = (videoId: string) => completedVideos.value.has(videoId);
 
 onMounted(() => {
+  initializeVideos();
   loadProgress();
 });
 </script>
@@ -206,7 +139,13 @@ onMounted(() => {
   backdrop-filter: blur(15px);
   -webkit-backdrop-filter: blur(15px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
+  border-radius: 16px;
+  min-height: 500px;
+}
+
+.video-panel {
+  display: flex;
+  flex-direction: column;
 }
 
 .video-player-wrapper {
@@ -215,51 +154,39 @@ onMounted(() => {
   overflow: hidden;
   box-shadow: 0 8px 20px rgba(0,0,0,0.25);
   background-color: #000;
-
-  &.small {
-    width: 160px;
-    height: 90px;
-    flex-shrink: 0;
-    margin-right: 16px;
-  }
+  flex-grow: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.main-video-player, video {
+.main-video-player {
   width: 100%;
-  display: block;
+  max-height: 100%;
 }
 
-.check-overlay {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: rgba(0, 0, 0, 0.6);
-  border-radius: 50%;
-  padding: 8px;
+.playlist-panel {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  height: 500px; // Altura fixa para a playlist
+  overflow-y: auto;
 
-  &.small {
-    padding: 4px;
-  }
-}
-
-.topic-panel {
-  background-color: rgba(45, 45, 55, 0.7) !important;
-  backdrop-filter: blur(10px);
-  margin-bottom: 8px;
-  border-radius: 8px !important;
-
-  &:last-child {
-    margin-bottom: 0;
+  @media (max-width: 960px) {
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    height: auto; // Altura automática em mobile
+    max-height: 300px; // Limita a altura em mobile
   }
 }
 
 .video-list-item {
-  padding-left: 0 !important;
-  .video-container {
-    display: flex;
-    align-items: center;
-    width: 100%;
+  border-radius: 8px;
+  margin: 4px 8px;
+  &.v-list-item--active {
+    background-color: rgba(var(--v-theme-primary), 0.2);
+  }
+  & .sub-item {
+    padding-left: 16px;
+    font-size: 0.9rem;
   }
 }
 </style>
