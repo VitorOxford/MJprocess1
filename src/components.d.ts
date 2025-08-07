@@ -27,6 +27,8 @@ declare module 'vue' {
     RequestChangesModal: typeof import('./components/RequestChangesModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    // --- ADICIONE A LINHA ABAIXO ---
+    SalesTraining: typeof import('./components/dashboards/SalesTraining.vue')['default']
     TaskCard: typeof import('./components/tasks/TaskCard.vue')['default']
     TaskFormModal: typeof import('./components/tasks/TaskFormModal.vue')['default']
     VendedorDashboard: typeof import('./components/dashboards/VendedorDashboard.vue')['default']
