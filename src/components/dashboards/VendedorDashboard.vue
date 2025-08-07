@@ -1,10 +1,6 @@
 <template>
   <v-container fluid>
     <v-row>
-      <v-col cols="12">
-        <SalesTraining />
-      </v-col>
-
       <v-col cols="12" sm="6">
         <v-card class="kpi-card text-center" color="rgba(255, 152, 0, 0.3)">
           <v-card-text>
@@ -60,6 +56,10 @@
           </v-card-text>
         </v-card>
       </v-col>
+
+      <v-col cols="12" class="mt-4">
+        <SalesTraining />
+      </v-col>
     </v-row>
   </v-container>
 </template>
@@ -68,7 +68,7 @@
 import { computed } from 'vue';
 import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { useUserStore } from '@/stores/user';
-import SalesTraining from './SalesTraining.vue'; // IMPORTA O NOVO COMPONENTE
+import SalesTraining from './SalesTraining.vue'; // Importa o novo componente
 
 const dashboardStore = useDashboardStore();
 const userStore = useUserStore();
