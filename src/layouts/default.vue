@@ -327,9 +327,9 @@ onUnmounted(() => {
 }
 
 // ===== A CORREÇÃO ESTÁ AQUI =====
-// Força o menu lateral permanente (desktop) a ocupar 100% da altura da tela,
-// desvinculando-o do scroll da página principal.
-.v-navigation-drawer--permanent {
+.v-navigation-drawer {
+  // Isso garante que o drawer (tanto mobile quanto desktop)
+  // use a altura da janela (vh) e não estique com o conteúdo.
   height: 100vh !important;
 }
 </style>
