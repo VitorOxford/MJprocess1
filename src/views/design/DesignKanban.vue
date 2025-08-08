@@ -39,7 +39,15 @@
                           {{ order.details.fabric_type }} - {{ order.quantity_meters }}m
                        </p>
                        <v-divider class="my-2"></v-divider>
+
                        <p class="text-caption text-truncate">{{ order.details.stamp_details }}</p>
+
+                       <p v-if="order.status === 'changes_requested'" class="text-caption text-red-lighten-2 text-truncate font-italic d-flex align-center">
+                         <v-icon size="small" start>mdi-comment-alert-outline</v-icon>
+                         Alteração: {{ getLatestChangeComment(order) }}
+                       </p>
+                       <p v-else class="text-caption text-truncate">{{ order.details.stamp_details }}</p>
+
                      </v-card-text>
 
                      <v-card-actions v-if="['finalizing', 'customer_approval'].includes(order.status)" class="pa-2">
@@ -78,12 +86,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { supabase } from '@/api/supabase';
 import draggable from 'vuedraggable';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import FileUploadModal from '@/components/FileUploadModal.vue';
 import { useUserStore } from '@/stores/user';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 type DesignStatus = 'design_pending' | 'in_design' | 'changes_requested' | 'finalizing' | 'customer_approval';
 type Order = {
@@ -97,6 +106,7 @@ type Order = {
     fabric_type: string;
     final_art_url?: string;
   };
+  order_logs?: { description: string, created_at: string }[];
 };
 
 const orders = ref<Order[]>([]);
@@ -107,6 +117,7 @@ const selectedOrderId = ref<string | null>(null);
 const showUploadModal = ref(false);
 const selectedOrder = ref<Order | null>(null);
 const uploadModalTitle = ref('');
+const ordersListener = ref<RealtimeChannel | null>(null);
 
 const columns = ref([
   { id: 1, title: 'Fila de Espera', icon: 'mdi-clock-outline', color: 'blue-grey', statuses: ['design_pending'] },
@@ -167,6 +178,13 @@ const handleUploadSuccess = async (fileUrl: string) => {
     selectedOrder.value = null;
 };
 
+const getLatestChangeComment = (order: Order): string => {
+  if (order.order_logs && order.order_logs.length > 0) {
+    const latestLog = order.order_logs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    return latestLog.description;
+  }
+  return 'Detalhes da alteração não encontrados.';
+};
 
 const updateOrderStatus = async (orderId: string, newStatus: DesignStatus, order: Order, fileUrl?: string): Promise<boolean> => {
   try {
@@ -224,7 +242,12 @@ const fetchOrdersForDesign = async () => {
   loading.value = true;
   try {
     const relevantStatuses = columns.value.flatMap(c => c.statuses);
-    const { data, error } = await supabase.from('orders').select('id, customer_name, quantity_meters, status, created_by, details').in('status', relevantStatuses);
+
+    const { data, error } = await supabase
+        .from('orders')
+        .select('*, order_logs(created_at, description)') // Buscar logs aninhados
+        .in('status', relevantStatuses);
+
     if (error) throw error;
     orders.value = data as Order[];
   } catch (err) {
@@ -234,11 +257,27 @@ const fetchOrdersForDesign = async () => {
   }
 };
 
+const setupOrdersListener = () => {
+    ordersListener.value = supabase
+        .channel('public:orders:design-kanban')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+            fetchOrdersForDesign(); // Re-busca os dados toda vez que houver uma mudança
+        })
+        .subscribe();
+}
+
 onMounted(async () => {
   if (!userStore.profile) {
     await userStore.fetchSession();
   }
   fetchOrdersForDesign();
+  setupOrdersListener(); // Inicia o listener ao montar
+});
+
+onUnmounted(() => {
+    if (ordersListener.value) {
+        supabase.removeChannel(ordersListener.value); // Limpa o listener ao desmontar
+    }
 });
 </script>
 

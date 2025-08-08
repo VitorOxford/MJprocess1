@@ -3,13 +3,23 @@
     <v-card class="glassmorphism-card mx-auto my-auto pa-2 pa-md-4">
       <template v-if="!loading">
         <v-toolbar color="transparent" class="mb-4 header-toolbar">
-          <v-toolbar-title class="font-weight-bold header-title">
+          <v-toolbar-title class="font-weight-bold header-title d-none d-sm-flex">
             <v-icon start>mdi-calendar-check-outline</v-icon>
-            Agenda e Filas de Espera
+            Agenda e Filas
           </v-toolbar-title>
+          <v-spacer></v-spacer>
+          <div class="d-flex align-center">
+            <v-btn icon="mdi-chevron-left" variant="text" @click="previousWeek"></v-btn>
+            <div class="week-indicator mx-2 text-center">
+              <div class="font-weight-bold">{{ weekRangeText }}</div>
+              <div class="text-caption text-grey">{{ isCurrentWeek ? 'Semana Atual' : '' }}</div>
+            </div>
+            <v-btn icon="mdi-chevron-right" variant="text" @click="nextWeek"></v-btn>
+            <v-btn icon="mdi-calendar-month" variant="text" class="ml-2" @click="showCalendarModal = true"></v-btn>
+          </div>
         </v-toolbar>
 
-        <div class="d-flex flex-column flex-md-row ga-4 px-2 mb-4">
+        <div class="d-flex flex-column flex-md-row ga-4 px-2 mb-2">
             <v-card
                 class="queue-card"
                 variant="tonal"
@@ -41,6 +51,16 @@
             </v-card>
         </div>
 
+        <div class="d-flex justify-end align-center ga-4 px-4 pb-4">
+            <div class="d-flex align-center">
+                <v-sheet height="12" width="12" color="cyan" rounded class="mr-2"></v-sheet>
+                <span class="text-caption">Máquina MESA</span>
+            </div>
+            <div class="d-flex align-center">
+                 <v-sheet height="12" width="12" color="amber" rounded class="mr-2"></v-sheet>
+                <span class="text-caption">Máquina CORRIDA</span>
+            </div>
+        </div>
 
         <div class="kanban-container d-none d-md-flex">
           <div v-for="day in weekDays" :key="day.date.toISOString()" class="kanban-column">
@@ -48,20 +68,20 @@
               <h4 class="font-weight-bold">{{ day.name }}</h4>
               <p class="text-caption text-grey">{{ getShortDate(day.date) }}</p>
               <v-progress-linear
-                :model-value="(getDayProduction(day.date) / DAILY_LIMIT) * 100"
-                :color="getDayProduction(day.date) > DAILY_LIMIT ? 'error' : 'primary'"
+                :model-value="(getDayProduction(day.date).total / getDailyLimit(day.date)) * 100"
+                :color="isDayOverloaded(day.date) ? 'error' : 'primary'"
                 height="6"
                 rounded
                 class="my-2"
               ></v-progress-linear>
-              <v-chip size="small" variant="tonal">{{ getDayProduction(day.date) }}m / {{ DAILY_LIMIT }}m</v-chip>
+              <v-chip size="small" variant="tonal">{{ getDayProduction(day.date).total }}m / {{ getDailyLimit(day.date) }}m</v-chip>
             </div>
             <div class="kanban-content pa-2">
               <v-card v-for="order in getOrdersForDay(day.date)" :key="order.id" class="order-card-kanban my-2" @click="openDetailModal(order.id)">
                 <v-card-text class="pa-2">
                   <div class="d-flex justify-space-between align-center">
                     <p class="font-weight-bold text-body-2 text-truncate">{{ order.customer_name }}</p>
-                    <v-chip size="x-small" color="blue" variant="flat">{{ order.quantity_meters }}m</v-chip>
+                    <v-chip size="x-small" :color="getMachineTypeForFabric(order.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat">{{ order.quantity_meters }}m</v-chip>
                   </div>
                   <p class="text-caption text-grey-lighten-1 mt-1">{{ order.details.fabric_type }}</p>
                 </v-card-text>
@@ -84,7 +104,7 @@
                     <v-list-item-subtitle>{{ order.details.fabric_type }}</v-list-item-subtitle>
                     <template v-slot:append>
                       <div class="text-right">
-                        <v-chip color="primary" variant="tonal" class="mb-1">{{ order.quantity_meters }}m</v-chip>
+                        <v-chip :color="getMachineTypeForFabric(order.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat" class="mb-1">{{ order.quantity_meters }}m</v-chip>
                       </div>
                     </template>
                   </v-list-item>
@@ -104,6 +124,7 @@
     </v-card>
 
     <OrderDetailModal :show="showDetailModal" :order-id="selectedOrderId" @close="showDetailModal = false"/>
+    <CalendarViewModal v-model:show="showCalendarModal" :orders="scheduledOrders" />
 
     <v-dialog v-model="showQueueModal" max-width="900px" persistent>
         <v-card class="glassmorphism-card-dialog">
@@ -133,34 +154,42 @@
             </v-card-text>
         </v-card>
     </v-dialog>
-
   </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
-import { format, startOfWeek, addDays, isSameDay, parseISO } from 'date-fns';
+import { format, startOfWeek, addDays, subDays, isSameDay, parseISO, endOfWeek, getDay, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
-import { VDataTable } from 'vuetify/components/VDataTable';
+import CalendarViewModal from '@/components/CalendarViewModal.vue';
 
 type Order = {
-  id: string; customer_name: string; status: string; value: number; created_at: string; production_date: string | null; quantity_meters: number;
+  id: string; customer_name: string; status: string; created_at: string; production_date: string | null; quantity_meters: number;
   details: { fabric_type: string; stamp_details: string; final_art_url?: string; };
   profiles: { full_name: string; } | null; stores: { name: string; } | null;
 };
 
+// --- LÓGICA DE MÁQUINAS E LIMITES ---
+const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
+  'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA',
+  'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA'
+};
+const dailyLimits = { mesa: 4000, corrida: 10000, overall: 12000, saturday: 5000 };
+const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => {
+  return fabricMachineMap[fabric] || 'CORRIDA';
+};
+
+// --- ESTADO ---
 const orders = ref<Order[]>([]);
 const loading = ref(true);
-const today = new Date();
-const DAILY_LIMIT = 10000;
-
-// Estado para o modal de pedido individual
+const currentWeekStart = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
+const showCalendarModal = ref(false);
 const showDetailModal = ref(false);
 const selectedOrderId = ref<string | null>(null);
 
-// NOVO ESTADO: Para o modal de filas de espera
+// **ESTADO DO MODAL RESTAURADO**
 const showQueueModal = ref(false);
 const modalTitle = ref('');
 const modalOrders = ref<Order[]>([]);
@@ -171,27 +200,54 @@ const modalHeaders = [
     { title: 'Criado em', key: 'created_at' },
 ];
 
-// --- LÓGICA ATUALIZADA ---
+// --- COMPUTED PROPERTIES ---
 const ordersPendingStock = computed(() => orders.value.filter(o => o.status === 'pending_stock'));
 const ordersPendingSchedule = computed(() => orders.value.filter(o => o.status === 'scheduling_pending'));
 const totalMetersPendingSchedule = computed(() => ordersPendingSchedule.value.reduce((sum, order) => sum + order.quantity_meters, 0));
-const scheduledOrders = computed(() => orders.value.filter(o => o.production_date !== null));
+const scheduledOrders = computed(() => orders.value.filter((o): o is Order & { production_date: string } => !!o.production_date));
+const weekDays = computed(() => Array.from({ length: 6 }, (_, i) => ({ date: addDays(currentWeekStart.value, i), name: format(addDays(currentWeekStart.value, i), 'EEEE', { locale: ptBR }) })));
+const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
+const isCurrentWeek = computed(() => isSameDay(startOfWeek(new Date(), { weekStartsOn: 1 }), currentWeekStart.value));
 
-const weekDays = computed(() => {
-  const start = startOfWeek(today, { weekStartsOn: 1 }); // Começa na Segunda
-  return Array.from({ length: 6 }, (_, i) => ({ // Agora com 6 dias
-    date: addDays(start, i),
-    name: format(addDays(start, i), 'EEEE', { locale: ptBR })
-  }));
-});
+// --- FUNÇÕES ---
+const nextWeek = () => { currentWeekStart.value = addDays(currentWeekStart.value, 7); };
+const previousWeek = () => { currentWeekStart.value = subDays(currentWeekStart.value, 7); };
+const getDailyLimit = (date: Date): number => getDay(date) === 6 ? dailyLimits.saturday : dailyLimits.overall;
+const getOrdersForDay = (date: Date) => scheduledOrders.value.filter(order => isSameDay(parseISO(order.production_date), date));
+const getDayProduction = (date: Date) => {
+    const dailyOrders = getOrdersForDay(date);
+    let mesaMeters = 0;
+    let corridaMeters = 0;
+    dailyOrders.forEach(order => {
+        if (getMachineTypeForFabric(order.details.fabric_type) === 'MESA') mesaMeters += order.quantity_meters;
+        else corridaMeters += order.quantity_meters;
+    });
+    return { total: mesaMeters + corridaMeters, mesa: mesaMeters, corrida: corridaMeters };
+};
+const isDayOverloaded = (date: Date) => {
+    const production = getDayProduction(date);
+    const overallLimit = getDailyLimit(date);
+    return production.total > overallLimit || production.mesa > dailyLimits.mesa || production.corrida > dailyLimits.corrida;
+};
 
 const fetchAllOrders = async () => {
   loading.value = true;
   try {
+    // --- MUDANÇA PRINCIPAL ---
+    // Agora incluímos os status de produção ativa na busca de dados
+    // para que os pedidos não desapareçam do calendário.
+    const relevantStatuses = [
+        'pending_stock',
+        'scheduling_pending',
+        'production_queue',
+        'in_printing', // Adicionado
+        'in_cutting'   // Adicionado
+    ];
+
     const { data, error } = await supabase
         .from('orders')
-        .select(`id, customer_name, status, value, created_at, production_date, quantity_meters, details, profiles:created_by (full_name), stores (name)`)
-        .in('status', ['pending_stock', 'scheduling_pending', 'production_queue', 'in_printing'])
+        .select(`id, customer_name, status, created_at, production_date, quantity_meters, details, profiles:created_by (full_name), stores (name)`)
+        .in('status', relevantStatuses) // Usa a nova lista de status
         .order('created_at', { ascending: true });
 
     if (error) throw error;
@@ -203,21 +259,11 @@ const fetchAllOrders = async () => {
   }
 };
 
-const getOrdersForDay = (date: Date) => {
-    return scheduledOrders.value.filter(order => order.production_date && isSameDay(parseISO(order.production_date), date));
-};
-
-const getDayProduction = (date: Date) => {
-    return getOrdersForDay(date).reduce((sum, order) => sum + order.quantity_meters, 0);
-};
-
-// Abre o modal de pedido único
 const openDetailModal = (orderId: string) => {
     selectedOrderId.value = orderId;
     showDetailModal.value = true;
 };
-
-// NOVA FUNÇÃO: Abre o modal das filas de espera
+// **FUNÇÃO DO MODAL RESTAURADA**
 const openQueueModal = (queueType: 'stock' | 'schedule') => {
     if (queueType === 'stock') {
         modalTitle.value = 'Pedidos Aguardando Matéria-Prima';
@@ -228,17 +274,13 @@ const openQueueModal = (queueType: 'stock' | 'schedule') => {
     }
     showQueueModal.value = true;
 };
-
 const getShortDate = (date: Date) => format(date, 'dd/MM');
 const formatDate = (dateString: string) => format(new Date(dateString), "dd/MM/yy 'às' HH:mm", { locale: ptBR });
 
-onMounted(() => {
-  fetchAllOrders();
-});
+onMounted(fetchAllOrders);
 </script>
 
 <style scoped lang="scss">
-/* ESTILOS BASE E ESTRUTURAIS */
 .glassmorphism-card {
   backdrop-filter: blur(15px);
   background-color: rgba(25, 25, 30, 0.75);
@@ -249,11 +291,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
-.header-toolbar {
-  .header-title { font-size: 1.5rem; }
-}
-
-/* CARDS DE FILA DE ESPERA (UNIFICADO) */
+.header-toolbar .header-title { font-size: 1.5rem; }
+.week-indicator { min-width: 150px; }
 .queue-card {
     flex: 1;
     cursor: pointer;
@@ -263,15 +302,12 @@ onMounted(() => {
         box-shadow: 0 8px 20px rgba(0,0,0,0.3);
     }
 }
-
-/* KANBAN (SOMENTE DESKTOP) */
 .kanban-container {
   overflow-x: auto;
   flex-grow: 1;
   padding: 8px;
   gap: 16px;
 }
-
 .kanban-column {
   flex: 1 1 0px;
   min-width: 280px;
@@ -283,7 +319,6 @@ onMounted(() => {
   flex-direction: column;
   background-color: rgba(255,255,255,0.05);
 }
-
 .column-header-kanban {
   text-align: center;
   padding: 12px;
@@ -303,8 +338,6 @@ onMounted(() => {
     box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
   }
 }
-
-/* VISÃO VERTICAL (SOMENTE MOBILE) */
 .vertical-list-container {
   padding: 16px;
   overflow-y: auto;
@@ -323,8 +356,6 @@ onMounted(() => {
   background-color: rgba(45, 45, 55, 0.9) !important;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-
-/* Estilos do Modal de Fila */
 .glassmorphism-card-dialog {
   backdrop-filter: blur(20px) !important;
   background-color: rgba(30, 30, 30, 0.85) !important;
@@ -332,11 +363,10 @@ onMounted(() => {
 }
 .clickable-link {
     cursor: pointer;
-    color: #4dd0e1; // ciano claro
+    color: #4dd0e1;
     text-decoration: none;
     &:hover {
         text-decoration: underline;
     }
 }
-
 </style>

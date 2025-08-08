@@ -170,7 +170,11 @@ const initializeDeliveryDays = () => {
 // Funções de Manipulação de Pedidos
 const processAndDistributeOrders = (orders: Order[]) => {
   const readyForScheduling: Order[] = [];
+
   deliveryDays.forEach(day => day.orders = []); // Limpa as colunas
+
+  deliveryDays.forEach(day => day.orders = []);
+
 
   orders.forEach(order => {
     const productionStartDate = parseISO(order.production_date);
@@ -198,14 +202,21 @@ const processAndDistributeOrders = (orders: Order[]) => {
 
 const confirmDelivery = (order: Order) => {
   order.isConfirmed = true;
+
   // TODO: Salvar no Supabase
+
+
   console.log(`Pedido ${order.id} confirmado para entrega.`);
 };
 
 const rejectDelivery = (order: Order, fromDay: DeliveryDay) => {
   fromDay.orders = fromDay.orders.filter(o => o.id !== order.id);
+
   toBeScheduledOrders.value.unshift({ ...order, isConfirmed: false }); // Adiciona no topo
   // TODO: Limpar data de entrega no Supabase
+
+  toBeScheduledOrders.value.unshift({ ...order, isConfirmed: false });
+
   console.log(`Pedido ${order.id} rejeitado. Voltando para a fila.`);
 };
 

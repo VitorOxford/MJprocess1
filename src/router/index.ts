@@ -18,14 +18,36 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/Orders.vue'),
         meta: { requiresAuth: true }
       },
-      // --- ROTA DE ENTREGA ADICIONADA AQUI ---
+      {
+        path: 'aprovar-pedidos',
+        name: 'Approvals',
+        component: () => import('@/views/Approvals.vue'),
+        meta: { roles: ['vendedor', 'designer', 'admin'] }
+      },
+      {
+        path: 'em-producao',
+        name: 'InProduction',
+        component: () => import('@/views/production/InProduction.vue'),
+        meta: { roles: ['producao', 'admin'] }
+      },
+      {
+        path: 'estoque',
+        name: 'Stock',
+        component: () => import('@/views/Stock.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'didatico',
+        name: 'Didatico',
+        component: () => import('@/views/Didatico.vue'),
+        meta: { roles: ['vendedor', 'admin'] }
+      },
       {
         path: 'entrega',
         name: 'Delivery',
         component: () => import('@/views/Delivery.vue'),
         meta: { requiresAuth: true }
       },
-      // --- FIM DA ADIÇÃO ---
       {
         path: 'novo-pedido',
         name: 'NewOrder',

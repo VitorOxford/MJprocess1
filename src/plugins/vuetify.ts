@@ -1,19 +1,19 @@
 /**
  * plugins/vuetify.ts
- *
- * Framework documentation: https://vuetifyjs.com`
  */
 
-// Styles
 import '@mdi/font/css/materialdesignicons.css'
 import 'vuetify/styles'
-
-// Composables
 import { createVuetify } from 'vuetify'
 
-// https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
+// Importa o nosso novo adaptador LOCAL e COMPLETO
+import { dateAdapter } from './date-adapter'
+
 export default createVuetify({
+  date: {
+    adapter: dateAdapter,
+  },
   theme: {
-    defaultTheme: 'system',
+    defaultTheme: 'dark',
   },
 })

@@ -15,6 +15,7 @@ declare module 'vue' {
     AdminReportsTab: typeof import('./components/admin/AdminReportsTab.vue')['default']
     AppFooter: typeof import('./components/AppFooter.vue')['default']
     ApprovalModal: typeof import('./components/ApprovalModal.vue')['default']
+    CalendarViewModal: typeof import('./components/CalendarViewModal.vue')['default']
     DesignerDashboard: typeof import('./components/dashboards/DesignerDashboard.vue')['default']
     FileUploadModal: typeof import('./components/FileUploadModal.vue')['default']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
@@ -27,7 +28,6 @@ declare module 'vue' {
     RequestChangesModal: typeof import('./components/RequestChangesModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
-    // --- ADICIONE A LINHA ABAIXO ---
     SalesTraining: typeof import('./components/dashboards/SalesTraining.vue')['default']
     TaskCard: typeof import('./components/tasks/TaskCard.vue')['default']
     TaskFormModal: typeof import('./components/tasks/TaskFormModal.vue')['default']

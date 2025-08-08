@@ -56,10 +56,6 @@
           </v-card-text>
         </v-card>
       </v-col>
-
-      <v-col cols="12" class="mt-4">
-        <SalesTraining />
-      </v-col>
     </v-row>
   </v-container>
 </template>
@@ -68,7 +64,6 @@
 import { computed } from 'vue';
 import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { useUserStore } from '@/stores/user';
-import SalesTraining from './SalesTraining.vue'; // Importa o novo componente
 
 const dashboardStore = useDashboardStore();
 const userStore = useUserStore();
@@ -111,7 +106,6 @@ const salesFunnel = computed(() => {
         { name: 'Em Produção', count: productionCount, percentage: (productionCount / total) * 100, color: 'purple' },
     ];
 });
-
 </script>
 
 <style scoped lang="scss">

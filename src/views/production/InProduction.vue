@@ -2,18 +2,18 @@
   <v-container fluid>
     <v-toolbar color="transparent" class="mb-4">
       <v-toolbar-title class="font-weight-bold">
-        <v-icon start>mdi-factory</v-icon>
-        Fila de Produção
+        <v-icon start>mdi-cog-sync-outline</v-icon>
+        Pedidos em Produção Ativa
       </v-toolbar-title>
     </v-toolbar>
 
     <v-card class="mb-6 kpi-card" color="rgba(30,30,35,0.8)">
       <v-card-text>
         <div class="d-flex align-center">
-          <v-icon size="large" color="primary" class="mr-4">mdi-ruler-square-compass</v-icon>
+          <v-icon size="large" color="primary" class="mr-4">mdi-chart-donut</v-icon>
           <div>
             <div class="text-h4 font-weight-bold">{{ totalMetersInProduction.toLocaleString('pt-BR') }}m</div>
-            <div class="text-subtitle-1 text-grey-lighten-1">Total de Metros na Fila de Produção</div>
+            <div class="text-subtitle-1 text-grey-lighten-1">Total de Metros em Produção</div>
           </div>
         </div>
       </v-card-text>
@@ -22,7 +22,7 @@
     <v-card class="dashboard-card" color="rgba(30,30,35,0.8)">
       <v-data-table
         :headers="headers"
-        :items="productionOrders"
+        :items="inProductionOrders"
         :loading="loading"
         class="bg-transparent"
         item-value="id"
@@ -35,7 +35,7 @@
         </template>
 
         <template v-slot:item.quantity_meters="{ item }">
-          <v-chip color="blue" variant="tonal">{{ item.quantity_meters }}m</v-chip>
+          <v-chip color="primary" variant="tonal">{{ item.quantity_meters }}m</v-chip>
         </template>
 
         <template v-slot:item.details.final_art_url="{ item }">
@@ -53,17 +53,6 @@
           </v-btn>
           <span v-else class="text-caption text-grey">Sem arte</span>
         </template>
-
-        <template v-slot:loading>
-          <v-skeleton-loader type="table-row@5"></v-skeleton-loader>
-        </template>
-
-        <template v-slot:no-data>
-          <div class="py-12 text-center text-grey">
-            <v-icon size="48" class="mb-2">mdi-package-variant-closed</v-icon>
-            <p>Nenhum pedido na fila de produção no momento.</p>
-          </div>
-        </template>
       </v-data-table>
     </v-card>
 
@@ -80,29 +69,20 @@ import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 
-// ---- TIPAGEM ----
-type ProductionStatus = 'production_queue' | 'in_printing' | 'in_cutting' | 'completed';
-
 type Order = {
   id: string;
   customer_name: string;
   quantity_meters: number;
-  status: ProductionStatus;
   details: {
     fabric_type: string;
     final_art_url?: string;
   };
 };
 
-// ---- ESTADO ----
 const orders = ref<Order[]>([]);
 const loading = ref(true);
 const showDetailModal = ref(false);
 const selectedOrderId = ref<string | null>(null);
-
-
-// Definição dos cabeçalhos para a VDataTable (SEM STATUS)
-
 
 const headers = [
   { title: 'Cliente', key: 'customer_name', width: '30%' },
@@ -111,47 +91,40 @@ const headers = [
   { title: 'Arte Final', key: 'details.final_art_url', align: 'center', sortable: false },
 ];
 
-// ---- PROPRIEDADES COMPUTADAS ----
-const productionOrders = computed(() => {
-
-    // Filtra apenas pelos pedidos que estão na fila de produção
-
-
-    return orders.value.filter(order => order.status === 'production_queue');
+const inProductionOrders = computed(() => {
+    // Esta tela agora filtra pelos status corretos, então apenas retornamos os pedidos.
+    return orders.value;
 });
 
 const totalMetersInProduction = computed(() => {
-    return productionOrders.value.reduce((total, order) => total + order.quantity_meters, 0);
+    return inProductionOrders.value.reduce((total, order) => total + order.quantity_meters, 0);
 });
 
-// ---- FUNÇÕES ----
 const openDetailModal = (orderId: string) => {
     selectedOrderId.value = orderId;
     showDetailModal.value = true;
 };
 
-const fetchProductionOrders = async () => {
+const fetchInProductionOrders = async () => {
   loading.value = true;
   try {
-
-    // Busca apenas os pedidos relevantes para esta tela
+    // A query agora busca pelos status de produção ativa
     const { data, error } = await supabase
       .from('orders')
       .select('id, customer_name, quantity_meters, status, details')
-      .eq('status', 'production_queue'); // Pega só o que está na fila
-
+      .in('status', ['in_printing', 'in_cutting']);
 
     if (error) throw error;
     orders.value = data || [];
   } catch (err) {
-    console.error('Erro ao buscar pedidos de produção:', err);
+    console.error('Erro ao buscar pedidos em produção:', err);
   } finally {
     loading.value = false;
   }
 };
 
 onMounted(() => {
-  fetchProductionOrders();
+  fetchInProductionOrders();
 });
 </script>
 

@@ -51,20 +51,29 @@ import { ref, watch, defineProps, defineEmits } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
 
+<<<<<<< HEAD
 // ---- PROPS E EMITS ----
+=======
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
 const props = defineProps({
   show: Boolean,
   order: Object as () => any | null,
 });
 const emit = defineEmits(['close', 'approved']);
 
+<<<<<<< HEAD
 // ---- ESTADO ----
+=======
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
 const userStore = useUserStore();
 const artFile = ref<File[]>([]);
 const imagePreview = ref<string | null>(null);
 const isUploading = ref(false);
 
+<<<<<<< HEAD
 // ---- REGRAS E WATCHERS ----
+=======
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
 const fileRule = (value: File[]) => !!value.length || 'A arte final é obrigatória.';
 
 watch(artFile, (newFile) => {
@@ -84,7 +93,10 @@ watch(artFile, (newFile) => {
   }
 });
 
+<<<<<<< HEAD
 // ---- FUNÇÕES ----
+=======
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
 const close = () => {
     artFile.value = [];
     imagePreview.value = null;
@@ -98,7 +110,10 @@ const submitForApproval = async () => {
   const filePath = `final_arts/${props.order.id}/${file.name}`;
 
   try {
+<<<<<<< HEAD
     // 1. Upload da arte
+=======
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
     const { error: uploadError } = await supabase.storage
         .from('media')
         .upload(filePath, file, { upsert: true });
@@ -106,26 +121,40 @@ const submitForApproval = async () => {
 
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(filePath);
 
+<<<<<<< HEAD
     // 2. Atualizar o pedido
     const { error: updateError } = await supabase
         .from('orders')
         .update({
             // --- MUDANÇA IMPORTANTE AQUI ---
             status: 'production_queue', // Em vez de 'customer_approval' ou 'production_scheduled'
+=======
+    const { error: updateError } = await supabase
+        .from('orders')
+        .update({
+            status: 'production_queue',
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
             details: { ...props.order.details, final_art_url: urlData.publicUrl }
         })
         .eq('id', props.order.id);
     if (updateError) throw updateError;
 
+<<<<<<< HEAD
     // 3. Enviar notificação para o criador do pedido (vendedor)
     // Vamos simplificar a notificação por agora.
+=======
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
      const { error: notificationError } = await supabase
       .from('notifications')
       .insert({
           recipient_id: props.order.created_by,
           sender_id: userStore.profile.id,
           content: `A arte para o pedido de "${props.order.customer_name}" foi aprovada e enviada para a fila de produção.`,
+<<<<<<< HEAD
           redirect_url: `/producao` // Link para o Kanban de produção
+=======
+          redirect_url: `/producao`
+>>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
       });
     if (notificationError) console.error("Erro ao notificar, mas o fluxo continua:", notificationError);
 

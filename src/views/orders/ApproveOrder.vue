@@ -147,28 +147,34 @@ const approveOrder = async () => {
     if (!order.value || !userStore.profile) return;
     isSubmitting.value = true;
     try {
-        const { error: rpcError } = await supabase.rpc('approve_order_and_schedule', {
+        // --- MUDANÇA PRINCIPAL ---
+        // Em vez de 'approve_order_and_schedule', chamamos uma nova função
+        // que irá calcular a melhor data e definir o status para 'production_queue'.
+        const { error: rpcError } = await supabase.rpc('schedule_order_automatically', {
             p_order_id: order.value.id
         });
         if (rpcError) throw rpcError;
 
+        // O log agora reflete que o pedido foi agendado.
         await supabase.from('order_logs').insert({
             order_id: order.value.id,
             profile_id: userStore.profile.id,
             log_type: 'STATUS_CHANGE',
-            description: 'Arte aprovada pelo cliente. Pedido encaminhado para a próxima etapa.'
+            description: 'Arte aprovada. Pedido encaminhado para a fila de produção e agendamento automático.'
         });
 
+        // Notifica o time de produção ou administradores.
         await supabase.from('notifications').insert({
             sender_id: userStore.profile.id,
-            content: `Pedido de "${order.value.customer_name}" foi APROVADO e encaminhado.`,
-            redirect_url: '/pedidos'
+            content: `Pedido de "${order.value.customer_name}" foi APROVADO e agendado.`,
+            redirect_url: '/pedidos' // Link para a Agenda de Produção
         });
 
-        router.push({ name: 'Orders' });
+        router.push({ name: 'Orders' }); // Redireciona para a agenda
 
     } catch(e: any) {
-        alert(`Erro ao aprovar o pedido: ${e.message}`);
+        alert(`Erro ao aprovar e agendar o pedido: ${e.message}`);
+        error.value = `Erro: ${e.message}`; // Mostra o erro na tela
     } finally {
         isSubmitting.value = false;
     }

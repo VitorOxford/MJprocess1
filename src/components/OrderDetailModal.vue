@@ -56,6 +56,20 @@
               </v-list>
           </v-col>
         </v-row>
+
+        <div v-if="order.status === 'changes_requested'" class="mt-4">
+          <v-divider class="my-4"></v-divider>
+          <v-alert
+            type="warning"
+            variant="tonal"
+            icon="mdi-comment-alert-outline"
+            class="change-request-alert"
+          >
+            <div class="font-weight-bold">Alteração Solicitada</div>
+            <div class="text-body-2 mt-1">{{ latestChangeComment }}</div>
+          </v-alert>
+        </div>
+
         <v-divider class="my-4"></v-divider>
          <h4 class="text-subtitle-1 font-weight-bold mb-2">Observações da Estampa</h4>
          <p class="text-body-2 text-medium-emphasis pa-2">
@@ -72,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -97,6 +111,7 @@ type OrderDetails = {
   };
   profiles: { full_name: string; } | null;
   stores: { name: string; } | null;
+  order_logs?: { created_at: string; description: string; log_type: string; }[];
 };
 
 const order = ref<OrderDetails | null>(null);
@@ -126,6 +141,16 @@ const formatDateSafe = (dateString: string | null | undefined) => {
     }
 }
 
+const latestChangeComment = computed(() => {
+  if (order.value?.order_logs) {
+    const latestLog = order.value.order_logs
+      .filter(log => log.log_type === 'COMMENT')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return latestLog[0]?.description || 'Detalhes da alteração não fornecidos.';
+  }
+  return 'Detalhes da alteração não fornecidos.';
+});
+
 const fetchOrder = async (id: string) => {
   if (!id) return;
   loading.value = true;
@@ -133,7 +158,7 @@ const fetchOrder = async (id: string) => {
   try {
     const { data, error: fetchError } = await supabase
       .from('orders')
-      .select(`*, profiles:created_by (full_name), stores (name)`)
+      .select(`*, profiles:created_by (full_name), stores (name), order_logs(created_at, description, log_type)`)
       .eq('id', id)
       .single();
 
@@ -164,5 +189,10 @@ watch(() => props.orderId, (newId) => {
 }
 .dialog-header, .dialog-footer {
   border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.change-request-alert {
+  border-left: 4px solid rgb(var(--v-theme-warning)) !important;
+  background-color: rgba(255, 152, 0, 0.1) !important;
 }
 </style>
