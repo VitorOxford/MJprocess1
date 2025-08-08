@@ -4,7 +4,7 @@
       <v-card-title class="pa-4">
         <div class="d-flex align-center">
           <v-icon color="primary" size="32" class="mr-3">mdi-shield-crown-outline</v-icon>
-          <h1 class="text-h5 font-weight-bold">Painel de Controle do Administrador</h1>
+          <h1 class="text-h5 font-weight-bold">Dashboard Administrador</h1>
         </div>
       </v-card-title>
       <v-divider></v-divider>

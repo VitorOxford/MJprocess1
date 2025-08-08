@@ -5,7 +5,7 @@
     <v-container class="fill-height d-flex justify-center align-center pa-4">
       <v-card class="glassmorphism-card login-card" width="100%" max-width="400px">
         <div class="d-flex justify-center pa-6">
-            <v-img src="@/assets/logo.png" max-height="60" contain class="animated-logo"></v-img>
+            <v-img src="@/assets/logo.png" max-height="100" contain class="animated-logo"></v-img>
         </div>
 
         <v-card-title class="text-center text-h5 pb-4">
@@ -72,11 +72,7 @@ const errorMessage = ref<string | null>(null);
 
 // --- LÓGICA DO BACKGROUND (sem alterações) ---
 const backgrounds = ref([
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/1.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/2.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/3.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/4.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/5.jpg'
+
 ]);
 const currentBackground = ref('');
 let backgroundInterval: NodeJS.Timeout;

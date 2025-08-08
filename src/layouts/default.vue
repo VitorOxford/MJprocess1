@@ -1,6 +1,11 @@
 <template>
   <v-app>
-    <div class="app-background-container" :style="{ backgroundImage: `url(${currentBackground})` }"></div>
+    <div class="background-container">
+      <div class="logo-container">
+        <v-img src="@/assets/logo.png" max-height="120" contain class="logo-with-glow"></v-img>
+      </div>
+      <div class="particles-overlay"></div>
+    </div>
 
     <audio ref="notificationSound" src="https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/sounds/notification.mp3" preload="auto"></audio>
     <audio ref="messageSound" src="https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/sounds/message.mp3" preload="auto"></audio>
@@ -9,7 +14,7 @@
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
       <v-toolbar-title class="app-bar-title">
          <router-link :to="{ name: 'Home' }">
-            <v-img src="@/assets/logo.png" max-height="30" contain></v-img>
+            <v-img src="@/assets/logo.png" max-height="80" contain></v-img>
          </router-link>
       </v-toolbar-title>
     </v-app-bar>
@@ -23,7 +28,7 @@
     >
       <div class="drawer-flex-wrapper">
         <div class="d-flex justify-center align-center pa-4 mt-2 mb-6">
-          <v-img src="@/assets/logo.png" max-height="50" contain class="animated-logo"></v-img>
+          <v-img src="@/assets/logo.png" max-height="80" contain class="animated-logo"></v-img>
         </div>
 
         <v-list dense nav class="pa-2 main-nav-list">
@@ -45,7 +50,7 @@
     <span v-if="item.value === 'approvals' && ordersPendingApproval > 0" class="animated-title">
       <span class="default-text">Aprovar Pedidos</span>
       <span class="animated-text">
-        {{ ordersPendingApproval }} Aprovaç{{ ordersPendingApproval > 1 ? 'ões' : 'ão' }}!
+        {{ ordersPendingApproval }} Aprovaç{{ ordersPendingApproval > 1 ? 'ões' : 'ão' }} Penden{{ ordersPendingApproval > 1 ? 'tes' : 'te' }}!
       </span>
     </span>
     <span v-else>
@@ -254,27 +259,6 @@ const toggleHoverEffect = (event: MouseEvent, shouldAdd: boolean, value: string)
   }
 };
 
-const backgrounds = ref([
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/1.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/2.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/3.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/4.jpg',
-    'https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/5.jpg'
-]);
-const currentBackground = ref('');
-let backgroundInterval: NodeJS.Timeout;
-
-const startBackgroundCarousel = () => {
-    clearInterval(backgroundInterval);
-    if (backgrounds.value.length === 0) return;
-    currentBackground.value = backgrounds.value[0];
-    backgroundInterval = setInterval(() => {
-        const currentIndex = backgrounds.value.indexOf(currentBackground.value);
-        const nextIndex = (currentIndex + 1) % backgrounds.value.length;
-        currentBackground.value = backgrounds.value[nextIndex];
-    }, 15000);
-};
-
 const fetchNotifications = async () => {
     if (!userStore.user) return;
     try {
@@ -373,11 +357,9 @@ onMounted(async () => {
     setupNotificationListener();
     setupApprovalListener();
   }
-  startBackgroundCarousel();
 });
 
 onUnmounted(() => {
-  clearInterval(backgroundInterval);
   if (notificationListener.value) {
       supabase.removeChannel(notificationListener.value);
   }
@@ -388,15 +370,85 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
-/* --- ESTILOS GERAIS (sem alterações) --- */
-.app-background-container {
-  position: fixed; top: 0; left: 0;
-  width: 100%; height: 100%; z-index: -1;
-  background-size: cover; background-position: center;
-  transition: background-image 1.5s ease-in-out;
-  filter: blur(8px); -webkit-filter: blur(8px);
-  transform: scale(1.1);
+/* --- ESTILOS GERAIS --- */
+.background-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background-color: #121212;
+  background-image: radial-gradient(circle at center, rgba(0,0,0,0.8), #121212);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
+
+.logo-container {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+.logo-with-glow {
+  filter: drop-shadow(0 0 10px rgba(255, 208, 0, 0.233)) drop-shadow(0 0 20px rgba(255, 204, 0, 0.637));
+}
+
+.particles-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.particles-overlay::before,
+.particles-overlay::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  animation-duration: 20s;
+  animation-iteration-count: infinite;
+  animation-timing-function: linear;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.particles-overlay::before {
+  width: 200vw;
+  height: 200vh;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.2) 1px, transparent 1%);
+  background-size: 25px 25px;
+  animation-name: particles-white;
+}
+
+.particles-overlay::after {
+  width: 200vw;
+  height: 200vh;
+  background-image: radial-gradient(circle, rgba(255, 215, 0, 0.3) 1px, transparent 1%);
+  background-size: 25px 25px;
+  animation-name: particles-gold;
+  animation-delay: 10s;
+}
+
+@keyframes particles-white {
+  0% { transform: translate(-50%, -50%) rotate(0deg) scale(0.5); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(360deg) scale(1.5); opacity: 0; }
+}
+
+@keyframes particles-gold {
+  0% { transform: translate(-50%, -50%) rotate(0deg) scale(0.5); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(360deg) scale(1.5); opacity: 0; }
+}
+
+/* Restante do CSS permanece o mesmo */
 .v-application, .v-application__wrap {
   color: #E0E0E0 !important;
   background: transparent !important;
@@ -427,13 +479,13 @@ onUnmounted(() => {
 }
 
 .highlight-red {
-  background-color: rgba(239, 83, 80, 0.15) !important; /* Vermelho sutil */
-  box-shadow: 0 0 8px rgba(239, 83, 80, 0.4);
+  background-color: rgba(239, 83, 80, 0.733) !important; /* Vermelho sutil */
+  box-shadow: 0 0 8px rgba(239, 83, 80, 0.966);
 }
 
 .highlight-green {
-  background-color: rgba(76, 175, 80, 0.15) !important; /* Verde sutil */
-  box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+  background-color: rgba(76, 175, 79, 0.658) !important; /* Verde sutil */
+  box-shadow: 0 0 8px rgb(76, 175, 79);
 }
 
 .nav-item.hover-effect {
@@ -443,11 +495,11 @@ onUnmounted(() => {
 }
 
 .highlight-red.hover-effect {
-  --hover-color: rgba(239, 83, 80, 0.4);
+  --hover-color: rgba(239, 83, 80, 0.993);
 }
 
 .highlight-green.hover-effect {
-  --hover-color: rgba(76, 175, 80, 0.4);
+  --hover-color: rgba(76, 175, 79, 0.973);
 }
 
 @keyframes gradient-animation {
