@@ -227,15 +227,35 @@ const updateOrderStatus = async (orderId: string, newStatus: DesignStatus, order
 
 const notifyStakeholders = async (order: Order, fileUrl?: string) => {
     if (!userStore.profile) return;
-    let content = `A arte para o pedido de "${order.customer_name}" está pronta para aprovação.`;
-    if(fileUrl) content += ` Uma nova versão do arquivo foi anexada.`
 
-    await supabase.from('notifications').insert({
-        recipient_id: order.created_by,
-        sender_id: userStore.profile.id,
-        content: content,
-        redirect_url: `/pedidos/${order.id}/aprovar`
-    });
+    try {
+        // 1. Busca todos os usuários que são 'vendedor' ou 'admin'
+        const { data: usersToNotify, error: fetchUsersError } = await supabase
+            .from('profiles')
+            .select('id')
+            .in('role', ['vendedor', 'admin']);
+
+        if (fetchUsersError) throw fetchUsersError;
+        if (!usersToNotify || usersToNotify.length === 0) return;
+
+        // 2. Prepara uma notificação para cada um deles
+        let content = `A arte para o pedido de "${order.customer_name}" está pronta para aprovação.`;
+        if (fileUrl) content += ` Uma nova versão do arquivo foi anexada.`;
+
+        const notifications = usersToNotify.map(user => ({
+            recipient_id: user.id,
+            sender_id: userStore.profile!.id,
+            content: content,
+            redirect_url: `/pedidos/${order.id}/aprovar`
+        }));
+
+        // 3. Insere todas as notificações de uma vez
+        const { error: notificationError } = await supabase.from('notifications').insert(notifications);
+        if (notificationError) throw notificationError;
+
+    } catch (error) {
+        console.error('Erro ao notificar stakeholders:', error);
+    }
 };
 
 const fetchOrdersForDesign = async () => {

@@ -27,27 +27,32 @@
         </div>
 
         <v-list dense nav class="pa-2 main-nav-list">
-          <v-list-item
-            v-for="item in navItems"
-            :key="item.value"
-            :prepend-icon="item.icon"
-            :to="item.to"
-            rounded="lg"
-            class="nav-item"
-            :class="{ 'has-pending-approvals-animation': item.value === 'approvals' && ordersPendingApproval > 0 }"
-          >
-            <template v-slot:title>
-              <span v-if="item.value === 'approvals' && ordersPendingApproval > 0" class="animated-title">
-                <span class="default-text">Aprovar Pedidos</span>
-                <span class="animated-text">
-                  {{ ordersPendingApproval }} Aprovaç{{ ordersPendingApproval > 1 ? 'ões' : 'ão' }}!
-                </span>
-              </span>
-              <span v-else>
-                {{ item.title }}
-              </span>
-            </template>
-          </v-list-item>
+<v-list-item
+  v-for="item in navItems"
+  :key="item.value"
+  :prepend-icon="item.icon"
+  :to="item.to"
+  rounded="lg"
+  class="nav-item"
+  :class="{
+    'highlight-red': item.value === 'approvals',
+    'highlight-green': item.value === 'delivery'
+  }"
+  @mouseenter="(event) => toggleHoverEffect(event, true, item.value)"
+  @mouseleave="(event) => toggleHoverEffect(event, false, item.value)"
+>
+  <template v-slot:title>
+    <span v-if="item.value === 'approvals' && ordersPendingApproval > 0" class="animated-title">
+      <span class="default-text">Aprovar Pedidos</span>
+      <span class="animated-text">
+        {{ ordersPendingApproval }} Aprovaç{{ ordersPendingApproval > 1 ? 'ões' : 'ão' }}!
+      </span>
+    </span>
+    <span v-else>
+      {{ item.title }}
+    </span>
+  </template>
+</v-list-item>
         </v-list>
 
         <v-spacer></v-spacer>
@@ -215,12 +220,12 @@ const olderNotifications = computed(() => notifications.value.filter(n => n.is_r
 const allNavItems = [
   { icon: 'mdi-view-dashboard-outline', title: 'Dashboard', value: 'home', to: { name: 'Home' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
   { icon: 'mdi-check-decagram-outline', title: 'Aprovar Pedidos', value: 'approvals', to: { name: 'Approvals' }, roles: ['vendedor', 'designer', 'admin'] },
-    { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
+  { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
   { icon: 'mdi-calendar-check-outline', title: 'Agenda de Produção', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-    { icon: 'mdi-factory', title: 'Pedidos', value: 'production-kanban', to: { name: 'ProductionKanban' }, roles: ['producao', 'admin'] },
+  { icon: 'mdi-factory', title: 'Pedidos', value: 'production-kanban', to: { name: 'ProductionKanban' }, roles: ['producao', 'admin'] },
   { icon: 'mdi-cog-sync-outline', title: 'Em Produção', value: 'in-production', to: { name: 'InProduction' }, roles: ['producao', 'admin'] },
-    { icon: 'mdi-palette-swatch-outline', title: 'Design', value: 'design-kanban', to: { name: 'DesignKanban' }, roles: ['designer', 'admin'] },
-    { icon: 'mdi-truck-delivery-outline', title: 'Agenda de Entrega', value: 'delivery', to: { name: 'Delivery' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  { icon: 'mdi-palette-swatch-outline', title: 'Design', value: 'design-kanban', to: { name: 'DesignKanban' }, roles: ['designer', 'admin'] },
+  { icon: 'mdi-truck-delivery-outline', title: 'Agenda de Entrega', value: 'delivery', to: { name: 'Delivery' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
   { icon: 'mdi-warehouse', title: 'Estoque', value: 'stock', to: { name: 'Stock' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
   { icon: 'mdi-school-outline', title: 'Treinamento', value: 'didatico', to: { name: 'Didatico' }, roles: ['vendedor', 'admin'] },
   { icon: 'mdi-checkbox-marked-circle-outline', title: 'Tarefas', value: 'tasks', to: { name: 'Tasks' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
@@ -240,6 +245,13 @@ const handleLogout = async () => {
   }
   await userStore.signOut();
   router.push({ name: 'Login' });
+};
+
+const toggleHoverEffect = (event: MouseEvent, shouldAdd: boolean, value: string) => {
+  const target = event.currentTarget as HTMLElement;
+  if (value === 'approvals' || value === 'delivery') { // Aplica o hover apenas aos botões destacados
+    target.classList.toggle('hover-effect', shouldAdd);
+  }
 };
 
 const backgrounds = ref([
@@ -376,105 +388,94 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
-/* Estilo para a imagem de fundo desfocada */
+/* --- ESTILOS GERAIS (sem alterações) --- */
 .app-background-container {
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  z-index: -1;
-  background-size: cover;
-  background-position: center;
+  position: fixed; top: 0; left: 0;
+  width: 100%; height: 100%; z-index: -1;
+  background-size: cover; background-position: center;
   transition: background-image 1.5s ease-in-out;
-  filter: blur(8px);
-  -webkit-filter: blur(8px);
+  filter: blur(8px); -webkit-filter: blur(8px);
   transform: scale(1.1);
 }
-
-/* Garante que o app em si não tenha um fundo sólido, permitindo ver o background */
 .v-application, .v-application__wrap {
   color: #E0E0E0 !important;
   background: transparent !important;
 }
-
-/* ESSA É A PARTE MAIS IMPORTANTE:
-   Configura a área de conteúdo principal (v-main) para ser a única com barra de rolagem.
-   O `v-navigation-drawer` com a propriedade `app` já entende que deve ser fixo e ocupar 100% da altura.
-*/
 .v-main {
   height: 100vh;
-  overflow-y: auto; /* Permite o scroll vertical APENAS no conteúdo principal */
-  padding-right: 4px; /* Um pequeno espaço para a barra de rolagem não colar no conteúdo */
+  overflow-y: auto;
+  padding-right: 4px;
 }
-
-/* O restante são apenas os estilos visuais que já tínhamos */
 .glassmorphism-sidebar {
   background-color: rgba(20, 20, 25, 0.7) !important;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
-
 .drawer-flex-wrapper { display: flex; flex-direction: column; height: 100%; }
 .main-nav-list { flex: 1 1 auto; overflow-y: auto; }
+
+/* --- NOVOS ESTILOS PARA OS BOTÕES DO MENU --- */
+.nav-item {
+  position: relative;
+  overflow: hidden;
+  transition: background-color 0.2s ease;
+  border-radius: 8px;
+
+  &.v-list-item--active, &:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+  }
+}
+
+.highlight-red {
+  background-color: rgba(239, 83, 80, 0.15) !important; /* Vermelho sutil */
+  box-shadow: 0 0 8px rgba(239, 83, 80, 0.4);
+}
+
+.highlight-green {
+  background-color: rgba(76, 175, 80, 0.15) !important; /* Verde sutil */
+  box-shadow: 0 0 8px rgba(76, 175, 80, 0.4);
+}
+
+.nav-item.hover-effect {
+  background-image: linear-gradient(45deg, transparent 10%, var(--hover-color) 50%, transparent 90%);
+  background-size: 300% 100%;
+  animation: gradient-animation 1.5s infinite linear;
+}
+
+.highlight-red.hover-effect {
+  --hover-color: rgba(239, 83, 80, 0.4);
+}
+
+.highlight-green.hover-effect {
+  --hover-color: rgba(76, 175, 80, 0.4);
+}
+
+@keyframes gradient-animation {
+  0% { background-position: 200% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* --- ESTILOS ANTIGOS DE NOTIFICAÇÃO E OUTROS (sem alterações) --- */
 .quick-actions, .user-footer { flex-shrink: 0; }
 .glassmorphism-app-bar {
   background-color: rgba(20, 20, 25, 0.6) !important;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
-.notifications-panel {
-  max-height: 500px;
-  display: flex;
-  flex-direction: column;
-}
-.notification-list-scroll {
-  flex-grow: 1;
-  overflow-y: auto;
-}
+.notifications-panel { max-height: 500px; display: flex; flex-direction: column; }
+.notification-list-scroll { flex-grow: 1; overflow-y: auto; }
 .notification-item.notification-read {
     opacity: 0.6;
-    .v-list-item-title, .v-list-item-subtitle {
-        color: rgba(255, 255, 255, 0.5);
-    }
+    .v-list-item-title, .v-list-item-subtitle { color: rgba(255, 255, 255, 0.5); }
 }
-.notification-item:hover {
-    background-color: rgba(255,255,255,0.05);
-}
-.toast-notification .v-snackbar__content {
-  color: #FFFFFF !important;
-  font-weight: 500;
-}
-.bell-ringing {
-  animation: ring 1.5s ease-in-out infinite;
-}
+.notification-item:hover { background-color: rgba(255,255,255,0.05); }
+.toast-notification .v-snackbar__content { color: #FFFFFF !important; font-weight: 500; }
+.bell-ringing { animation: ring 1.5s ease-in-out infinite; }
 @keyframes ring {
   0% { transform: rotate(0); } 10% { transform: rotate(25deg); } 20% { transform: rotate(-25deg); }
   30% { transform: rotate(20deg); } 40% { transform: rotate(-20deg); } 50% { transform: rotate(15deg); }
   60% { transform: rotate(-15deg); } 70% { transform: rotate(5deg); } 80% { transform: rotate(-5deg); }
   90%, 100% { transform: rotate(0); }
-}
-.nav-item {
-  position: relative; overflow: hidden; transition: all 0.3s ease; z-index: 1;
-  &.v-list-item--active, &:hover { .animated-title { color: white; } }
-  &.has-pending-approvals-animation {
-    background-color: rgba(76, 175, 80, 0.2) !important;
-    border: 1px solid rgba(76, 175, 80, 0.4);
-    box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
-    &::before, &::after {
-      content: ''; position: absolute; width: 10px; height: 10px;
-      background: radial-gradient(circle, #FFD700 0%, transparent 70%);
-      border-radius: 50%; pointer-events: none; z-index: -1;
-      animation: particles 3s infinite ease-out;
-    }
-    &::before { top: 10%; left: 10%; animation-delay: 0s; }
-    &::after { bottom: 20%; right: 5%; animation-delay: 1.5s; }
-    .v-list-item__content::before {
-      content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
-      background: rgba(255, 255, 255, 0.2); transform: skewX(-20deg);
-      animation: shine-animation 3s infinite; z-index: 2;
-    }
-  }
 }
 .animated-title {
   display: block; height: 24px; position: relative; overflow: hidden;
@@ -489,13 +490,5 @@ onUnmounted(() => {
 @keyframes text-toggle-rev {
   0%, 20% { opacity: 0; transform: translateY(100%); } 25%, 45% { opacity: 1; transform: translateY(0); }
   50%, 100% { opacity: 0; transform: translateY(100%); }
-}
-@keyframes shine-animation {
-  0% { transform: translateX(-100%) skewX(-20deg); } 50% { transform: translateX(200%) skewX(-20deg); }
-  100% { transform: translateX(-100%) skewX(-20deg); }
-}
-@keyframes particles {
-  0% { transform: scale(0); opacity: 0; } 5% { transform: scale(1); opacity: 1; }
-  100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
 }
 </style>

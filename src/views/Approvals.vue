@@ -120,7 +120,8 @@ const fetchPendingOrders = async () => {
       .from('orders')
       .select('id, customer_name, quantity_meters, created_at, details, designer:designer_id(full_name, avatar_url)')
       .eq('status', 'customer_approval')
-      .eq('created_by', userStore.profile.id)
+      // A LINHA ABAIXO FOI REMOVIDA PARA QUE TODOS OS VENDEDORES VEJAM
+      // .eq('created_by', userStore.profile.id)
       .order('created_at', { ascending: true });
 
     if (error) throw error;

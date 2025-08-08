@@ -1,7 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
-// Esta função calcula dias úteis, pulando domingos.
 function addBusinessDays(date: Date, days: number): Date {
   const newDate = new Date(date);
   let addedDays = 0;
@@ -24,21 +23,22 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
-    const today = new Date().toISOString().split('T')[0];
+
+    // Pega a data de ONTEM para iniciar a produção que foi agendada lá
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const productionStartDate = yesterday.toISOString().split('T')[0];
+
     let startedCount = 0;
 
     // --- ETAPA 1: INICIAR PRODUÇÃO ---
-    // Pega todos os pedidos com data de produção para hoje ou no passado
-    // e que AINDA NÃO estão em produção ou finalizados.
     const { data: ordersToStart, error: findStartError } = await supabase
       .from('orders')
       .select('id')
-      .lte('production_date', today) // Data de produção é hoje ou já passou
-      .not('status', 'in', '("in_printing", "in_cutting", "completed")'); // E o status NÃO é de produção/finalizado
+      .eq('production_date', productionStartDate)
+      .eq('status', 'production_queue');
 
-    if (findStartError) {
-      throw new Error(`Erro ao buscar pedidos para iniciar: ${findStartError.message}`);
-    }
+    if (findStartError) { throw new Error(`Erro ao buscar pedidos para iniciar: ${findStartError.message}`); }
 
     if (ordersToStart && ordersToStart.length > 0) {
       startedCount = ordersToStart.length;
@@ -48,9 +48,7 @@ serve(async (req) => {
         .update({ status: 'in_printing' })
         .in('id', idsToStart);
 
-      if (startError) {
-        throw new Error(`Erro ao iniciar produção: ${startError.message}`);
-      }
+      if (startError) { throw new Error(`Erro ao iniciar produção: ${startError.message}`); }
     }
 
     // --- ETAPA 2: FINALIZAR PRODUÇÃO ---
@@ -59,9 +57,7 @@ serve(async (req) => {
       .select('id, production_date')
       .in('status', ['in_printing', 'in_cutting']);
 
-    if (findCompleteError) {
-      throw new Error(`Erro ao buscar pedidos para finalizar: ${findCompleteError.message}`);
-    }
+    if (findCompleteError) { throw new Error(`Erro ao buscar pedidos para finalizar: ${findCompleteError.message}`); }
 
     const ordersToComplete = ordersToCheck.filter(order => {
         const productionStartDate = new Date(order.production_date);
@@ -78,9 +74,7 @@ serve(async (req) => {
         .update({ status: 'completed' })
         .in('id', idsToComplete);
 
-      if (completeError) {
-        throw new Error(`Erro ao finalizar pedidos: ${completeError.message}`);
-      }
+      if (completeError) { throw new Error(`Erro ao finalizar pedidos: ${completeError.message}`); }
     }
 
     return new Response(

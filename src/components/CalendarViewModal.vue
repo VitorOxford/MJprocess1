@@ -115,7 +115,7 @@ const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => {
 const dailyLimits = {
   mesa: 4000,
   corrida: 10000,
-  overall: 12000,
+  overall: 14000,
   saturday: 5000
 };
 

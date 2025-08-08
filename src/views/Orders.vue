@@ -15,8 +15,7 @@
               <div class="text-caption text-grey">{{ isCurrentWeek ? 'Semana Atual' : '' }}</div>
             </div>
             <v-btn icon="mdi-chevron-right" variant="text" @click="nextWeek"></v-btn>
-            <v-btn icon="mdi-calendar-month" variant="text" class="ml-2" @click="showCalendarModal = true"></v-btn>
-          </div>
+            </div>
         </v-toolbar>
 
         <div class="d-flex flex-column flex-md-row ga-4 px-2 mb-2">
@@ -74,19 +73,20 @@
                 rounded
                 class="my-2"
               ></v-progress-linear>
-              <v-chip size="small" variant="tonal">{{ getDayProduction(day.date).total }}m / {{ getDailyLimit(day.date) }}m</v-chip>
+              <v-chip size="small" variant="tonal">{{ getDayProduction(day.date).total.toLocaleString('pt-BR') }}m / {{ getDailyLimit(day.date).toLocaleString('pt-BR') }}m</v-chip>
             </div>
             <div class="kanban-content pa-2">
-              <v-card v-for="order in getOrdersForDay(day.date)" :key="order.id" class="order-card-kanban my-2" @click="openDetailModal(order.id)">
+              <v-card v-for="entry in getEntriesForDay(day.date)" :key="entry.id" class="order-card-kanban my-2" @click="openDetailModal(entry.orders.id)">
                 <v-card-text class="pa-2">
                   <div class="d-flex justify-space-between align-center">
-                    <p class="font-weight-bold text-body-2 text-truncate">{{ order.customer_name }}</p>
-                    <v-chip size="x-small" :color="getMachineTypeForFabric(order.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat">{{ order.quantity_meters }}m</v-chip>
+                    <p class="font-weight-bold text-body-2 text-truncate">{{ entry.orders.customer_name }}</p>
+                    <v-chip size="x-small" :color="getMachineTypeForFabric(entry.orders.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat">{{ entry.quantity_meters.toLocaleString('pt-BR') }}m</v-chip>
                   </div>
-                  <p class="text-caption text-grey-lighten-1 mt-1">{{ order.details.fabric_type }}</p>
+                  <p class="text-caption text-grey-lighten-1 mt-1">{{ entry.orders.details.fabric_type }}</p>
+                  <v-chip v-if="entry.orders.status === 'pending_stock'" size="x-small" color="error" class="mt-1" label>Pendente</v-chip>
                 </v-card-text>
               </v-card>
-              <p v-if="getOrdersForDay(day.date).length === 0" class="text-caption text-grey text-center mt-4">Nenhum pedido agendado.</p>
+              <p v-if="getEntriesForDay(day.date).length === 0" class="text-caption text-grey text-center mt-4">Nenhum pedido agendado.</p>
             </div>
           </div>
         </div>
@@ -97,14 +97,14 @@
                 <h3>{{ day.name }}</h3>
                 <span>{{ getShortDate(day.date) }}</span>
               </div>
-              <div v-if="getOrdersForDay(day.date).length > 0" class="mt-4">
-                <v-card v-for="order in getOrdersForDay(day.date)" :key="`mobile-order-${order.id}`" class="order-card-vertical mb-3" variant="flat" @click="openDetailModal(order.id)">
+              <div v-if="getEntriesForDay(day.date).length > 0" class="mt-4">
+                <v-card v-for="entry in getEntriesForDay(day.date)" :key="`mobile-order-${entry.id}`" class="order-card-vertical mb-3" variant="flat" @click="openDetailModal(entry.orders.id)">
                   <v-list-item lines="two">
-                    <v-list-item-title class="font-weight-bold text-body-1">{{ order.customer_name }}</v-list-item-title>
-                    <v-list-item-subtitle>{{ order.details.fabric_type }}</v-list-item-subtitle>
+                    <v-list-item-title class="font-weight-bold text-body-1">{{ entry.orders.customer_name }}</v-list-item-title>
+                    <v-list-item-subtitle>{{ entry.orders.details.fabric_type }}</v-list-item-subtitle>
                     <template v-slot:append>
                       <div class="text-right">
-                        <v-chip :color="getMachineTypeForFabric(order.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat" class="mb-1">{{ order.quantity_meters }}m</v-chip>
+                        <v-chip :color="getMachineTypeForFabric(entry.orders.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat" class="mb-1">{{ entry.quantity_meters.toLocaleString('pt-BR') }}m</v-chip>
                       </div>
                     </template>
                   </v-list-item>
@@ -124,7 +124,6 @@
     </v-card>
 
     <OrderDetailModal :show="showDetailModal" :order-id="selectedOrderId" @close="showDetailModal = false"/>
-    <CalendarViewModal v-model:show="showCalendarModal" :orders="scheduledOrders" />
 
     <v-dialog v-model="showQueueModal" max-width="900px" persistent>
         <v-card class="glassmorphism-card-dialog">
@@ -160,110 +159,75 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
-import { format, startOfWeek, addDays, subDays, isSameDay, parseISO, endOfWeek, getDay, isValid } from 'date-fns';
+import { format, startOfWeek, addDays, subDays, isSameDay, parseISO, endOfWeek, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
-import CalendarViewModal from '@/components/CalendarViewModal.vue';
 
+// --- TIPAGEM ATUALIZADA ---
 type Order = {
-  id: string; customer_name: string; status: string; created_at: string; production_date: string | null; quantity_meters: number;
-  details: { fabric_type: string; stamp_details: string; final_art_url?: string; };
-  profiles: { full_name: string; } | null; stores: { name: string; } | null;
+  id: string; customer_name: string; status: string; created_at: string; quantity_meters: number;
+  details: { fabric_type: string; stamp_details: string; };
 };
 
-// --- LÓGICA DE MÁQUINAS E LIMITES ---
-const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
-  'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA',
-  'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA'
-};
-const dailyLimits = { mesa: 4000, corrida: 10000, overall: 12000, saturday: 5000 };
-const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => {
-  return fabricMachineMap[fabric] || 'CORRIDA';
-};
+type ScheduleEntry = {
+    id: number;
+    scheduled_date: string;
+    quantity_meters: number;
+    orders: Order; // O pedido original aninhado
+}
 
 // --- ESTADO ---
-const orders = ref<Order[]>([]);
+const allOrders = ref<Order[]>([]);
+const scheduleEntries = ref<ScheduleEntry[]>([]); // NOVA: Armazena os agendamentos
 const loading = ref(true);
 const currentWeekStart = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
-const showCalendarModal = ref(false);
 const showDetailModal = ref(false);
 const selectedOrderId = ref<string | null>(null);
-
-// **ESTADO DO MODAL RESTAURADO**
 const showQueueModal = ref(false);
 const modalTitle = ref('');
 const modalOrders = ref<Order[]>([]);
 const modalHeaders = [
     { title: 'Cliente', key: 'customer_name' },
     { title: 'Tecido', key: 'details.fabric_type' },
-    { title: 'Metragem', key: 'quantity_meters' },
+    { title: 'Metragem Total', key: 'quantity_meters' },
     { title: 'Criado em', key: 'created_at' },
 ];
 
-// --- COMPUTED PROPERTIES ---
-const ordersPendingStock = computed(() => orders.value.filter(o => o.status === 'pending_stock'));
-const ordersPendingSchedule = computed(() => orders.value.filter(o => o.status === 'scheduling_pending'));
+// --- COMPUTED PROPERTIES ATUALIZADAS ---
+const ordersPendingStock = computed(() => allOrders.value.filter(o => o.status === 'pending_stock'));
+const ordersPendingSchedule = computed(() => allOrders.value.filter(o => o.status === 'scheduling_pending'));
 const totalMetersPendingSchedule = computed(() => ordersPendingSchedule.value.reduce((sum, order) => sum + order.quantity_meters, 0));
-const scheduledOrders = computed(() => orders.value.filter((o): o is Order & { production_date: string } => !!o.production_date));
+
 const weekDays = computed(() => Array.from({ length: 6 }, (_, i) => ({ date: addDays(currentWeekStart.value, i), name: format(addDays(currentWeekStart.value, i), 'EEEE', { locale: ptBR }) })));
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
 const isCurrentWeek = computed(() => isSameDay(startOfWeek(new Date(), { weekStartsOn: 1 }), currentWeekStart.value));
 
-// --- FUNÇÕES ---
+// --- FUNÇÕES ATUALIZADAS ---
 const nextWeek = () => { currentWeekStart.value = addDays(currentWeekStart.value, 7); };
 const previousWeek = () => { currentWeekStart.value = subDays(currentWeekStart.value, 7); };
-const getDailyLimit = (date: Date): number => getDay(date) === 6 ? dailyLimits.saturday : dailyLimits.overall;
-const getOrdersForDay = (date: Date) => scheduledOrders.value.filter(order => isSameDay(parseISO(order.production_date), date));
+const getDailyLimit = (date: Date): number => getDay(date) === 6 ? 5000 : 14000;
+
+// Lógica de máquina (sem alteração)
+const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = { 'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA', 'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA' };
+const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => fabricMachineMap[fabric] || 'CORRIDA';
+
+const getEntriesForDay = (date: Date) => {
+    return scheduleEntries.value.filter(entry => isSameDay(parseISO(entry.scheduled_date), date));
+};
+
 const getDayProduction = (date: Date) => {
-    const dailyOrders = getOrdersForDay(date);
-    let mesaMeters = 0;
-    let corridaMeters = 0;
-    dailyOrders.forEach(order => {
-        if (getMachineTypeForFabric(order.details.fabric_type) === 'MESA') mesaMeters += order.quantity_meters;
-        else corridaMeters += order.quantity_meters;
-    });
-    return { total: mesaMeters + corridaMeters, mesa: mesaMeters, corrida: corridaMeters };
-};
-const isDayOverloaded = (date: Date) => {
-    const production = getDayProduction(date);
-    const overallLimit = getDailyLimit(date);
-    return production.total > overallLimit || production.mesa > dailyLimits.mesa || production.corrida > dailyLimits.corrida;
+    const dailyEntries = getEntriesForDay(date);
+    const total = dailyEntries.reduce((sum, entry) => sum + entry.quantity_meters, 0);
+    return { total };
 };
 
-const fetchAllOrders = async () => {
-  loading.value = true;
-  try {
-    // --- MUDANÇA PRINCIPAL ---
-    // Agora incluímos os status de produção ativa na busca de dados
-    // para que os pedidos não desapareçam do calendário.
-    const relevantStatuses = [
-        'pending_stock',
-        'scheduling_pending',
-        'production_queue',
-        'in_printing', // Adicionado
-        'in_cutting'   // Adicionado
-    ];
-
-    const { data, error } = await supabase
-        .from('orders')
-        .select(`id, customer_name, status, created_at, production_date, quantity_meters, details, profiles:created_by (full_name), stores (name)`)
-        .in('status', relevantStatuses) // Usa a nova lista de status
-        .order('created_at', { ascending: true });
-
-    if (error) throw error;
-    orders.value = data || [];
-  } catch (err: any) {
-    console.error('Erro ao buscar pedidos:', err);
-  } finally {
-    loading.value = false;
-  }
-};
+const isDayOverloaded = (date: Date) => getDayProduction(date).total > getDailyLimit(date);
 
 const openDetailModal = (orderId: string) => {
     selectedOrderId.value = orderId;
     showDetailModal.value = true;
 };
-// **FUNÇÃO DO MODAL RESTAURADA**
+
 const openQueueModal = (queueType: 'stock' | 'schedule') => {
     if (queueType === 'stock') {
         modalTitle.value = 'Pedidos Aguardando Matéria-Prima';
@@ -274,10 +238,39 @@ const openQueueModal = (queueType: 'stock' | 'schedule') => {
     }
     showQueueModal.value = true;
 };
+
+const fetchAllData = async () => {
+  loading.value = true;
+  try {
+    // Busca os pedidos nas filas E os agendamentos da nova tabela
+    const [ordersResponse, scheduleResponse] = await Promise.all([
+      supabase
+        .from('orders')
+        .select(`id, customer_name, status, created_at, quantity_meters, details`)
+        .in('status', ['pending_stock', 'scheduling_pending']),
+      supabase
+        .from('production_schedule')
+        .select(`*, orders:order_id (id, customer_name, status, details, quantity_meters)`) // Aninha os dados do pedido original
+        .gte('scheduled_date', format(subDays(new Date(), 90), 'yyyy-MM-dd')) // Otimização: busca só os últimos 90 dias
+    ]);
+
+    if (ordersResponse.error) throw ordersResponse.error;
+    if (scheduleResponse.error) throw scheduleResponse.error;
+
+    allOrders.value = ordersResponse.data || [];
+    scheduleEntries.value = scheduleResponse.data || [];
+
+  } catch (err: any) {
+    console.error('Erro ao buscar dados da agenda:', err);
+  } finally {
+    loading.value = false;
+  }
+};
+
 const getShortDate = (date: Date) => format(date, 'dd/MM');
 const formatDate = (dateString: string) => format(new Date(dateString), "dd/MM/yy 'às' HH:mm", { locale: ptBR });
 
-onMounted(fetchAllOrders);
+onMounted(fetchAllData);
 </script>
 
 <style scoped lang="scss">
