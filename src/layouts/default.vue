@@ -376,24 +376,7 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
-.v-application__wrap {
-  height: 100vh;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.v-application, .v-application__wrap {
-  color: #E0E0E0 !important;
-  background: transparent !important;
-}
-
-.v-main {
-  overflow-y: auto;
-  flex: 1 1 auto;
-  padding-right: 4px;
-}
-
+/* Estilo para a imagem de fundo desfocada */
 .app-background-container {
   position: fixed;
   top: 0; left: 0;
@@ -406,15 +389,24 @@ onUnmounted(() => {
   -webkit-filter: blur(8px);
   transform: scale(1.1);
 }
-.glassmorphism-app-bar {
-  background-color: rgba(20, 20, 25, 0.6) !important;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+
+/* Garante que o app em si não tenha um fundo sólido, permitindo ver o background */
+.v-application, .v-application__wrap {
+  color: #E0E0E0 !important;
+  background: transparent !important;
 }
-.drawer-flex-wrapper { display: flex; flex-direction: column; height: 100%; }
-.main-nav-list { flex: 1 1 auto; overflow-y: auto; }
-.quick-actions, .user-footer { flex-shrink: 0; }
+
+/* ESSA É A PARTE MAIS IMPORTANTE:
+   Configura a área de conteúdo principal (v-main) para ser a única com barra de rolagem.
+   O `v-navigation-drawer` com a propriedade `app` já entende que deve ser fixo e ocupar 100% da altura.
+*/
+.v-main {
+  height: 100vh;
+  overflow-y: auto; /* Permite o scroll vertical APENAS no conteúdo principal */
+  padding-right: 4px; /* Um pequeno espaço para a barra de rolagem não colar no conteúdo */
+}
+
+/* O restante são apenas os estilos visuais que já tínhamos */
 .glassmorphism-sidebar {
   background-color: rgba(20, 20, 25, 0.7) !important;
   backdrop-filter: blur(20px);
@@ -422,17 +414,24 @@ onUnmounted(() => {
   border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
 
+.drawer-flex-wrapper { display: flex; flex-direction: column; height: 100%; }
+.main-nav-list { flex: 1 1 auto; overflow-y: auto; }
+.quick-actions, .user-footer { flex-shrink: 0; }
+.glassmorphism-app-bar {
+  background-color: rgba(20, 20, 25, 0.6) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
 .notifications-panel {
   max-height: 500px;
   display: flex;
   flex-direction: column;
 }
-
 .notification-list-scroll {
   flex-grow: 1;
   overflow-y: auto;
 }
-
 .notification-item.notification-read {
     opacity: 0.6;
     .v-list-item-title, .v-list-item-subtitle {
@@ -442,111 +441,61 @@ onUnmounted(() => {
 .notification-item:hover {
     background-color: rgba(255,255,255,0.05);
 }
-
 .toast-notification .v-snackbar__content {
   color: #FFFFFF !important;
   font-weight: 500;
 }
-
 .bell-ringing {
   animation: ring 1.5s ease-in-out infinite;
 }
-
 @keyframes ring {
-  0% { transform: rotate(0); }
-  10% { transform: rotate(25deg); }
-  20% { transform: rotate(-25deg); }
-  30% { transform: rotate(20deg); }
-  40% { transform: rotate(-20deg); }
-  50% { transform: rotate(15deg); }
-  60% { transform: rotate(-15deg); }
-  70% { transform: rotate(5deg); }
-  80% { transform: rotate(-5deg); }
+  0% { transform: rotate(0); } 10% { transform: rotate(25deg); } 20% { transform: rotate(-25deg); }
+  30% { transform: rotate(20deg); } 40% { transform: rotate(-20deg); } 50% { transform: rotate(15deg); }
+  60% { transform: rotate(-15deg); } 70% { transform: rotate(5deg); } 80% { transform: rotate(-5deg); }
   90%, 100% { transform: rotate(0); }
 }
-
 .nav-item {
-  position: relative;
-  overflow: hidden;
-  transition: all 0.3s ease;
-  z-index: 1;
-
-  &.v-list-item--active, &:hover {
-    .animated-title {
-      color: white;
-    }
-  }
-
+  position: relative; overflow: hidden; transition: all 0.3s ease; z-index: 1;
+  &.v-list-item--active, &:hover { .animated-title { color: white; } }
   &.has-pending-approvals-animation {
     background-color: rgba(76, 175, 80, 0.2) !important;
     border: 1px solid rgba(76, 175, 80, 0.4);
     box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
-
     &::before, &::after {
-      content: '';
-      position: absolute;
-      width: 10px;
-      height: 10px;
+      content: ''; position: absolute; width: 10px; height: 10px;
       background: radial-gradient(circle, #FFD700 0%, transparent 70%);
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: -1;
+      border-radius: 50%; pointer-events: none; z-index: -1;
       animation: particles 3s infinite ease-out;
     }
     &::before { top: 10%; left: 10%; animation-delay: 0s; }
     &::after { bottom: 20%; right: 5%; animation-delay: 1.5s; }
-
     .v-list-item__content::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -100%;
-      width: 50%;
-      height: 100%;
-      background: rgba(255, 255, 255, 0.2);
-      transform: skewX(-20deg);
-      animation: shine-animation 3s infinite;
-      z-index: 2;
+      content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%;
+      background: rgba(255, 255, 255, 0.2); transform: skewX(-20deg);
+      animation: shine-animation 3s infinite; z-index: 2;
     }
   }
 }
-
 .animated-title {
-  display: block;
-  height: 24px;
-  position: relative;
-  overflow: hidden;
-  .default-text, .animated-text {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    text-align: left;
-  }
+  display: block; height: 24px; position: relative; overflow: hidden;
+  .default-text, .animated-text { position: absolute; top: 0; left: 0; width: 100%; text-align: left; }
   .default-text { animation: text-toggle 6s infinite; }
   .animated-text { animation: text-toggle-rev 6s infinite; }
 }
-
 @keyframes text-toggle {
-  0%, 20% { opacity: 1; transform: translateY(0); }
-  25%, 45% { opacity: 0; transform: translateY(-100%); }
+  0%, 20% { opacity: 1; transform: translateY(0); } 25%, 45% { opacity: 0; transform: translateY(-100%); }
   50%, 100% { opacity: 1; transform: translateY(0); }
 }
 @keyframes text-toggle-rev {
-  0%, 20% { opacity: 0; transform: translateY(100%); }
-  25%, 45% { opacity: 1; transform: translateY(0); }
+  0%, 20% { opacity: 0; transform: translateY(100%); } 25%, 45% { opacity: 1; transform: translateY(0); }
   50%, 100% { opacity: 0; transform: translateY(100%); }
 }
-
 @keyframes shine-animation {
-  0% { transform: translateX(-100%) skewX(-20deg); }
-  50% { transform: translateX(200%) skewX(-20deg); }
+  0% { transform: translateX(-100%) skewX(-20deg); } 50% { transform: translateX(200%) skewX(-20deg); }
   100% { transform: translateX(-100%) skewX(-20deg); }
 }
-
 @keyframes particles {
-  0% { transform: scale(0); opacity: 0; }
-  5% { transform: scale(1); opacity: 1; }
+  0% { transform: scale(0); opacity: 0; } 5% { transform: scale(1); opacity: 1; }
   100% { transform: translateY(-50px) scale(1.5); opacity: 0; }
 }
 </style>
