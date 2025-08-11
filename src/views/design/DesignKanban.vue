@@ -207,6 +207,18 @@ const updateOrderStatus = async (orderId: string, newStatus: DesignStatus, order
         throw error;
     }
 
+    // --- ADIÇÃO DO LOG DE AUDITORIA ---
+    const statusText = statusDisplayMap[newStatus] || newStatus;
+    const logDescription = `Status alterado para "${statusText}" pelo designer.`;
+
+    await supabase.from('order_logs').insert({
+      order_id: orderId,
+      profile_id: userStore.profile.id,
+      log_type: 'STATUS_CHANGE',
+      description: logDescription,
+    });
+    // --- FIM DA ADIÇÃO ---
+
     const orderIndex = orders.value.findIndex(o => o.id === orderId);
     if (orderIndex !== -1) {
         orders.value[orderIndex].status = newStatus;
@@ -229,7 +241,6 @@ const notifyStakeholders = async (order: Order, fileUrl?: string) => {
     if (!userStore.profile) return;
 
     try {
-        // 1. Busca todos os usuários que são 'vendedor' ou 'admin'
         const { data: usersToNotify, error: fetchUsersError } = await supabase
             .from('profiles')
             .select('id')
@@ -238,7 +249,6 @@ const notifyStakeholders = async (order: Order, fileUrl?: string) => {
         if (fetchUsersError) throw fetchUsersError;
         if (!usersToNotify || usersToNotify.length === 0) return;
 
-        // 2. Prepara uma notificação para cada um deles
         let content = `A arte para o pedido de "${order.customer_name}" está pronta para aprovação.`;
         if (fileUrl) content += ` Uma nova versão do arquivo foi anexada.`;
 
@@ -249,7 +259,6 @@ const notifyStakeholders = async (order: Order, fileUrl?: string) => {
             redirect_url: `/pedidos/${order.id}/aprovar`
         }));
 
-        // 3. Insere todas as notificações de uma vez
         const { error: notificationError } = await supabase.from('notifications').insert(notifications);
         if (notificationError) throw notificationError;
 
@@ -265,7 +274,7 @@ const fetchOrdersForDesign = async () => {
 
     const { data, error } = await supabase
         .from('orders')
-        .select('*, order_logs(created_at, description)') // Buscar logs aninhados
+        .select('*, order_logs(created_at, description)')
         .in('status', relevantStatuses);
 
     if (error) throw error;
@@ -281,7 +290,7 @@ const setupOrdersListener = () => {
     ordersListener.value = supabase
         .channel('public:orders:design-kanban')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-            fetchOrdersForDesign(); // Re-busca os dados toda vez que houver uma mudança
+            fetchOrdersForDesign();
         })
         .subscribe();
 }
@@ -291,12 +300,12 @@ onMounted(async () => {
     await userStore.fetchSession();
   }
   fetchOrdersForDesign();
-  setupOrdersListener(); // Inicia o listener ao montar
+  setupOrdersListener();
 });
 
 onUnmounted(() => {
     if (ordersListener.value) {
-        supabase.removeChannel(ordersListener.value); // Limpa o listener ao desmontar
+        supabase.removeChannel(ordersListener.value);
     }
 });
 </script>

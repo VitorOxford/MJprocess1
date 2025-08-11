@@ -15,7 +15,7 @@
               <div class="text-caption text-grey">{{ isCurrentWeek ? 'Semana Atual' : '' }}</div>
             </div>
             <v-btn icon="mdi-chevron-right" variant="text" @click="nextWeek"></v-btn>
-            </div>
+          </div>
         </v-toolbar>
 
         <div class="d-flex flex-column flex-md-row ga-4 px-2 mb-2">
@@ -50,7 +50,7 @@
             </v-card>
         </div>
 
-        <div class="d-flex justify-end align-center ga-4 px-4 pb-4">
+        <div class="d-flex justify-space-between align-center ga-4 px-4 pb-4">
             <div class="d-flex align-center">
                 <v-sheet height="12" width="12" color="cyan" rounded class="mr-2"></v-sheet>
                 <span class="text-caption">Máquina MESA</span>
@@ -59,6 +59,17 @@
                  <v-sheet height="12" width="12" color="amber" rounded class="mr-2"></v-sheet>
                 <span class="text-caption">Máquina CORRIDA</span>
             </div>
+             <v-spacer></v-spacer>
+             <v-text-field
+                v-model="searchQuery"
+                variant="solo-filled"
+                flat
+                density="compact"
+                label="Buscar cliente ou vendedor..."
+                prepend-inner-icon="mdi-magnify"
+                hide-details
+                style="max-width: 300px;"
+            ></v-text-field>
         </div>
 
         <div class="kanban-container d-none d-md-flex">
@@ -83,6 +94,7 @@
                     <v-chip size="x-small" :color="getMachineTypeForFabric(entry.orders.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat">{{ entry.quantity_meters.toLocaleString('pt-BR') }}m</v-chip>
                   </div>
                   <p class="text-caption text-grey-lighten-1 mt-1">{{ entry.orders.details.fabric_type }}</p>
+                  <p class="text-caption text-grey mt-1">{{ entry.orders.creator?.full_name || 'N/A' }}</p>
                   <v-chip v-if="entry.orders.status === 'pending_stock'" size="x-small" color="error" class="mt-1" label>Pendente</v-chip>
                 </v-card-text>
               </v-card>
@@ -99,9 +111,12 @@
               </div>
               <div v-if="getEntriesForDay(day.date).length > 0" class="mt-4">
                 <v-card v-for="entry in getEntriesForDay(day.date)" :key="`mobile-order-${entry.id}`" class="order-card-vertical mb-3" variant="flat" @click="openDetailModal(entry.orders.id)">
-                  <v-list-item lines="two">
+                  <v-list-item lines="three">
                     <v-list-item-title class="font-weight-bold text-body-1">{{ entry.orders.customer_name }}</v-list-item-title>
-                    <v-list-item-subtitle>{{ entry.orders.details.fabric_type }}</v-list-item-subtitle>
+                    <v-list-item-subtitle>
+                      {{ entry.orders.details.fabric_type }} <br>
+                      <span class="text-grey-lighten-2">Por: {{ entry.orders.creator?.full_name || 'N/A' }}</span>
+                    </v-list-item-subtitle>
                     <template v-slot:append>
                       <div class="text-right">
                         <v-chip :color="getMachineTypeForFabric(entry.orders.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat" class="mb-1">{{ entry.quantity_meters.toLocaleString('pt-BR') }}m</v-chip>
@@ -146,6 +161,9 @@
                     <template v-slot:item.quantity_meters="{ item }">
                         {{ item.quantity_meters.toLocaleString('pt-BR') }}m
                     </template>
+                     <template v-slot:item.creator.full_name="{ item }">
+                        {{ item.creator?.full_name || 'N/A' }}
+                    </template>
                     <template v-slot:item.created_at="{ item }">
                         {{ formatDate(item.created_at) }}
                     </template>
@@ -165,20 +183,30 @@ import OrderDetailModal from '@/components/OrderDetailModal.vue';
 
 // --- TIPAGEM ATUALIZADA ---
 type Order = {
-  id: string; customer_name: string; status: string; created_at: string; quantity_meters: number;
-  details: { fabric_type: string; stamp_details: string; };
+  id: string;
+  customer_name: string;
+  status: string;
+  created_at: string;
+  quantity_meters: number;
+  details: {
+    fabric_type: string;
+    stamp_details: string;
+  };
+  creator?: { // Propriedade opcional para o criador
+    full_name: string;
+  };
 };
 
 type ScheduleEntry = {
     id: number;
     scheduled_date: string;
     quantity_meters: number;
-    orders: Order; // O pedido original aninhado
+    orders: Order;
 }
 
 // --- ESTADO ---
 const allOrders = ref<Order[]>([]);
-const scheduleEntries = ref<ScheduleEntry[]>([]); // NOVA: Armazena os agendamentos
+const scheduleEntries = ref<ScheduleEntry[]>([]);
 const loading = ref(true);
 const currentWeekStart = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 const showDetailModal = ref(false);
@@ -186,14 +214,29 @@ const selectedOrderId = ref<string | null>(null);
 const showQueueModal = ref(false);
 const modalTitle = ref('');
 const modalOrders = ref<Order[]>([]);
+const searchQuery = ref(''); // Novo estado para a busca
+
 const modalHeaders = [
     { title: 'Cliente', key: 'customer_name' },
+    { title: 'Vendedor', key: 'creator.full_name' },
     { title: 'Tecido', key: 'details.fabric_type' },
-    { title: 'Metragem Total', key: 'quantity_meters' },
+    { title: 'Metragem', key: 'quantity_meters' },
     { title: 'Criado em', key: 'created_at' },
 ];
 
-// --- COMPUTED PROPERTIES ATUALIZADAS ---
+// --- COMPUTED PROPERTIES ---
+const filteredScheduleEntries = computed(() => {
+    if (!searchQuery.value) {
+        return scheduleEntries.value;
+    }
+    const query = searchQuery.value.toLowerCase();
+    return scheduleEntries.value.filter(entry => {
+        const customerName = entry.orders.customer_name?.toLowerCase() || '';
+        const creatorName = entry.orders.creator?.full_name?.toLowerCase() || '';
+        return customerName.includes(query) || creatorName.includes(query);
+    });
+});
+
 const ordersPendingStock = computed(() => allOrders.value.filter(o => o.status === 'pending_stock'));
 const ordersPendingSchedule = computed(() => allOrders.value.filter(o => o.status === 'scheduling_pending'));
 const totalMetersPendingSchedule = computed(() => ordersPendingSchedule.value.reduce((sum, order) => sum + order.quantity_meters, 0));
@@ -202,17 +245,16 @@ const weekDays = computed(() => Array.from({ length: 6 }, (_, i) => ({ date: add
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
 const isCurrentWeek = computed(() => isSameDay(startOfWeek(new Date(), { weekStartsOn: 1 }), currentWeekStart.value));
 
-// --- FUNÇÕES ATUALIZADAS ---
+// --- FUNÇÕES ---
 const nextWeek = () => { currentWeekStart.value = addDays(currentWeekStart.value, 7); };
 const previousWeek = () => { currentWeekStart.value = subDays(currentWeekStart.value, 7); };
 const getDailyLimit = (date: Date): number => getDay(date) === 6 ? 5000 : 14000;
 
-// Lógica de máquina (sem alteração)
 const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = { 'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA', 'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA' };
 const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => fabricMachineMap[fabric] || 'CORRIDA';
 
 const getEntriesForDay = (date: Date) => {
-    return scheduleEntries.value.filter(entry => isSameDay(parseISO(entry.scheduled_date), date));
+    return filteredScheduleEntries.value.filter(entry => isSameDay(parseISO(entry.scheduled_date), date));
 };
 
 const getDayProduction = (date: Date) => {
@@ -242,16 +284,15 @@ const openQueueModal = (queueType: 'stock' | 'schedule') => {
 const fetchAllData = async () => {
   loading.value = true;
   try {
-    // Busca os pedidos nas filas E os agendamentos da nova tabela
     const [ordersResponse, scheduleResponse] = await Promise.all([
       supabase
         .from('orders')
-        .select(`id, customer_name, status, created_at, quantity_meters, details`)
+        .select(`id, customer_name, status, created_at, quantity_meters, details, creator:profiles!created_by(full_name)`)
         .in('status', ['pending_stock', 'scheduling_pending']),
       supabase
         .from('production_schedule')
-        .select(`*, orders:order_id (id, customer_name, status, details, quantity_meters)`) // Aninha os dados do pedido original
-        .gte('scheduled_date', format(subDays(new Date(), 90), 'yyyy-MM-dd')) // Otimização: busca só os últimos 90 dias
+        .select(`*, orders:order_id (id, customer_name, status, details, quantity_meters, creator:profiles!created_by(full_name))`)
+        .gte('scheduled_date', format(subDays(new Date(), 90), 'yyyy-MM-dd'))
     ]);
 
     if (ordersResponse.error) throw ordersResponse.error;
