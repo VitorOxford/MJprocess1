@@ -29,7 +29,7 @@
           ghost-class="ghost-card"
         >
           <template #item="{ element: order }">
-            <v-card class="order-card mb-4" elevation="4">
+            <v-card class="order-card mb-4" elevation="4" @click="openDetailModal(order.id)">
               <v-card-text>
                 <div class="d-flex align-center justify-space-between mb-2">
                   <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
@@ -72,7 +72,7 @@
           ghost-class="ghost-card"
         >
           <template #item="{ element: order }">
-            <v-card class="order-card mb-4" elevation="4" :class="{ 'confirmed': order.isConfirmed }">
+            <v-card class="order-card mb-4" elevation="4" :class="{ 'confirmed': order.isConfirmed }" @click="openDetailModal(order.id)">
                 <v-icon v-if="order.isConfirmed" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
                 <v-card-text>
                     <div class="d-flex align-center justify-space-between mb-2">
@@ -87,12 +87,12 @@
                 <v-card-actions v-if="!order.isConfirmed" class="actions-overlay">
                   <v-tooltip text="Rejeitar" location="top">
                     <template v-slot:activator="{ props }">
-                      <v-btn v-bind="props" icon="mdi-close" color="error" variant="flat" size="small" @click="rejectDelivery(order, day)"></v-btn>
+                      <v-btn v-bind="props" icon="mdi-close" color="error" variant="flat" size="small" @click.stop="rejectDelivery(order, day)"></v-btn>
                     </template>
                   </v-tooltip>
                   <v-tooltip text="Confirmar Entrega" location="top">
                     <template v-slot:activator="{ props }">
-                      <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click="confirmDelivery(order)"></v-btn>
+                      <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click.stop="confirmDelivery(order)"></v-btn>
                     </template>
                   </v-tooltip>
                 </v-card-actions>
@@ -132,6 +132,7 @@ type Order = {
   details: { fabric_type: string; };
   completion_date?: Date;
   suggested_delivery_date?: Date | null;
+  delivery_confirmed_at?: string | null;
   isConfirmed?: boolean;
 };
 
@@ -170,16 +171,13 @@ const initializeDeliveryDays = () => {
 // Funções de Manipulação de Pedidos
 const processAndDistributeOrders = (orders: Order[]) => {
   const readyForScheduling: Order[] = [];
-
-  deliveryDays.forEach(day => day.orders = []); // Limpa as colunas
-
   deliveryDays.forEach(day => day.orders = []);
-
 
   orders.forEach(order => {
     const productionStartDate = parseISO(order.production_date);
     const completionDate = addDays(productionStartDate, 3);
     order.completion_date = completionDate;
+    order.isConfirmed = !!order.delivery_confirmed_at;
 
     if (isAfter(today, completionDate) || isSameDay(today, completionDate)) {
       let deliveryDate = new Date(completionDate);
@@ -191,7 +189,7 @@ const processAndDistributeOrders = (orders: Order[]) => {
 
       const targetDay = deliveryDays.find(d => isSameDay(d.date, deliveryDate));
       if (targetDay) {
-        targetDay.orders.push({ ...order, isConfirmed: false });
+        targetDay.orders.push(order);
       } else {
         readyForScheduling.push(order);
       }
@@ -200,26 +198,41 @@ const processAndDistributeOrders = (orders: Order[]) => {
   toBeScheduledOrders.value = readyForScheduling;
 };
 
-const confirmDelivery = (order: Order) => {
-  order.isConfirmed = true;
+const confirmDelivery = async (order: Order) => {
+  try {
+    const { error } = await supabase
+      .from('production_schedule')
+      .update({ delivery_confirmed_at: new Date().toISOString() })
+      .eq('order_id', order.id);
 
-  // TODO: Salvar no Supabase
+    if (error) throw error;
 
-
-  console.log(`Pedido ${order.id} confirmado para entrega.`);
+    order.isConfirmed = true;
+    console.log(`Pedido ${order.id} confirmado para entrega.`);
+  } catch (err: any) {
+    console.error('Erro ao confirmar entrega:', err.message);
+    alert(`Não foi possível confirmar a entrega: ${err.message}`);
+  }
 };
 
-const rejectDelivery = (order: Order, fromDay: DeliveryDay) => {
-  fromDay.orders = fromDay.orders.filter(o => o.id !== order.id);
+const rejectDelivery = async (order: Order, fromDay: DeliveryDay) => {
+  try {
+    const { error } = await supabase
+      .from('production_schedule')
+      .update({ delivery_confirmed_at: null })
+      .eq('order_id', order.id);
 
-  toBeScheduledOrders.value.unshift({ ...order, isConfirmed: false }); // Adiciona no topo
-  // TODO: Limpar data de entrega no Supabase
+    if (error) throw error;
 
-  toBeScheduledOrders.value.unshift({ ...order, isConfirmed: false });
+    fromDay.orders = fromDay.orders.filter(o => o.id !== order.id);
+    toBeScheduledOrders.value.unshift({ ...order, isConfirmed: false, delivery_confirmed_at: null });
 
-  console.log(`Pedido ${order.id} rejeitado. Voltando para a fila.`);
+    console.log(`Pedido ${order.id} rejeitado. Voltando para a fila.`);
+  } catch(err: any) {
+    console.error('Erro ao rejeitar entrega:', err.message);
+    alert(`Não foi possível rejeitar a entrega: ${err.message}`);
+  }
 };
-
 
 // Funções Auxiliares e de UI
 const openDetailModal = (orderId: string) => {
@@ -239,12 +252,19 @@ const fetchScheduledOrders = async () => {
   try {
     const { data, error } = await supabase
       .from('orders')
-      .select('id, customer_name, quantity_meters, status, production_date, details')
+      .select('id, customer_name, quantity_meters, status, production_date, details, production_schedule!inner(delivery_confirmed_at)')
       .not('production_date', 'is', null)
       .in('status', ['production_queue', 'in_printing', 'in_cutting', 'completed']);
 
     if (error) throw error;
-    processAndDistributeOrders(data || []);
+
+    const formattedData = data?.map((order: any) => ({
+      ...order,
+      delivery_confirmed_at: order.production_schedule[0]?.delivery_confirmed_at,
+    })) || [];
+
+    processAndDistributeOrders(formattedData as Order[]);
+
   } catch (err: any) {
     console.error('Erro ao buscar pedidos para entrega:', err.message);
   } finally {
