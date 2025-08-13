@@ -60,7 +60,7 @@
 </v-list-item>
         </v-list>
 
-        <v-spacer></v-spacer>
+
 
         <div class="pa-2 quick-actions">
 
@@ -458,13 +458,31 @@ onUnmounted(() => {
   overflow-y: auto;
   padding-right: 4px;
 }
-.glassmorphism-sidebar {
-  background-color: rgba(20, 20, 25, 0.7) !important;
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
+
+@media (max-width: 600px) {
+  .v-navigation-drawer.glassmorphism-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    height: calc(100vh - 56px) !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+  .drawer-flex-wrapper {
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+  .main-nav-list {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    max-height: unset !important;
+  }
 }
-.drawer-flex-wrapper { display: flex; flex-direction: column; height: 100%; }
-.main-nav-list { flex: 1 1 auto; overflow-y: auto; }
 
 /* --- NOVOS ESTILOS PARA OS BOTÕES DO MENU --- */
 .nav-item {
