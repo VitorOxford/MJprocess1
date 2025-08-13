@@ -16,6 +16,9 @@ export type Order = {
   stores: {
     name: string;
   } | null;
+  profiles: { // Adicionado para obter o nome de quem criou
+    full_name: string;
+  } | null;
   updated_at: string; // Adicionado para lógica de conclusão
 };
 
@@ -47,25 +50,30 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   getters: {
-    // Pedidos que estão ativamente em produção
     ordersInProductionQueue: (state) => {
         const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
         return state.orders.filter(o => productionStatuses.includes(o.status));
     },
-    // NOVO: Getter para pedidos em design
     ordersInDesignQueue: (state) => {
         const designStatuses = ['design_pending', 'in_design', 'customer_approval', 'changes_requested', 'finalizing'];
         return state.orders.filter(o => designStatuses.includes(o.status));
     },
-    // Contagem total em produção
+    ordersPendingApproval: (state) => {
+        return state.orders.filter(o => o.status === 'customer_approval');
+    },
+    ordersPendingApprovalCount(): number {
+        return this.ordersPendingApproval.length;
+    },
+    // **NOVO GETTER: SOMA A METRAGEM DOS PEDIDOS PENDENTES**
+    totalMetersPendingApproval(): number {
+        return this.ordersPendingApproval.reduce((sum, order) => sum + order.quantity_meters, 0);
+    },
     ordersInProductionCount(): number {
         return this.ordersInProductionQueue.length;
     },
     ordersInDesign(): number {
         return this.ordersInDesignQueue.length;
     },
-
-    // --- GETTERS DE METRAGEM ATUALIZADOS ---
     totalMetersInProduction(): number {
         return this.ordersInProductionQueue.reduce((sum, order) => sum + order.quantity_meters, 0);
     },
@@ -85,7 +93,6 @@ export const useDashboardStore = defineStore('dashboard', {
             .filter(o => getMachineTypeForFabric(o.details.fabric_type) === 'CORRIDA')
             .reduce((sum, order) => sum + order.quantity_meters, 0);
     },
-    // --- FIM DAS ATUALIZAÇÕES ---
 
     pendingTasks: (state) => (userId: string) => {
         return state.tasks.filter(t => t.user_id === userId && !t.is_completed);
@@ -104,7 +111,7 @@ export const useDashboardStore = defineStore('dashboard', {
         if (!user) throw new Error('Usuário não autenticado.');
 
         const [ordersResponse, tasksResponse] = await Promise.all([
-          supabase.from('orders').select('*, stores(name)'),
+          supabase.from('orders').select('*, stores(name), profiles:created_by(full_name)'),
           supabase.from('tasks').select('*'),
         ]);
 
