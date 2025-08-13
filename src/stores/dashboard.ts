@@ -52,16 +52,29 @@ export const useDashboardStore = defineStore('dashboard', {
         const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
         return state.orders.filter(o => productionStatuses.includes(o.status));
     },
-    ordersInDesign: (state) => {
+    // NOVO: Getter para pedidos em design
+    ordersInDesignQueue: (state) => {
         const designStatuses = ['design_pending', 'in_design', 'customer_approval', 'changes_requested', 'finalizing'];
-        return state.orders.filter(o => designStatuses.includes(o.status)).length;
+        return state.orders.filter(o => designStatuses.includes(o.status));
     },
     // Contagem total em produção
     ordersInProductionCount(): number {
         return this.ordersInProductionQueue.length;
     },
+    ordersInDesign(): number {
+        return this.ordersInDesignQueue.length;
+    },
 
-    // --- NOVOS GETTERS PARA METRAGEM ---
+    // --- GETTERS DE METRAGEM ATUALIZADOS ---
+    totalMetersInProduction(): number {
+        return this.ordersInProductionQueue.reduce((sum, order) => sum + order.quantity_meters, 0);
+    },
+    totalMetersInDesign(): number {
+      return this.ordersInDesignQueue.reduce((sum, order) => sum + order.quantity_meters, 0);
+    },
+    totalMetersInPipeline(): number {
+      return this.totalMetersInProduction + this.totalMetersInDesign;
+    },
     metersInProductionMesa(): number {
         return this.ordersInProductionQueue
             .filter(o => getMachineTypeForFabric(o.details.fabric_type) === 'MESA')
@@ -72,7 +85,7 @@ export const useDashboardStore = defineStore('dashboard', {
             .filter(o => getMachineTypeForFabric(o.details.fabric_type) === 'CORRIDA')
             .reduce((sum, order) => sum + order.quantity_meters, 0);
     },
-    // --- FIM DOS NOVOS GETTERS ---
+    // --- FIM DAS ATUALIZAÇÕES ---
 
     pendingTasks: (state) => (userId: string) => {
         return state.tasks.filter(t => t.user_id === userId && !t.is_completed);
