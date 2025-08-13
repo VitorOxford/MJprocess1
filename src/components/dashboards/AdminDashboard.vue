@@ -13,19 +13,19 @@
         <v-row>
           <v-col cols="12" sm="6" md="3">
             <div class="kpi-stat-card">
-              <v-icon class="kpi-icon" color="blue-grey-darken-1">mdi-package-variant-closed</v-icon>
+              <v-icon class="kpi-icon" color="blue-grey-darken-1">mdi-ruler-square-compass</v-icon>
               <div class="kpi-content">
-                <span class="kpi-value">{{ ordersInProductionCount }}</span>
-                <span class="kpi-title">Pedidos em Produção</span>
+                <span class="kpi-value">{{ totalMetersInPipeline.toLocaleString('pt-BR') }}m</span>
+                <span class="kpi-title">Metragem Total (Todos os lançamentos)</span>
               </div>
             </div>
           </v-col>
           <v-col cols="12" sm="6" md="3">
             <div class="kpi-stat-card">
-              <v-icon class="kpi-icon" color="blue-darken-1">mdi-palette-swatch-outline</v-icon>
+              <v-icon class="kpi-icon" color="blue-darken-1">mdi-factory</v-icon>
               <div class="kpi-content">
-                <span class="kpi-value">{{ ordersInDesign }}</span>
-                <span class="kpi-title">Pedidos em Design</span>
+                <span class="kpi-value">{{ totalMetersInProduction.toLocaleString('pt-BR') }}m</span>
+                <span class="kpi-title">Metragem em Produção (Design e Produção)</span>
               </div>
             </div>
           </v-col>
@@ -129,8 +129,9 @@ const selectedOrder = ref<any | null>(null);
 
 const dashboardStore = useDashboardStore();
 const {
-  ordersInProductionCount,
-  ordersInDesign,
+  // GETTERS ATUALIZADOS
+  totalMetersInPipeline,
+  totalMetersInProduction,
   metersInProductionMesa,
   metersInProductionCorrida,
   orders // Pegamos a lista completa de pedidos
