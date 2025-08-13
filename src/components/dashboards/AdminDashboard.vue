@@ -26,7 +26,7 @@
               <v-icon class="kpi-icon" color="blue-grey-darken-1">mdi-ruler-square-compass</v-icon>
               <div class="kpi-content">
                 <span class="kpi-value">{{ totalMetersInPipeline.toLocaleString('pt-BR') }}m</span>
-                <span class="kpi-title">Metragem Total na Fila</span>
+                <span class="kpi-title">Metragem Total (Todos os lançamentos)</span>
               </div>
             </div>
           </v-col>
@@ -35,7 +35,7 @@
               <v-icon class="kpi-icon" color="blue-darken-1">mdi-factory</v-icon>
               <div class="kpi-content">
                 <span class="kpi-value">{{ totalMetersInProduction.toLocaleString('pt-BR') }}m</span>
-                <span class="kpi-title">Metragem em Produção</span>
+                <span class="kpi-title">Metragem em Produção (Design e Produção)</span>
               </div>
             </div>
           </v-col>
