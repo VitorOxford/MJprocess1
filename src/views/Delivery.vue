@@ -28,7 +28,8 @@
             item-key="id"
             class="column-content pa-3"
             ghost-class="ghost-card"
-            :disabled="true"
+            @end="onDragEnd"
+            data-status="to-be-scheduled"
           >
             <template #item="{ element: order }">
               <v-card class="order-card mb-4" elevation="4" @click="openDetailModal(order.id)" :data-id="order.id">
@@ -67,7 +68,7 @@
             class="column-content pa-3"
             :data-date="day.date.toISOString()"
             ghost-class="ghost-card"
-            :disabled="true"
+             @end="onDragEnd"
           >
             <template #item="{ element: order }">
               <v-card class="order-card mb-4" elevation="4" :class="{ 'confirmed': order.isConfirmed }" @click="openDetailModal(order.id)" :data-id="order.id">
@@ -81,7 +82,12 @@
                       <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
                   </v-card-text>
                 <v-fade-transition>
-                  <v-card-actions v-if="!order.isConfirmed" class="actions-overlay">
+                  <v-card-actions class="actions-overlay">
+                    <v-tooltip text="Cancelar Agendamento" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn v-bind="props" icon="mdi-close" color="red" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
+                        </template>
+                    </v-tooltip>
                     <v-tooltip text="Confirmar Entrega" location="top">
                       <template v-slot:activator="{ props }">
                         <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click.stop="confirmDelivery(order)"></v-btn>
@@ -237,7 +243,7 @@ const processAndDistributeOrders = (orders: Order[]) => {
         return;
     }
 
-    if (order.status === 'completed' && !order.isConfirmed) {
+    if (order.status === 'completed') {
         const targetDay = deliveryDays.find(d => isSameDay(d.date, actualDeliveryDate));
         if (targetDay) {
             targetDay.orders.push(order);
@@ -249,7 +255,27 @@ const processAndDistributeOrders = (orders: Order[]) => {
   toBeScheduledOrders.value = readyForScheduling;
   deliveredOrders.value = history.sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 };
+const onDragEnd = async (event: any) => {
+    const { item, to, from } = event;
+    const orderId = item.dataset.id;
+    const newDateStr = to.dataset.date;
+    const fromStatus = from.dataset.status;
 
+    if (!orderId) return;
+
+    // Movido para uma coluna de data
+    if (newDateStr) {
+        const newDate = parseISO(newDateStr);
+        // Aqui você pode adicionar lógica para salvar a nova data de entrega agendada no banco de dados, se necessário
+    }
+    // Movido de volta para "Aguardando Envio"
+    else if (fromStatus !== 'to-be-scheduled') {
+        const order = deliveryDays.flatMap(d => d.orders).find(o => o.id === orderId);
+        if (order) {
+            rejectDelivery(order);
+        }
+    }
+}
 const confirmDelivery = async (order: Order) => {
   if (!userStore.profile) return;
   try {
@@ -282,9 +308,35 @@ const confirmDelivery = async (order: Order) => {
   }
 };
 
-// A função rejectDelivery não é mais necessária, pois não há drag-and-drop de volta
-// Se for necessário um botão de "desconfirmar", a lógica seria similar à de confirmar,
-// mas setando delivery_confirmed_at para NULL.
+const rejectDelivery = async (order: Order) => {
+    if (!userStore.profile) return;
+    try {
+        await supabase
+            .from('production_schedule')
+            .update({ delivery_confirmed_at: null })
+            .eq('order_id', order.id);
+
+        await supabase.from('order_logs').insert({
+            order_id: order.id,
+            profile_id: userStore.profile.id,
+            log_type: 'STATUS_CHANGE',
+            description: 'Agendamento de entrega cancelado. Pedido retornou para a fila de agendamento.'
+        });
+
+        // Atualização visual imediata
+        const day = deliveryDays.find(d => d.orders.some(o => o.id === order.id));
+        if (day) {
+            const index = day.orders.findIndex(o => o.id === order.id);
+            if (index > -1) {
+                const [movedOrder] = day.orders.splice(index, 1);
+                movedOrder.isConfirmed = false;
+                toBeScheduledOrders.value.push(movedOrder);
+            }
+        }
+    } catch (err: any) {
+        console.error('Erro ao cancelar entrega:', err.message);
+    }
+};
 
 const openDetailModal = (orderId: string) => {
   selectedOrderId.value = orderId;
