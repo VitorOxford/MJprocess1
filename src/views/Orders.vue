@@ -87,8 +87,8 @@
               <v-chip size="small" variant="tonal">{{ getDayProduction(day.date).total.toLocaleString('pt-BR') }}m / {{ getDailyLimit(day.date).toLocaleString('pt-BR') }}m</v-chip>
             </div>
             <div class="kanban-content pa-2">
-              <v-card v-for="entry in getEntriesForDay(day.date)" :key="entry.id" class="order-card-kanban my-2" @click="openDetailModal(entry.orders.id)">
-                <v-card-text class="pa-2">
+              <v-card v-for="entry in getEntriesForDay(day.date)" :key="entry.id" class="order-card-kanban my-2">
+                <v-card-text class="pa-2" @click="openDetailModal(entry.orders.id)">
                   <div class="d-flex justify-space-between align-center">
                     <p class="font-weight-bold text-body-2 text-truncate">{{ entry.orders.customer_name }}</p>
                     <v-chip size="x-small" :color="getMachineTypeForFabric(entry.orders.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat">{{ entry.quantity_meters.toLocaleString('pt-BR') }}m</v-chip>
@@ -97,7 +97,13 @@
                   <p class="text-caption text-grey mt-1">{{ entry.orders.creator?.full_name || 'N/A' }}</p>
                   <v-chip v-if="entry.orders.status === 'pending_stock'" size="x-small" color="error" class="mt-1" label>Pendente</v-chip>
                 </v-card-text>
-              </v-card>
+                <v-card-actions v-if="userStore.isAdmin && ['production_queue', 'in_printing', 'in_cutting'].includes(entry.orders.status)" class="pa-1 justify-center">
+                    <v-btn color="primary" variant="tonal" size="small" @click="openFastTrackModal(entry.orders)">
+                        <v-icon start>mdi-rocket-launch-outline</v-icon>
+                        Adiantar Entrega
+                    </v-btn>
+                </v-card-actions>
+                </v-card>
               <p v-if="getEntriesForDay(day.date).length === 0" class="text-caption text-grey text-center mt-4">Nenhum pedido agendado.</p>
             </div>
           </div>
@@ -110,8 +116,8 @@
                 <span>{{ getShortDate(day.date) }}</span>
               </div>
               <div v-if="getEntriesForDay(day.date).length > 0" class="mt-4">
-                <v-card v-for="entry in getEntriesForDay(day.date)" :key="`mobile-order-${entry.id}`" class="order-card-vertical mb-3" variant="flat" @click="openDetailModal(entry.orders.id)">
-                  <v-list-item lines="three">
+                <v-card v-for="entry in getEntriesForDay(day.date)" :key="`mobile-order-${entry.id}`" class="order-card-vertical mb-3" variant="flat">
+                  <v-list-item lines="three" @click="openDetailModal(entry.orders.id)">
                     <v-list-item-title class="font-weight-bold text-body-1">{{ entry.orders.customer_name }}</v-list-item-title>
                     <v-list-item-subtitle>
                       {{ entry.orders.details.fabric_type }} <br>
@@ -123,7 +129,13 @@
                       </div>
                     </template>
                   </v-list-item>
-                </v-card>
+                   <v-card-actions v-if="userStore.isAdmin && ['production_queue', 'in_printing', 'in_cutting'].includes(entry.orders.status)" class="pa-1 justify-center">
+                    <v-btn color="primary" variant="tonal" size="small" @click="openFastTrackModal(entry.orders)">
+                        <v-icon start>mdi-rocket-launch-outline</v-icon>
+                        Adiantar Entrega
+                    </v-btn>
+                  </v-card-actions>
+                   </v-card>
               </div>
               <div v-else class="text-center text-grey-darken-1 pa-6">
                 <v-icon>mdi-calendar-check</v-icon>
@@ -171,12 +183,38 @@
             </v-card-text>
         </v-card>
     </v-dialog>
+
+    <v-dialog v-model="showFastTrackModal" max-width="500px" persistent>
+        <v-card class="glassmorphism-card-dialog">
+            <v-card-title class="dialog-header">
+                <span class="text-h5">Adiantar Pedido?</span>
+            </v-card-title>
+            <v-card-text class="py-4">
+                <p>
+                    Tem certeza que deseja adiantar o pedido de <strong>{{ selectedOrderForFastTrack?.customer_name }}</strong>?
+                </p>
+                <p class="mt-2 text-medium-emphasis">
+                    Esta ação irá mover o pedido diretamente para a fila de entregas, marcando-o como 'Concluído'.
+                    A ação será registrada no histórico.
+                </p>
+            </v-card-text>
+            <v-card-actions class="dialog-footer">
+                <v-spacer></v-spacer>
+                <v-btn text @click="closeFastTrackModal">Cancelar</v-btn>
+                <v-btn color="primary" variant="flat" @click="confirmFastTrack" :loading="isFastTracking">
+                    Confirmar
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
+import { useUserStore } from '@/stores/user';
 import { format, startOfWeek, addDays, subDays, isSameDay, parseISO, endOfWeek, getDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
@@ -205,6 +243,7 @@ type ScheduleEntry = {
 }
 
 // --- ESTADO ---
+const userStore = useUserStore();
 const allOrders = ref<Order[]>([]);
 const scheduleEntries = ref<ScheduleEntry[]>([]);
 const loading = ref(true);
@@ -214,7 +253,11 @@ const selectedOrderId = ref<string | null>(null);
 const showQueueModal = ref(false);
 const modalTitle = ref('');
 const modalOrders = ref<Order[]>([]);
-const searchQuery = ref(''); // Novo estado para a busca
+const searchQuery = ref('');
+
+const showFastTrackModal = ref(false);
+const isFastTracking = ref(false);
+const selectedOrderForFastTrack = ref<Order | null>(null);
 
 const modalHeaders = [
     { title: 'Cliente', key: 'customer_name' },
@@ -279,6 +322,39 @@ const openQueueModal = (queueType: 'stock' | 'schedule') => {
         modalOrders.value = ordersPendingSchedule.value;
     }
     showQueueModal.value = true;
+};
+
+const openFastTrackModal = (order: Order) => {
+    selectedOrderForFastTrack.value = order;
+    showFastTrackModal.value = true;
+};
+
+const closeFastTrackModal = () => {
+    showFastTrackModal.value = false;
+    selectedOrderForFastTrack.value = null;
+};
+
+const confirmFastTrack = async () => {
+    if (!selectedOrderForFastTrack.value || !userStore.profile?.id) return;
+    isFastTracking.value = true;
+    try {
+        const { error } = await supabase.rpc('adiantar_pedido', {
+            p_order_id: selectedOrderForFastTrack.value.id,
+            p_admin_id: userStore.profile.id
+        });
+        if (error) throw error;
+
+        const index = scheduleEntries.value.findIndex(entry => entry.orders.id === selectedOrderForFastTrack.value?.id);
+        if (index > -1) {
+            scheduleEntries.value.splice(index, 1);
+        }
+
+        closeFastTrackModal();
+    } catch (err: any) {
+        console.error("Erro ao adiantar pedido:", err);
+    } finally {
+        isFastTracking.value = false;
+    }
 };
 
 const fetchAllData = async () => {
@@ -365,12 +441,15 @@ onMounted(fetchAllData);
 }
 .order-card-kanban {
   background-color: rgba(50, 50, 60, 0.9);
-  cursor: pointer;
   border-left: 3px solid transparent;
+  cursor: default;
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
   }
+}
+.order-card-kanban .v-card-text {
+    cursor: pointer;
 }
 .vertical-list-container {
   padding: 16px;
@@ -394,6 +473,12 @@ onMounted(fetchAllData);
   backdrop-filter: blur(20px) !important;
   background-color: rgba(30, 30, 30, 0.85) !important;
   border-radius: 12px !important;
+}
+.dialog-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dialog-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 .clickable-link {
     cursor: pointer;
