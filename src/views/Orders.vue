@@ -88,14 +88,27 @@
             </div>
             <div class="kanban-content pa-2">
               <v-card v-for="entry in getEntriesForDay(day.date)" :key="entry.id" class="order-card-kanban my-2">
-                <v-card-text class="pa-2" @click="openDetailModal(entry.orders.id)">
+                <v-card-text class="pa-2 d-flex flex-column" @click="openDetailModal(entry.orders.id)">
                   <div class="d-flex justify-space-between align-center">
                     <p class="font-weight-bold text-body-2 text-truncate">{{ entry.orders.customer_name }}</p>
                     <v-chip size="x-small" :color="getMachineTypeForFabric(entry.orders.details.fabric_type) === 'MESA' ? 'cyan' : 'amber'" variant="flat">{{ entry.quantity_meters.toLocaleString('pt-BR') }}m</v-chip>
                   </div>
                   <p class="text-caption text-grey-lighten-1 mt-1">{{ entry.orders.details.fabric_type }}</p>
-                  <p class="text-caption text-grey mt-1">{{ entry.orders.creator?.full_name || 'N/A' }}</p>
-                  <v-chip v-if="entry.orders.status === 'pending_stock'" size="x-small" color="error" class="mt-1" label>Pendente</v-chip>
+
+                  <v-spacer></v-spacer>
+
+                  <div class="d-flex justify-space-between align-center mt-2">
+                    <p class="text-caption text-grey">{{ entry.orders.creator?.full_name || 'N/A' }}</p>
+                    <div v-if="userStore.isAdmin && entry.orders.has_down_payment && entry.orders.down_payment_proof_url">
+                        <v-tooltip text="Comprovante de entrada anexado" location="top">
+                            <template v-slot:activator="{ props }">
+                                <a :href="getProofUrl(entry.orders.down_payment_proof_url)" target="_blank" @click.stop>
+                                    <v-icon v-bind="props" class="pulsing-icon">mdi-receipt-text-check-outline</v-icon>
+                                </a>
+                            </template>
+                        </v-tooltip>
+                    </div>
+                  </div>
                 </v-card-text>
                 <v-card-actions v-if="userStore.isAdmin && ['production_queue', 'in_printing', 'in_cutting'].includes(entry.orders.status)" class="pa-1 justify-center">
                     <v-btn color="primary" variant="tonal" size="small" @click="openFastTrackModal(entry.orders)">
@@ -121,7 +134,18 @@
                     <v-list-item-title class="font-weight-bold text-body-1">{{ entry.orders.customer_name }}</v-list-item-title>
                     <v-list-item-subtitle>
                       {{ entry.orders.details.fabric_type }} <br>
-                      <span class="text-grey-lighten-2">Por: {{ entry.orders.creator?.full_name || 'N/A' }}</span>
+                      <div class="d-flex justify-space-between align-center mt-1">
+                        <span class="text-grey-lighten-2">Por: {{ entry.orders.creator?.full_name || 'N/A' }}</span>
+                        <div v-if="userStore.isAdmin && entry.orders.has_down_payment && entry.orders.down_payment_proof_url">
+                            <v-tooltip text="Comprovante de entrada anexado" location="top">
+                                <template v-slot:activator="{ props }">
+                                    <a :href="getProofUrl(entry.orders.down_payment_proof_url)" target="_blank" @click.stop>
+                                        <v-icon v-bind="props" class="pulsing-icon" size="small">mdi-receipt-text-check-outline</v-icon>
+                                    </a>
+                                </template>
+                            </v-tooltip>
+                        </div>
+                      </div>
                     </v-list-item-subtitle>
                     <template v-slot:append>
                       <div class="text-right">
@@ -153,35 +177,35 @@
     <OrderDetailModal :show="showDetailModal" :order-id="selectedOrderId" @close="showDetailModal = false"/>
 
     <v-dialog v-model="showQueueModal" max-width="900px" persistent>
-        <v-card class="glassmorphism-card-dialog">
-            <v-toolbar color="transparent">
-                <v-toolbar-title class="font-weight-bold">{{ modalTitle }}</v-toolbar-title>
-                <v-spacer></v-spacer>
-                <v-btn icon="mdi-close" @click="showQueueModal = false"></v-btn>
-            </v-toolbar>
-            <v-card-text>
-                <v-data-table
-                    :headers="modalHeaders"
-                    :items="modalOrders"
-                    item-value="id"
-                    class="bg-transparent"
-                    density="compact"
-                >
-                    <template v-slot:item.customer_name="{ item }">
-                        <a @click.prevent="openDetailModal(item.id)" class="font-weight-bold clickable-link">{{ item.customer_name }}</a>
-                    </template>
-                    <template v-slot:item.quantity_meters="{ item }">
-                        {{ item.quantity_meters.toLocaleString('pt-BR') }}m
-                    </template>
-                     <template v-slot:item.creator.full_name="{ item }">
-                        {{ item.creator?.full_name || 'N/A' }}
-                    </template>
-                    <template v-slot:item.created_at="{ item }">
-                        {{ formatDate(item.created_at) }}
-                    </template>
-                </v-data-table>
-            </v-card-text>
-        </v-card>
+      <v-card class="glassmorphism-card-dialog">
+        <v-toolbar color="transparent">
+            <v-toolbar-title class="font-weight-bold">{{ modalTitle }}</v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn icon="mdi-close" @click="showQueueModal = false"></v-btn>
+        </v-toolbar>
+        <v-card-text>
+            <v-data-table
+                :headers="modalHeaders"
+                :items="modalOrders"
+                item-value="id"
+                class="bg-transparent"
+                density="compact"
+            >
+                <template v-slot:item.customer_name="{ item }">
+                    <a @click.prevent="openDetailModal(item.id)" class="font-weight-bold clickable-link">{{ item.customer_name }}</a>
+                </template>
+                <template v-slot:item.quantity_meters="{ item }">
+                    {{ item.quantity_meters.toLocaleString('pt-BR') }}m
+                </template>
+                  <template v-slot:item.creator.full_name="{ item }">
+                    {{ item.creator?.full_name || 'N/A' }}
+                </template>
+                <template v-slot:item.created_at="{ item }">
+                    {{ formatDate(item.created_at) }}
+                </template>
+            </v-data-table>
+        </v-card-text>
+      </v-card>
     </v-dialog>
 
     <v-dialog v-model="showFastTrackModal" max-width="500px" persistent>
@@ -219,18 +243,19 @@ import { format, startOfWeek, addDays, subDays, isSameDay, parseISO, endOfWeek, 
 import { ptBR } from 'date-fns/locale';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 
-// --- TIPAGEM ATUALIZADA ---
 type Order = {
   id: string;
   customer_name: string;
   status: string;
   created_at: string;
   quantity_meters: number;
+  has_down_payment: boolean;
+  down_payment_proof_url: string | null;
   details: {
     fabric_type: string;
     stamp_details: string;
   };
-  creator?: { // Propriedade opcional para o criador
+  creator?: {
     full_name: string;
   };
 };
@@ -242,7 +267,6 @@ type ScheduleEntry = {
     orders: Order;
 }
 
-// --- ESTADO ---
 const userStore = useUserStore();
 const allOrders = ref<Order[]>([]);
 const scheduleEntries = ref<ScheduleEntry[]>([]);
@@ -254,7 +278,6 @@ const showQueueModal = ref(false);
 const modalTitle = ref('');
 const modalOrders = ref<Order[]>([]);
 const searchQuery = ref('');
-
 const showFastTrackModal = ref(false);
 const isFastTracking = ref(false);
 const selectedOrderForFastTrack = ref<Order | null>(null);
@@ -267,7 +290,6 @@ const modalHeaders = [
     { title: 'Criado em', key: 'created_at' },
 ];
 
-// --- COMPUTED PROPERTIES ---
 const filteredScheduleEntries = computed(() => {
     if (!searchQuery.value) {
         return scheduleEntries.value;
@@ -288,7 +310,6 @@ const weekDays = computed(() => Array.from({ length: 6 }, (_, i) => ({ date: add
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
 const isCurrentWeek = computed(() => isSameDay(startOfWeek(new Date(), { weekStartsOn: 1 }), currentWeekStart.value));
 
-// --- FUNÇÕES ---
 const nextWeek = () => { currentWeekStart.value = addDays(currentWeekStart.value, 7); };
 const previousWeek = () => { currentWeekStart.value = subDays(currentWeekStart.value, 7); };
 const getDailyLimit = (date: Date): number => getDay(date) === 6 ? 5000 : 14000;
@@ -299,20 +320,16 @@ const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => fabricMa
 const getEntriesForDay = (date: Date) => {
     return filteredScheduleEntries.value.filter(entry => isSameDay(parseISO(entry.scheduled_date), date));
 };
-
 const getDayProduction = (date: Date) => {
     const dailyEntries = getEntriesForDay(date);
     const total = dailyEntries.reduce((sum, entry) => sum + entry.quantity_meters, 0);
     return { total };
 };
-
 const isDayOverloaded = (date: Date) => getDayProduction(date).total > getDailyLimit(date);
-
 const openDetailModal = (orderId: string) => {
     selectedOrderId.value = orderId;
     showDetailModal.value = true;
 };
-
 const openQueueModal = (queueType: 'stock' | 'schedule') => {
     if (queueType === 'stock') {
         modalTitle.value = 'Pedidos Aguardando Matéria-Prima';
@@ -323,7 +340,6 @@ const openQueueModal = (queueType: 'stock' | 'schedule') => {
     }
     showQueueModal.value = true;
 };
-
 const openFastTrackModal = (order: Order) => {
     selectedOrderForFastTrack.value = order;
     showFastTrackModal.value = true;
@@ -334,6 +350,7 @@ const closeFastTrackModal = () => {
     selectedOrderForFastTrack.value = null;
 };
 
+// --- CORREÇÃO APLICADA AQUI ---
 const confirmFastTrack = async () => {
     if (!selectedOrderForFastTrack.value || !userStore.profile?.id) return;
     isFastTracking.value = true;
@@ -344,10 +361,9 @@ const confirmFastTrack = async () => {
         });
         if (error) throw error;
 
-        const index = scheduleEntries.value.findIndex(entry => entry.orders.id === selectedOrderForFastTrack.value?.id);
-        if (index > -1) {
-            scheduleEntries.value.splice(index, 1);
-        }
+        // Em vez de manipular o array local, busca os dados novamente
+        // para garantir que a visão esteja 100% atualizada com o banco.
+        await fetchAllData();
 
         closeFastTrackModal();
     } catch (err: any) {
@@ -357,17 +373,23 @@ const confirmFastTrack = async () => {
     }
 };
 
+const getProofUrl = (path: string | null) => {
+    if (!path) return '#';
+    const { data } = supabase.storage.from('proofs').getPublicUrl(path);
+    return data.publicUrl;
+}
+
 const fetchAllData = async () => {
   loading.value = true;
   try {
     const [ordersResponse, scheduleResponse] = await Promise.all([
       supabase
         .from('orders')
-        .select(`id, customer_name, status, created_at, quantity_meters, details, creator:profiles!created_by(full_name)`)
+        .select(`*, creator:profiles!created_by(full_name)`)
         .in('status', ['pending_stock', 'scheduling_pending']),
       supabase
         .from('production_schedule')
-        .select(`*, orders:order_id (id, customer_name, status, details, quantity_meters, creator:profiles!created_by(full_name))`)
+        .select(`*, orders:order_id (*, creator:profiles!created_by(full_name))`)
         .gte('scheduled_date', format(subDays(new Date(), 90), 'yyyy-MM-dd'))
     ]);
 
@@ -383,14 +405,45 @@ const fetchAllData = async () => {
     loading.value = false;
   }
 };
-
 const getShortDate = (date: Date) => format(date, 'dd/MM');
 const formatDate = (dateString: string) => format(new Date(dateString), "dd/MM/yy 'às' HH:mm", { locale: ptBR });
-
 onMounted(fetchAllData);
+
 </script>
 
 <style scoped lang="scss">
+// --- ESTILO CORRIGIDO E MELHORADO PARA O ÍCONE ---
+@keyframes pulsing-glow {
+  0% {
+    color: #ffd700;
+    text-shadow: 0 0 4px #ffd700, 0 0 8px #ffc400;
+  }
+  50% {
+    color: #ffec8b;
+    text-shadow: 0 0 8px #ffec8b, 0 0 16px #ffd700;
+  }
+  100% {
+    color: #ffd700;
+    text-shadow: 0 0 4px #ffd700, 0 0 8px #ffc400;
+  }
+}
+
+.pulsing-icon {
+    animation: pulsing-glow 2s linear infinite;
+}
+
+// --- AJUSTES DE LAYOUT DOS CARDS ---
+.order-card-kanban .v-card-text {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+.order-card-vertical .v-list-item-subtitle {
+    line-height: 1.4;
+}
+
+// O restante dos estilos permanece o mesmo...
 .glassmorphism-card {
   backdrop-filter: blur(15px);
   background-color: rgba(25, 25, 30, 0.75);
@@ -441,15 +494,14 @@ onMounted(fetchAllData);
 }
 .order-card-kanban {
   background-color: rgba(50, 50, 60, 0.9);
-  border-left: 3px solid transparent;
   cursor: default;
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
   }
-}
-.order-card-kanban .v-card-text {
-    cursor: pointer;
 }
 .vertical-list-container {
   padding: 16px;
@@ -468,17 +520,7 @@ onMounted(fetchAllData);
 .order-card-vertical {
   background-color: rgba(45, 45, 55, 0.9) !important;
   border: 1px solid rgba(255, 255, 255, 0.1);
-}
-.glassmorphism-card-dialog {
-  backdrop-filter: blur(20px) !important;
-  background-color: rgba(30, 30, 30, 0.85) !important;
-  border-radius: 12px !important;
-}
-.dialog-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-.dialog-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
 }
 .clickable-link {
     cursor: pointer;
@@ -487,5 +529,11 @@ onMounted(fetchAllData);
     &:hover {
         text-decoration: underline;
     }
+}
+.dialog-header, .dialog-footer {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dialog-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 </style>
