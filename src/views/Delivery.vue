@@ -50,7 +50,11 @@
                   <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
                   <v-divider class="my-3"></v-divider>
                   <div class="d-flex justify-space-between align-center text-caption">
-                    <div class="text-success ml-auto">
+                    <div class="text-info ml-auto" v-if="order.status !== 'completed'">
+                      <v-icon size="x-small">mdi-clock-end</v-icon>
+                      Finaliza em {{ formatDate(order.completion_date, 'dd/MM') }}
+                    </div>
+                    <div class="text-success ml-auto" v-else>
                       <v-icon size="x-small">mdi-check-decagram-outline</v-icon>
                       Pronto em {{ formatDate(order.completion_date, 'dd/MM') }}
                     </div>
@@ -80,7 +84,13 @@
             :disabled="isPast(day.date)"
           >
             <template #item="{ element: order }">
-               <v-card class="order-card mb-4" elevation="4" :class="{ 'confirmed': order.isConfirmed, 'past-delivery': isPast(day.date) }" @click="openDetailModal(order.id)" :data-id="order.id">
+               <v-card
+                  class="order-card mb-4"
+                  :class="{ 'ghost': order.status !== 'completed', 'confirmed': order.isConfirmed, 'past-delivery': isPast(day.date) }"
+                  elevation="4"
+                  @click="openDetailModal(order.id)"
+                  :data-id="order.id"
+                >
                   <v-icon v-if="order.isConfirmed" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
                   <v-icon v-if="isPast(day.date)" class="confirmed-icon" style="opacity: 0.6">mdi-lock</v-icon>
                   <v-card-text>
@@ -92,7 +102,7 @@
                       <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
                   </v-card-text>
                 <v-fade-transition>
-                  <v-card-actions class="actions-overlay" v-if="!isPast(day.date)">
+                  <v-card-actions class="actions-overlay" v-if="!isPast(day.date) && order.status === 'completed'">
                     <v-tooltip text="Cancelar Agendamento" location="top">
                         <template v-slot:activator="{ props }">
                             <v-btn v-bind="props" icon="mdi-close" color="red" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
@@ -237,10 +247,28 @@ const weekDeliveryDays = computed(() => {
     });
 });
 
+// ==========================================================
+// ===== CORREÇÃO 1: FUNÇÃO DE DIAS ÚTEIS ADICIONADA AQUI =====
+// ==========================================================
+function addBusinessDays(date: Date, days: number): Date {
+  const newDate = new Date(date);
+  let addedDays = 0;
+  const targetDays = Math.abs(days);
+  const step = days > 0 ? 1 : -1;
+
+  while (addedDays < targetDays) {
+    newDate.setDate(newDate.getDate() + step);
+    const dayOfWeek = newDate.getDay(); // Domingo = 0
+    if (dayOfWeek !== 0) { // Não conta domingos
+      addedDays++;
+    }
+  }
+  return newDate;
+}
 
 const calculateInitialDeliveryDate = (completionDate: Date): Date => {
     let deliveryDate = addDays(new Date(completionDate), 1);
-    const deliveryDaysOfWeek = [2, 4, 6];
+    const deliveryDaysOfWeek = [2, 4, 6]; // Terça, Quinta, Sábado
     while (!deliveryDaysOfWeek.includes(getDay(deliveryDate))) {
         deliveryDate = addDays(deliveryDate, 1);
     }
@@ -255,7 +283,10 @@ const processAndDistributeOrders = (orders: Order[]) => {
   const thirtyDaysAgo = subDays(startOfToday(), 30);
 
   orders.forEach(order => {
-    order.completion_date = addDays(parseISO(order.production_date), 3);
+    // ==========================================================
+    // ===== CORREÇÃO 2: USANDO A FUNÇÃO DE DIAS ÚTEIS AQUI   =====
+    // ==========================================================
+    order.completion_date = addBusinessDays(parseISO(order.production_date), 3);
     order.isConfirmed = !!order.delivery_confirmed_at;
 
     const deliveryDate = order.actual_delivery_date
@@ -268,17 +299,15 @@ const processAndDistributeOrders = (orders: Order[]) => {
     } else if (order.isConfirmed) {
         history.push(order);
     }
-
-    if (order.actual_delivery_date) {
-        scheduled.push(order);
-    } else {
-        notScheduled.push(order);
-    }
+    
+    // Adiciona todos os pedidos (em produção e concluídos) à lista de agendados
+    // para que possam aparecer no calendário.
+    scheduled.push(order);
   });
 
   allScheduledOrders.value = scheduled;
   toBeScheduledOrders.value = notScheduled;
-  deliveredOrders.value = history.filter(o => isBefore(o.actual_delivery_date!, startOfToday())).sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
+  deliveredOrders.value = history.filter(o => o.isConfirmed && isBefore(o.actual_delivery_date!, startOfToday())).sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 };
 
 const onDragEnd = async (event: any) => {
@@ -368,10 +397,13 @@ const formatDate = (date: Date | string | undefined | null, formatString: string
 const fetchScheduledOrders = async () => {
   loading.value = true;
   try {
+    // ==========================================================
+    // ===== CORREÇÃO 3: BUSCANDO PEDIDOS EM PRODUÇÃO TAMBÉM  =====
+    // ==========================================================
     const { data, error } = await supabase
       .from('orders')
       .select('id, customer_name, quantity_meters, status, production_date, details, creator:created_by(full_name), production_schedule!inner(delivery_confirmed_at, actual_delivery_date)')
-      .eq('status', 'completed');
+      .in('status', ['completed', 'in_printing', 'in_cutting']); // Agora busca os 3 status
 
     if (error) throw error;
 
@@ -461,7 +493,13 @@ onMounted(fetchScheduledOrders);
   transition: all 0.2s ease-in-out;
   border: 1px solid transparent;
 
-  &:hover {
+  &.ghost {
+    background-color: transparent;
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    box-shadow: none;
+  }
+
+  &:not(.ghost):hover {
     transform: translateY(-4px);
     border-color: rgba(var(--v-theme-primary), 0.5);
   }
@@ -510,7 +548,7 @@ onMounted(fetchScheduledOrders);
   transition: opacity 0.2s ease-in-out;
 }
 
-.order-card:not(.past-delivery):hover .actions-overlay {
+.order-card:not(.past-delivery):not(.ghost):hover .actions-overlay {
   opacity: 1;
 }
 .order-card.past-delivery:hover .actions-overlay {
