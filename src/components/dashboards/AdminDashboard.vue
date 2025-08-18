@@ -22,11 +22,11 @@
             </div>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <div class="kpi-stat-card">
-              <v-icon class="kpi-icon" color="blue-grey-darken-1">mdi-ruler-square-compass</v-icon>
+            <div class="kpi-stat-card clickable-kpi success-card" @click="showDownPaymentModal = true">
+              <v-icon class="kpi-icon" color="white">mdi-cash-check</v-icon>
               <div class="kpi-content">
-                <span class="kpi-value">{{ totalMetersAllTime.toLocaleString('pt-BR') }}m</span>
-                <span class="kpi-title">Metragem Total (Todos os lançamentos)</span>
+                <span class="kpi-value text-white">{{ ordersWithDownPayment.length }}</span>
+                <span class="kpi-title text-white">Pedidos com Entrada</span>
               </div>
             </div>
           </v-col>
@@ -35,11 +35,12 @@
               <v-icon class="kpi-icon" color="blue-darken-1">mdi-factory</v-icon>
               <div class="kpi-content">
                 <span class="kpi-value">{{ totalMetersInProduction.toLocaleString('pt-BR') }}m</span>
-                <span class="kpi-title">Metragem em Produção (Design e Produção)</span>
+                <span class="kpi-title">Metragem em Produção</span>
               </div>
             </div>
           </v-col>
-          <v-col cols="12" sm="6" md="6">
+
+          <v-col cols="12" sm="6" md="4">
             <div class="kpi-stat-card">
               <v-icon class="kpi-icon" color="cyan-darken-1">mdi-set-square</v-icon>
               <div class="kpi-content">
@@ -48,12 +49,21 @@
               </div>
             </div>
           </v-col>
-          <v-col cols="12" sm="6" md="6">
+          <v-col cols="12" sm="6" md="4">
             <div class="kpi-stat-card">
               <v-icon class="kpi-icon" color="amber-darken-2">mdi-chart-line-variant</v-icon>
               <div class="kpi-content">
                 <span class="kpi-value">{{ metersInProductionCorrida.toLocaleString('pt-BR') }}m</span>
                 <span class="kpi-title">Produção CORRIDA</span>
+              </div>
+            </div>
+          </v-col>
+           <v-col cols="12" sm="6" md="4">
+            <div class="kpi-stat-card">
+              <v-icon class="kpi-icon" color="blue-grey-darken-1">mdi-ruler-square-compass</v-icon>
+              <div class="kpi-content">
+                <span class="kpi-value">{{ totalMetersAllTime.toLocaleString('pt-BR') }}m</span>
+                <span class="kpi-title">Metragem Total (Geral)</span>
               </div>
             </div>
           </v-col>
@@ -110,6 +120,40 @@
 
     <OrderDetailModal :show="showDetailModal" :order-id="selectedOrder?.id" @close="showDetailModal = false" />
     <ApprovalWarningModal :show="showApprovalModal" :pending-orders="ordersPendingApproval" @close="showApprovalModal = false" />
+
+    <v-dialog v-model="showDownPaymentModal" max-width="800px">
+        <v-card class="glassmorphism-card-dialog">
+            <v-toolbar color="transparent">
+                <v-toolbar-title class="font-weight-bold">Pedidos com Entrada</v-toolbar-title>
+                <v-spacer></v-spacer>
+                <v-btn icon="mdi-close" @click="showDownPaymentModal = false"></v-btn>
+            </v-toolbar>
+            <v-card-text>
+                <v-data-table
+                    :headers="downPaymentHeaders"
+                    :items="ordersWithDownPayment"
+                    class="bg-transparent"
+                >
+                    <template v-slot:item.creator.full_name="{ item }">
+                        {{ item.creator?.full_name || 'N/A' }}
+                    </template>
+                    <template v-slot:item.quantity_meters="{ item }">
+                        {{ item.quantity_meters }}m
+                    </template>
+                    <template v-slot:item.down_payment_proof_url="{ item }">
+                        <v-btn
+                            v-if="item.down_payment_proof_url"
+                            :href="getProofUrl(item.down_payment_proof_url)"
+                            target="_blank"
+                            icon="mdi-receipt-text-check-outline"
+                            variant="text"
+                            color="cyan"
+                        ></v-btn>
+                    </template>
+                </v-data-table>
+            </v-card-text>
+        </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -120,6 +164,7 @@ import { storeToRefs } from 'pinia';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { supabase } from '@/api/supabase';
 
 const ApprovalWarningModal = defineAsyncComponent(() => import('@/components/admin/ApprovalWarningModal.vue'));
 
@@ -127,10 +172,10 @@ const tab = ref('all');
 const showDetailModal = ref(false);
 const selectedOrder = ref<any | null>(null);
 const showApprovalModal = ref(false);
+const showDownPaymentModal = ref(false);
 
 const dashboardStore = useDashboardStore();
 const {
-  // ALTERAÇÃO APLICADA AQUI
   totalMetersAllTime,
   totalMetersInProduction,
   metersInProductionMesa,
@@ -145,6 +190,13 @@ const headers = [
   { title: 'Loja', key: 'stores.name' },
   { title: 'Lançamento', key: 'created_at' },
   { title: 'Status', key: 'status' },
+];
+
+const downPaymentHeaders = [
+    { title: 'Cliente', key: 'customer_name' },
+    { title: 'Vendedor', key: 'creator.full_name' },
+    { title: 'Metragem', key: 'quantity_meters' },
+    { title: 'Comprovante', key: 'down_payment_proof_url', sortable: false, align: 'center' },
 ];
 
 const statusDisplayMap: Record<string, string> = {
@@ -174,14 +226,22 @@ const productionFilteredOrders = computed(() => {
     return activeOrders.value.filter(o => productionStatuses.includes(o.status));
 });
 
+const ordersWithDownPayment = computed(() => {
+    return orders.value.filter(o => o.has_down_payment);
+});
+
 const formatDate = (dateString: string) => {
     if (!dateString) return '';
     return format(new Date(dateString), 'dd/MM/yy', { locale: ptBR });
+};
+
+const getProofUrl = (path: string) => {
+    const { data } = supabase.storage.from('proofs').getPublicUrl(path);
+    return data.publicUrl;
 }
 </script>
 
 <style scoped lang="scss">
-/* Seus estilos continuam aqui... */
 @keyframes shine {
   0% { transform: translateX(-100%) skewX(-20deg); }
   100% { transform: translateX(200%) skewX(-20deg); }
@@ -218,54 +278,45 @@ const formatDate = (dateString: string) => {
     background: linear-gradient(45deg, #d32f2f, #f44336);
     color: white;
     box-shadow: 0 4px 20px rgba(211, 47, 47, 0.4);
+  }
 
-    .kpi-title, .kpi-value {
-      color: white;
-    }
+  &.success-card {
+    background: linear-gradient(45deg, #4CAF50, #66BB6A);
+    color: white;
+    box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
+  }
 
-    .shine-effect {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 50%;
-      height: 100%;
-      background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.4) 50%, rgba(255, 255, 255, 0) 100%);
-      animation: shine 3s infinite;
-    }
+  .kpi-title, .kpi-value {
+    color: #1E1E1E;
+    &.text-white { color: white; }
+  }
+
+  .shine-effect {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.4) 50%, rgba(255, 255, 255, 0) 100%);
+    animation: shine 3s infinite;
   }
 }
 
-.kpi-icon {
-  font-size: 32px;
-  margin-right: 16px;
-}
-
-.kpi-content {
-  display: flex;
-  flex-direction: column;
-}
-
-.kpi-value {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: #1E1E1E;
-  line-height: 1.2;
-}
-
-.kpi-title {
-  font-size: 0.85rem;
-  color: #616161;
-}
-
-:deep(.v-data-table-virtual__table .v-data-table-header) {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-}
-
+.kpi-icon { font-size: 32px; margin-right: 16px; }
+.kpi-content { display: flex; flex-direction: column; }
+.kpi-value { font-size: 1.75rem; font-weight: 700; line-height: 1.2; }
+.kpi-title { font-size: 0.85rem; }
 .table-row {
   cursor: pointer;
   transition: background-color 0.2s ease;
-  &:hover {
-    background-color: rgba(var(--v-theme-primary-rgb), 0.15) !important;
-  }
+  &:hover { background-color: rgba(var(--v-theme-primary-rgb), 0.15) !important; }
+}
+.glassmorphism-card-dialog {
+  backdrop-filter: blur(20px) !important;
+  background-color: rgba(30, 30, 30, 0.85) !important;
+  border-radius: 12px !important;
+}
+:deep(.v-data-table-virtual__table .v-data-table-header) {
+  background-color: rgba(255, 255, 255, 0.05) !important;
 }
 </style>
