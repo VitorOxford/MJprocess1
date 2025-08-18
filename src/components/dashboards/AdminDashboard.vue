@@ -25,7 +25,7 @@
             <div class="kpi-stat-card">
               <v-icon class="kpi-icon" color="blue-grey-darken-1">mdi-ruler-square-compass</v-icon>
               <div class="kpi-content">
-                <span class="kpi-value">{{ totalMetersInPipeline.toLocaleString('pt-BR') }}m</span>
+                <span class="kpi-value">{{ totalMetersAllTime.toLocaleString('pt-BR') }}m</span>
                 <span class="kpi-title">Metragem Total (Todos os lançamentos)</span>
               </div>
             </div>
@@ -130,12 +130,13 @@ const showApprovalModal = ref(false);
 
 const dashboardStore = useDashboardStore();
 const {
-  totalMetersInPipeline,
+  // ALTERAÇÃO APLICADA AQUI
+  totalMetersAllTime,
   totalMetersInProduction,
   metersInProductionMesa,
   metersInProductionCorrida,
   orders,
-  totalMetersPendingApproval, // **NOVO GETTER DE METRAGEM**
+  totalMetersPendingApproval,
   ordersPendingApproval
 } = storeToRefs(dashboardStore);
 
