@@ -7,8 +7,8 @@
       <div class="particles-overlay"></div>
     </div>
 
-    <audio ref="notificationSound" src="https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/sounds/notification.mp3" preload="auto"></audio>
-    <audio ref="messageSound" src="https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/sounds/message.mp3" preload="auto"></audio>
+    <audio ref="notificationSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
+    <audio ref="messageSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
 
     <v-app-bar v-if="isMobile" app color="rgba(20, 20, 25, 0.7)" density="compact" class="glassmorphism-app-bar">
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
@@ -26,133 +26,127 @@
       :temporary="isMobile"
       class="glassmorphism-sidebar"
     >
-      <div class="drawer-flex-wrapper">
-        <div class="d-flex justify-center align-center pa-4 mt-2 mb-6">
-          <v-img src="@/assets/logo.png" max-height="80" contain class="animated-logo"></v-img>
-        </div>
+      <div class="d-flex justify-center align-center pa-4 mt-2 mb-6" style="flex-shrink: 0;">
+        <v-img src="@/assets/logo.png" max-height="80" contain class="animated-logo"></v-img>
+      </div>
 
-        <v-list dense nav class="pa-2 main-nav-list">
-<v-list-item
-  v-for="item in navItems"
-  :key="item.value"
-  :prepend-icon="item.icon"
-  :to="item.to"
-  rounded="lg"
-  class="nav-item"
-  :class="{
-    'highlight-red': item.value === 'approvals',
-    'highlight-green': item.value === 'delivery'
-  }"
-  @mouseenter="(event) => toggleHoverEffect(event, true, item.value)"
-  @mouseleave="(event) => toggleHoverEffect(event, false, item.value)"
->
-  <template v-slot:title>
-    <span v-if="item.value === 'approvals' && ordersPendingApproval > 0" class="animated-title">
-      <span class="default-text">Aprovar Pedidos</span>
-      <span class="animated-text">
-        {{ ordersPendingApproval }} Aprovaç{{ ordersPendingApproval > 1 ? 'ões' : 'ão' }} Penden{{ ordersPendingApproval > 1 ? 'tes' : 'te' }}!
-      </span>
-    </span>
-    <span v-else>
-      {{ item.title }}
-    </span>
-  </template>
-</v-list-item>
-        </v-list>
+      <v-list dense nav class="pa-2 main-nav-list">
+        <v-list-item
+          v-for="item in navItems"
+          :key="item.value"
+          :prepend-icon="item.icon"
+          :to="item.to"
+          rounded="lg"
+          class="nav-item"
+          :class="{
+            'highlight-red': item.value === 'approvals',
+            'highlight-green': item.value === 'delivery'
+          }"
+          @mouseenter="(event) => toggleHoverEffect(event, true, item.value)"
+          @mouseleave="(event) => toggleHoverEffect(event, false, item.value)"
+        >
+          <template v-slot:title>
+            <span v-if="item.value === 'approvals' && ordersPendingApproval > 0" class="animated-title">
+              <span class="default-text">Aprovar Pedidos</span>
+              <span class="animated-text">
+                {{ ordersPendingApproval }} Aprovaç{{ ordersPendingApproval > 1 ? 'ões' : 'ão' }} Penden{{ ordersPendingApproval > 1 ? 'tes' : 'te' }}!
+              </span>
+            </span>
+            <span v-else>
+              {{ item.title }}
+            </span>
+          </template>
+        </v-list-item>
+      </v-list>
 
-        <v-spacer></v-spacer>
-
-        <div class="pa-2 quick-actions">
-
-          <div class="d-flex justify-space-around align-center">
-            <v-btn v-if="isAdmin" :to="{ name: 'Admin' }" icon variant="text" title="Painel Admin">
-              <v-icon>mdi-security</v-icon>
-            </v-btn>
-            <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat">
-              <v-icon>mdi-forum-outline</v-icon>
-            </v-btn>
-            <v-menu
-              v-model="notificationMenu"
-              :close-on-content-click="false"
-              location="top end"
-              offset="10"
-              @update:model-value="isBellRinging = false"
-            >
-              <template v-slot:activator="{ props }">
-                <v-btn v-bind="props" icon variant="text" title="Notificações">
-                  <v-badge :content="unreadNotifications" color="error" :model-value="unreadNotifications > 0" dot>
-                    <v-icon :class="{ 'bell-ringing': isBellRinging }">mdi-bell-outline</v-icon>
-                  </v-badge>
-                </v-btn>
-              </template>
-
-              <v-card class="glassmorphism-card notifications-panel" min-width="350">
-                <v-card-title class="pa-3 dialog-header">
-                  <v-icon start>mdi-bell-ring</v-icon>
-                  Notificações
-                  <v-spacer></v-spacer>
-                  <v-btn v-if="hasReadNotifications" size="small" variant="tonal" @click="clearReadNotifications">Limpar</v-btn>
-                </v-card-title>
-                <div class="notification-list-scroll">
-                  <div v-if="notifications.length === 0" class="text-center text-grey pa-8">
-                      <v-icon size="48" class="mb-2">mdi-check-all</v-icon>
-                      <p>Você não tem novas notificações.</p>
-                  </div>
-                  <template v-else>
-                      <v-list class="bg-transparent py-0">
-                          <v-list-subheader class="font-weight-bold">Recentes</v-list-subheader>
-                          <v-list-item
-                            v-for="notification in recentNotifications"
-                            :key="notification.id"
-                            @click="handleNotificationClick(notification)"
-                            :class="{ 'notification-read': notification.is_read }"
-                            class="notification-item"
-                            :active="!notification.is_read"
-                          >
-                            <v-list-item-title class="text-wrap">{{ notification.content }}</v-list-item-title>
-                            <v-list-item-subtitle>{{ formatDistance(notification.created_at) }} atrás</v-list-item-subtitle>
-                          </v-list-item>
-                      </v-list>
-                      <v-divider></v-divider>
-                      <v-list class="bg-transparent py-0" v-if="olderNotifications.length > 0">
-                          <v-list-subheader class="font-weight-bold">Anteriores</v-list-subheader>
-                          <v-list-item
-                            v-for="notification in olderNotifications"
-                            :key="notification.id"
-                            @click="handleNotificationClick(notification)"
-                            :class="{ 'notification-read': notification.is_read }"
-                            class="notification-item"
-                          >
-                            <v-list-item-title class="text-wrap">{{ notification.content }}</v-list-item-title>
-                            <v-list-item-subtitle>{{ formatDistance(notification.created_at) }} atrás</v-list-item-subtitle>
-                          </v-list-item>
-                      </v-list>
-                  </template>
-                </div>
-              </v-card>
-            </v-menu>
-          </div>
-        </div>
-
-        <div class="user-footer pa-3">
-          <v-divider class="mb-3"></v-divider>
-          <v-list-item lines="two" class="pa-1" v-if="profile">
-            <template v-slot:prepend>
-              <v-avatar :image="profile.avatar_url || ''" size="40"></v-avatar>
-            </template>
-            <v-list-item-title class="font-weight-bold text-body-1">{{ profile.full_name || 'Usuário' }}</v-list-item-title>
-            <v-list-item-subtitle class="text-caption">{{ userStore.user?.email || '...' }}</v-list-item-subtitle>
-          </v-list-item>
-          <v-btn
-            @click="handleLogout"
-            block
-            color="rgba(239, 83, 80, 0.8)"
-            variant="flat"
-            class="mt-3 logout-btn"
-          >
-            Sair
+      <div class="pa-2 quick-actions" style="flex-shrink: 0;">
+        <div class="d-flex justify-space-around align-center">
+          <v-btn v-if="isAdmin" :to="{ name: 'Admin' }" icon variant="text" title="Painel Admin">
+            <v-icon>mdi-security</v-icon>
           </v-btn>
+          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat">
+            <v-icon>mdi-forum-outline</v-icon>
+          </v-btn>
+          <v-menu
+            v-model="notificationMenu"
+            :close-on-content-click="false"
+            location="top end"
+            offset="10"
+            @update:model-value="isBellRinging = false"
+          >
+            <template v-slot:activator="{ props }">
+              <v-btn v-bind="props" icon variant="text" title="Notificações">
+                <v-badge :content="unreadNotifications" color="error" :model-value="unreadNotifications > 0" dot>
+                  <v-icon :class="{ 'bell-ringing': isBellRinging }">mdi-bell-outline</v-icon>
+                </v-badge>
+              </v-btn>
+            </template>
+            <v-card class="glassmorphism-card notifications-panel" min-width="350">
+              <v-card-title class="pa-3 dialog-header">
+                <v-icon start>mdi-bell-ring</v-icon>
+                Notificações
+                <v-spacer></v-spacer>
+                <v-btn v-if="hasReadNotifications" size="small" variant="tonal" @click="clearReadNotifications">Limpar</v-btn>
+              </v-card-title>
+              <div class="notification-list-scroll">
+                <div v-if="notifications.length === 0" class="text-center text-grey pa-8">
+                  <v-icon size="48" class="mb-2">mdi-check-all</v-icon>
+                  <p>Você não tem novas notificações.</p>
+                </div>
+                <template v-else>
+                  <v-list class="bg-transparent py-0">
+                    <v-list-subheader class="font-weight-bold">Recentes</v-list-subheader>
+                    <v-list-item
+                      v-for="notification in recentNotifications"
+                      :key="notification.id"
+                      @click="handleNotificationClick(notification)"
+                      :class="{ 'notification-read': notification.is_read }"
+                      class="notification-item"
+                      :active="!notification.is_read"
+                    >
+                      <v-list-item-title class="text-wrap">{{ notification.content }}</v-list-item-title>
+                      <v-list-item-subtitle>{{ formatDistance(notification.created_at) }} atrás</v-list-item-subtitle>
+                    </v-list-item>
+                  </v-list>
+                  <v-divider></v-divider>
+                  <v-list class="bg-transparent py-0" v-if="olderNotifications.length > 0">
+                    <v-list-subheader class="font-weight-bold">Anteriores</v-list-subheader>
+                    <v-list-item
+                      v-for="notification in olderNotifications"
+                      :key="notification.id"
+                      @click="handleNotificationClick(notification)"
+                      :class="{ 'notification-read': notification.is_read }"
+                      class="notification-item"
+                    >
+                      <v-list-item-title class="text-wrap">{{ notification.content }}</v-list-item-title>
+                      <v-list-item-subtitle>{{ formatDistance(notification.created_at) }} atrás</v-list-item-subtitle>
+                    </v-list-item>
+                  </v-list>
+                </template>
+              </div>
+            </v-card>
+          </v-menu>
         </div>
+      </div>
+
+      <div class="user-footer pa-3" style="flex-shrink: 0;">
+        <v-divider class="mb-3"></v-divider>
+        <v-list-item lines="two" class="pa-1" v-if="profile">
+          <template v-slot:prepend>
+            <v-avatar :image="profile.avatar_url || ''" size="40"></v-avatar>
+          </template>
+          <v-list-item-title class="font-weight-bold text-body-1">{{ profile.full_name || 'Usuário' }}</v-list-item-title>
+          <v-list-item-subtitle class="text-caption">{{ userStore.user?.email || '...' }}</v-list-item-subtitle>
+        </v-list-item>
+        <v-btn
+          @click="handleLogout"
+          block
+          color="rgba(239, 83, 80, 0.8)"
+          variant="flat"
+          class="mt-3 logout-btn"
+        >
+          Sair
+        </v-btn>
       </div>
     </v-navigation-drawer>
 
@@ -178,11 +172,18 @@
             <v-btn variant="text" @click="showToast = false">Fechar</v-btn>
         </template>
     </v-snackbar>
+
+    <PendingApprovalAlertModal
+      :show="showPendingApprovalAlert"
+      :title="pendingAlertContent.title"
+      :message="pendingAlertContent.message"
+      @close="showPendingApprovalAlert = false"
+    />
   </v-app>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
 import { useDisplay } from 'vuetify';
 import { supabase } from '@/api/supabase';
 import { useRouter } from 'vue-router';
@@ -192,6 +193,8 @@ import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { storeToRefs } from 'pinia';
 import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+const PendingApprovalAlertModal = defineAsyncComponent(() => import('@/components/admin/PendingApprovalAlertModal.vue'));
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -215,6 +218,8 @@ const isBellRinging = ref(false);
 const showToast = ref(false);
 const toastMessage = ref('');
 const ordersPendingApproval = ref(0);
+const showPendingApprovalAlert = ref(false);
+const pendingAlertContent = ref({ title: '', message: '' });
 
 const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read).length);
 const hasReadNotifications = computed(() => notifications.value.some(n => n.is_read));
@@ -254,7 +259,7 @@ const handleLogout = async () => {
 
 const toggleHoverEffect = (event: MouseEvent, shouldAdd: boolean, value: string) => {
   const target = event.currentTarget as HTMLElement;
-  if (value === 'approvals' || value === 'delivery') { // Aplica o hover apenas aos botões destacados
+  if (value === 'approvals' || value === 'delivery') {
     target.classList.toggle('hover-effect', shouldAdd);
   }
 };
@@ -286,18 +291,15 @@ const fetchPendingApprovals = async () => {
 
 const setupApprovalListener = () => {
     if (!userStore.user) return;
-
     approvalListener.value = supabase.channel('public:orders:approvals-channel')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
             const { new: newOrder, old: oldOrder, eventType } = payload as any;
             const userId = userStore.user?.id;
-
             if (eventType === 'INSERT' && newOrder.status === 'customer_approval' && newOrder.created_by === userId) {
                 fetchPendingApprovals();
             } else if (eventType === 'UPDATE') {
                 const oldStatusIsPending = oldOrder?.status === 'customer_approval' && oldOrder?.created_by === userId;
                 const newStatusIsPending = newOrder?.status === 'customer_approval' && newOrder?.created_by === userId;
-
                 if (oldStatusIsPending || newStatusIsPending) {
                     fetchPendingApprovals();
                 }
@@ -325,12 +327,26 @@ const clearReadNotifications = () => {
 
 const handleNewNotification = (payload: any) => {
     const newNotification = payload.new as Notification;
-    notifications.value.unshift(newNotification);
-    notificationSound.value?.play().catch(e => console.error("Erro ao tocar som:", e));
-    toastMessage.value = newNotification.content;
-    showToast.value = true;
-    isBellRinging.value = true;
-    setTimeout(() => { isBellRinging.value = false; }, 2000);
+
+    // **CORREÇÃO APLICADA AQUI**
+    // Lógica para interpretar a notificação de alerta
+    if (newNotification.content.startsWith('[ALERT_PENDING_APPROVAL]')) {
+      const parts = newNotification.content.replace('[ALERT_PENDING_APPROVAL]', '').split('::');
+      pendingAlertContent.value = {
+        title: parts[0] || 'ALERTA',
+        message: parts[1] || 'Você tem uma aprovação pendente.',
+      };
+      showPendingApprovalAlert.value = true;
+      notificationSound.value?.play().catch(e => console.error("Erro ao tocar som:", e));
+    } else {
+      // Comportamento para notificações normais
+      notifications.value.unshift(newNotification);
+      notificationSound.value?.play().catch(e => console.error("Erro ao tocar som:", e));
+      toastMessage.value = newNotification.content;
+      showToast.value = true;
+      isBellRinging.value = true;
+      setTimeout(() => { isBellRinging.value = false; }, 2000);
+    }
 };
 
 const setupNotificationListener = () => {
@@ -448,7 +464,6 @@ onUnmounted(() => {
   100% { transform: translate(-50%, -50%) rotate(360deg) scale(1.5); opacity: 0; }
 }
 
-/* Restante do CSS permanece o mesmo */
 .v-application, .v-application__wrap {
   color: #E0E0E0 !important;
   background: transparent !important;
@@ -463,10 +478,35 @@ onUnmounted(() => {
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
-.drawer-flex-wrapper { display: flex; flex-direction: column; height: 100%; }
-.main-nav-list { flex: 1 1 auto; overflow-y: auto; }
 
-/* --- NOVOS ESTILOS PARA OS BOTÕES DO MENU --- */
+/* **CORREÇÃO DEFINITIVA PARA ROLAGEM** */
+.v-navigation-drawer > .v-navigation-drawer__content {
+  display: flex;
+  flex-direction: column;
+}
+.main-nav-list {
+  flex-grow: 1; /* Permite que a lista cresça e empurre o rodapé */
+  overflow-y: auto; /* Adiciona a rolagem quando necessário */
+}
+/* FIM DA CORREÇÃO */
+
+@media (max-width: 600px) {
+  .v-navigation-drawer.glassmorphism-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100vh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+  .main-nav-list {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    max-height: unset !important;
+  }
+}
+
 .nav-item {
   position: relative;
   overflow: hidden;
@@ -479,12 +519,12 @@ onUnmounted(() => {
 }
 
 .highlight-red {
-  background-color: rgba(239, 83, 80, 0.733) !important; /* Vermelho sutil */
+  background-color: rgba(239, 83, 80, 0.733) !important;
   box-shadow: 0 0 8px rgba(239, 83, 80, 0.966);
 }
 
 .highlight-green {
-  background-color: rgba(76, 175, 79, 0.658) !important; /* Verde sutil */
+  background-color: rgba(76, 175, 79, 0.658) !important;
   box-shadow: 0 0 8px rgb(76, 175, 79);
 }
 
@@ -507,7 +547,6 @@ onUnmounted(() => {
   100% { background-position: -100% 0; }
 }
 
-/* --- ESTILOS ANTIGOS DE NOTIFICAÇÃO E OUTROS (sem alterações) --- */
 .quick-actions, .user-footer { flex-shrink: 0; }
 .glassmorphism-app-bar {
   background-color: rgba(20, 20, 25, 0.6) !important;

@@ -5,6 +5,14 @@
         <v-icon start size="x-large" class="mr-2">mdi-truck-delivery-outline</v-icon>
         Agenda de Entregas
       </v-toolbar-title>
+      <v-spacer></v-spacer>
+      <div class="d-flex align-center">
+        <v-btn icon="mdi-chevron-left" variant="text" @click="previousWeek"></v-btn>
+        <div class="week-indicator mx-2 text-center" style="min-width: 180px;">
+          <div class="font-weight-bold">{{ weekRangeText }}</div>
+        </div>
+        <v-btn icon="mdi-chevron-right" variant="text" @click="nextWeek"></v-btn>
+      </div>
     </v-toolbar>
 
     <div v-if="loading" class="text-center py-16">
@@ -12,95 +20,146 @@
       <p class="mt-4 text-body-2 text-grey-lighten-1">Calculando agenda de entregas...</p>
     </div>
 
-    <div v-else class="delivery-board">
-      <div class="delivery-column to-be-scheduled-column">
-        <div class="column-header">
-          <v-icon class="header-icon">mdi-clipboard-clock-outline</v-icon>
-          <div>
-            <h3 class="column-title text-h6">Aguardando Envio</h3>
-            <p class="text-caption text-grey">{{ toBeScheduledOrders.length }} pedido(s) pronto(s)</p>
+    <div v-else>
+      <div class="delivery-board">
+        <div class="delivery-column to-be-scheduled-column">
+          <div class="column-header">
+            <v-icon class="header-icon">mdi-clipboard-clock-outline</v-icon>
+            <div>
+              <h3 class="column-title text-h6">Aguardando Envio</h3>
+              <p class="text-caption text-grey">{{ toBeScheduledOrders.length }} pedido(s)</p>
+            </div>
           </div>
-        </div>
-        <draggable
-          v-model="toBeScheduledOrders"
-          group="orders"
-          item-key="id"
-          class="column-content pa-3"
-          ghost-class="ghost-card"
-        >
-          <template #item="{ element: order }">
-            <v-card class="order-card mb-4" elevation="4" @click="openDetailModal(order.id)">
-              <v-card-text>
-                <div class="d-flex align-center justify-space-between mb-2">
-                  <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
-                  <v-chip size="small" variant="tonal" color="grey-lighten-1">{{ order.id.substring(0, 8) }}</v-chip>
-                </div>
-                <p class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details.fabric_type }}</p>
-                <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
-
-                <v-divider class="my-3"></v-divider>
-
-                <div class="d-flex justify-space-between align-center text-caption">
-                   <div v-if="order.suggested_delivery_date" class="text-amber">
-                    <v-icon size="x-small">mdi-undo-variant</v-icon>
-                    Sugerido: {{ formatDate(order.suggested_delivery_date, 'dd/MM') }}
-                  </div>
-                  <div class="text-success ml-auto">
-                    <v-icon size="x-small">mdi-check-decagram-outline</v-icon>
-                    Pronto em {{ formatDate(order.completion_date, 'dd/MM') }}
-                  </div>
-                </div>
-              </v-card-text>
-            </v-card>
-          </template>
-        </draggable>
-      </div>
-
-      <div v-for="day in deliveryDays" :key="day.date.toISOString()" class="delivery-column">
-        <div class="column-header">
-           <v-icon class="header-icon">mdi-calendar-blank-outline</v-icon>
-          <div>
-            <h3 class="column-title text-h6">{{ day.name }}</h3>
-            <p class="text-caption text-grey">{{ formatDate(day.date, 'dd/MM') }}</p>
-          </div>
-        </div>
-        <draggable
-          v-model="day.orders"
-          group="orders"
-          item-key="id"
-          class="column-content pa-3"
-          ghost-class="ghost-card"
-        >
-          <template #item="{ element: order }">
-            <v-card class="order-card mb-4" elevation="4" :class="{ 'confirmed': order.isConfirmed }" @click="openDetailModal(order.id)">
-                <v-icon v-if="order.isConfirmed" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
+          <draggable
+            :list="toBeScheduledOrders"
+            group="orders"
+            item-key="id"
+            class="column-content pa-3"
+            ghost-class="ghost-card-placeholder"
+            @end="onDragEnd"
+            data-status="to-be-scheduled"
+          >
+            <template #item="{ element: order }">
+               <v-card class="order-card mb-4" elevation="4" @click="openDetailModal(order.id)" :data-id="order.id">
                 <v-card-text>
-                    <div class="d-flex align-center justify-space-between mb-2">
-                        <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
-                        <v-chip size="small" variant="tonal" color="grey-lighten-1">{{ order.id.substring(0, 8) }}</v-chip>
+                  <div class="d-flex align-center justify-space-between mb-2">
+                    <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
+                    <v-chip size="small" variant="tonal" color="grey-lighten-1">{{ order.id.substring(0, 8) }}</v-chip>
+                  </div>
+                  <p class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details.fabric_type }}</p>
+                  <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
+                  <v-divider class="my-3"></v-divider>
+                  <div class="d-flex justify-space-between align-center text-caption">
+                    <div class="text-info ml-auto" v-if="order.status !== 'completed'">
+                      <v-icon size="x-small">mdi-clock-end</v-icon>
+                      Finaliza em {{ formatDate(order.completion_date, 'dd/MM') }}
                     </div>
-                    <p class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details.fabric_type }}</p>
-                    <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
+                    <div class="text-success ml-auto" v-else>
+                      <v-icon size="x-small">mdi-check-decagram-outline</v-icon>
+                      Pronto em {{ formatDate(order.completion_date, 'dd/MM') }}
+                    </div>
+                  </div>
                 </v-card-text>
+              </v-card>
+            </template>
+          </draggable>
+        </div>
 
-              <v-fade-transition>
-                <v-card-actions v-if="!order.isConfirmed" class="actions-overlay">
-                  <v-tooltip text="Rejeitar" location="top">
-                    <template v-slot:activator="{ props }">
-                      <v-btn v-bind="props" icon="mdi-close" color="error" variant="flat" size="small" @click.stop="rejectDelivery(order, day)"></v-btn>
-                    </template>
-                  </v-tooltip>
-                  <v-tooltip text="Confirmar Entrega" location="top">
-                    <template v-slot:activator="{ props }">
-                      <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click.stop="confirmDelivery(order)"></v-btn>
-                    </template>
-                  </v-tooltip>
-                </v-card-actions>
-              </v-fade-transition>
-            </v-card>
-          </template>
-        </draggable>
+        <div v-for="day in weekDeliveryDays" :key="day.date.toISOString()" class="delivery-column">
+          <div class="column-header">
+            <v-icon class="header-icon">mdi-calendar-blank-outline</v-icon>
+            <div>
+              <h3 class="column-title text-h6">{{ day.name }}</h3>
+              <p class="text-caption text-grey">{{ formatDate(day.date, 'dd/MM') }}</p>
+            </div>
+          </div>
+          <draggable
+            :list="day.orders"
+            group="orders"
+            item-key="id"
+            class="column-content pa-3"
+            :data-date="day.date.toISOString().split('T')[0]"
+            ghost-class="ghost-card-placeholder"
+            @end="onDragEnd"
+            :disabled="isPast(day.date) && !userStore.isAdmin"
+          >
+            <template #item="{ element: order }">
+               <v-card
+                  class="order-card mb-4"
+                  :class="{ 'ghost': order.status !== 'completed', 'confirmed': order.isConfirmed, 'past-delivery': isPast(day.date) }"
+                  elevation="4"
+                  @click="openDetailModal(order.id)"
+                  :data-id="order.id"
+                  :draggable="order.status === 'completed' && (!isPast(day.date) || userStore.isAdmin)"
+                >
+                  <v-icon v-if="order.isConfirmed" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
+                  <v-icon v-if="isPast(day.date) && order.isConfirmed" class="confirmed-icon" style="opacity: 0.6">mdi-lock</v-icon>
+                  <v-card-text>
+                      <div class="d-flex align-center justify-space-between mb-2">
+                          <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
+                          <v-chip size="small" variant="tonal" color="grey-lighten-1">{{ order.id.substring(0, 8) }}</v-chip>
+                      </div>
+                      <p class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details.fabric_type }}</p>
+                      <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
+                  </v-card-text>
+                <v-fade-transition>
+                  <v-card-actions class="actions-overlay" v-if="!isPast(day.date) && order.status === 'completed' && !order.isConfirmed">
+                    <v-tooltip text="Cancelar Agendamento" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn v-bind="props" icon="mdi-close" color="red" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
+                        </template>
+                    </v-tooltip>
+                    <v-tooltip text="Confirmar Entrega" location="top">
+                      <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click.stop="confirmDelivery(order)"></v-btn>
+                      </template>
+                    </v-tooltip>
+                  </v-card-actions>
+                  <v-card-actions class="actions-overlay" v-else-if="userStore.isAdmin && order.isConfirmed">
+                     <v-tooltip text="Reverter Entrega (Admin)" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn v-bind="props" icon="mdi-undo-variant" color="warning" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
+                        </template>
+                    </v-tooltip>
+                  </v-card-actions>
+                </v-fade-transition>
+              </v-card>
+            </template>
+          </draggable>
+        </div>
       </div>
+
+      <v-card class="mt-8 history-card" color="rgba(30,30,35,0.8)">
+        <v-toolbar color="transparent">
+          <v-toolbar-title class="font-weight-bold">
+            <v-icon start>mdi-history</v-icon>
+            Histórico de Entregas Recentes (Últimos 30 dias)
+          </v-toolbar-title>
+        </v-toolbar>
+        <v-data-table
+          :headers="historyHeaders"
+          :items="deliveredOrders"
+          class="bg-transparent"
+          item-value="id"
+          density="comfortable"
+          hover
+        >
+          <template v-slot:item.actual_delivery_date="{ item }">
+            <span>{{ formatDate(item.actual_delivery_date, 'dd/MM/yyyy') }}</span>
+          </template>
+          <template v-slot:item.customer_name="{ item }">
+            <span class="font-weight-bold">{{ item.customer_name }}</span>
+          </template>
+           <template v-slot:item.quantity_meters="{ item }">
+            <v-chip color="primary" variant="tonal" size="small">{{ item.quantity_meters }}m</v-chip>
+           </template>
+          <template v-slot:no-data>
+            <div class="py-8 text-center text-grey">
+              Nenhuma entrega concluída recentemente.
+            </div>
+          </template>
+        </v-data-table>
+      </v-card>
     </div>
 
     <OrderDetailModal
@@ -112,18 +171,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import draggable from 'vuedraggable';
 import { useUserStore } from '@/stores/user';
 import {
-  format, addDays, startOfToday, getDay, nextTuesday,
-  nextThursday, nextSaturday, isSameDay, parseISO, isAfter
+  format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// Tipos
+// Types
 type Order = {
   id: string;
   customer_name: string;
@@ -132,15 +190,10 @@ type Order = {
   production_date: string;
   details: { fabric_type: string; };
   completion_date?: Date;
-  suggested_delivery_date?: Date | null;
+  actual_delivery_date?: Date | null;
   delivery_confirmed_at?: string | null;
   isConfirmed?: boolean;
-};
-
-type DeliveryDay = {
-  name: string;
-  date: Date;
-  orders: Order[];
+  creator: { full_name: string; } | null;
 };
 
 // Estado
@@ -148,74 +201,166 @@ const userStore = useUserStore();
 const loading = ref(true);
 const showDetailModal = ref(false);
 const selectedOrderId = ref<string | null>(null);
+const allScheduledOrders = ref<Order[]>([]);
 const toBeScheduledOrders = ref<Order[]>([]);
-const deliveryDays = reactive<DeliveryDay[]>([]);
+const deliveredOrders = ref<Order[]>([]);
+const currentDeliveryWeekStart = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
-// Lógica de Datas e Inicialização
-const today = startOfToday();
-const getNextDeliveryDay = (date: Date, dayOfWeek: number) => {
-  let result = dayOfWeek === 2 ? nextTuesday(date) : dayOfWeek === 4 ? nextThursday(date) : nextSaturday(date);
-  if (getDay(date) === dayOfWeek && isAfter(date, addDays(today,-1))) {
-    result = date;
+const historyHeaders = [
+  { title: 'Cliente', key: 'customer_name' },
+  { title: 'Data da Entrega', key: 'actual_delivery_date' },
+  { title: 'Tecido', key: 'details.fabric_type' },
+  { title: 'Metragem', key: 'quantity_meters' },
+  { title: 'Vendedor', key: 'creator.full_name' },
+];
+
+// Lógica de Datas e Navegação
+const isPast = (date: Date): boolean => isBefore(date, startOfToday());
+const nextWeek = () => { currentDeliveryWeekStart.value = addDays(currentDeliveryWeekStart.value, 7); };
+const previousWeek = () => { currentDeliveryWeekStart.value = subDays(currentDeliveryWeekStart.value, 7); };
+
+const weekRangeText = computed(() => {
+    const start = currentDeliveryWeekStart.value;
+    const end = endOfWeek(start, { weekStartsOn: 1 });
+    return `${format(start, 'dd MMM', { locale: ptBR })} - ${format(end, 'dd MMM', { locale: ptBR })}`;
+});
+
+const weekDeliveryDays = computed(() => {
+    const weekStart = currentDeliveryWeekStart.value;
+    const daysOfWeekToDisplay = [
+        { name: 'Terça-feira', dayOfWeek: 2 },
+        { name: 'Quinta-feira', dayOfWeek: 4 },
+        { name: 'Sábado', dayOfWeek: 6 },
+    ];
+
+    return daysOfWeekToDisplay.map(dayInfo => {
+        let currentDateInWeek = weekStart;
+        while (getDay(currentDateInWeek) !== dayInfo.dayOfWeek) {
+            currentDateInWeek = addDays(currentDateInWeek, 1);
+        }
+        return {
+            name: dayInfo.name,
+            date: currentDateInWeek,
+            orders: allScheduledOrders.value.filter(order =>
+                order.actual_delivery_date && isSameDay(order.actual_delivery_date, currentDateInWeek)
+            )
+        };
+    });
+});
+
+function addBusinessDays(date: Date, days: number): Date {
+  const newDate = new Date(date);
+  let addedDays = 0;
+  const targetDays = Math.abs(days);
+  const step = days > 0 ? 1 : -1;
+
+  while (addedDays < targetDays) {
+    newDate.setDate(newDate.getDate() + step);
+    const dayOfWeek = newDate.getDay(); // Domingo = 0
+    if (dayOfWeek !== 0) { // Não conta domingos
+      addedDays++;
+    }
   }
-  return result;
-};
+  return newDate;
+}
 
-const initializeDeliveryDays = () => {
-  const days = [
-    { name: 'Terça-feira', date: getNextDeliveryDay(addDays(today, -1), 2), orders: [] },
-    { name: 'Quinta-feira', date: getNextDeliveryDay(addDays(today, -1), 4), orders: [] },
-    { name: 'Sábado', date: getNextDeliveryDay(addDays(today, -1), 6), orders: [] },
-  ].sort((a, b) => a.date.getTime() - b.date.getTime());
-  deliveryDays.splice(0, deliveryDays.length, ...days);
-};
+const calculateInitialDeliveryDate = (completionDate: Date): Date => {
+    let deliveryDate = addDays(new Date(completionDate), 1);
+    const deliveryDaysOfWeek = [2, 4, 6]; // Terça, Quinta, Sábado
+    while (!deliveryDaysOfWeek.includes(getDay(deliveryDate))) {
+        deliveryDate = addDays(deliveryDate, 1);
+    }
+    return deliveryDate;
+}
 
 // Funções de Manipulação de Pedidos
 const processAndDistributeOrders = (orders: Order[]) => {
-  const readyForScheduling: Order[] = [];
-  deliveryDays.forEach(day => day.orders = []);
+  const scheduled: Order[] = [];
+  const notScheduled: Order[] = [];
+  const history: Order[] = [];
+  const thirtyDaysAgo = subDays(startOfToday(), 30);
 
   orders.forEach(order => {
-    const productionStartDate = parseISO(order.production_date);
-    const completionDate = addDays(productionStartDate, 3);
-    order.completion_date = completionDate;
+    order.completion_date = addBusinessDays(parseISO(order.production_date), 3);
     order.isConfirmed = !!order.delivery_confirmed_at;
 
-    if (isAfter(today, completionDate) || isSameDay(today, completionDate)) {
-      let deliveryDate = new Date(completionDate);
-      const deliveryDaysOfWeek = [2, 4, 6];
-      while (!deliveryDaysOfWeek.includes(getDay(deliveryDate))) {
-          deliveryDate = addDays(deliveryDate, 1);
-      }
-      order.suggested_delivery_date = deliveryDate;
+    const deliveryDate = order.actual_delivery_date
+      ? parseISO(order.actual_delivery_date as any)
+      : calculateInitialDeliveryDate(order.completion_date);
+    order.actual_delivery_date = deliveryDate;
 
-      const targetDay = deliveryDays.find(d => isSameDay(d.date, deliveryDate));
-      if (targetDay) {
-        targetDay.orders.push(order);
-      } else {
-        readyForScheduling.push(order);
-      }
+    if (order.status === 'completed' && !order.actual_delivery_date) {
+        notScheduled.push(order);
+    } else {
+        scheduled.push(order);
+    }
+
+    if (order.isConfirmed) {
+        history.push(order);
     }
   });
-  toBeScheduledOrders.value = readyForScheduling;
+
+  allScheduledOrders.value = scheduled;
+  toBeScheduledOrders.value = notScheduled;
+  deliveredOrders.value = history.filter(o => o.isConfirmed && isBefore(o.actual_delivery_date!, startOfToday())).sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 };
 
+const onDragEnd = async (event: any) => {
+    const { item, to } = event;
+    const orderId = item.dataset.id;
+    const newDateStr = to.dataset.date;
+    const toStatus = to.dataset.status;
+
+    if (!orderId || !userStore.profile) return;
+
+    const order = allScheduledOrders.value.find(o => o.id === orderId) || toBeScheduledOrders.value.find(o => o.id === orderId);
+    if (order && order.status !== 'completed') {
+        fetchScheduledOrders();
+        return;
+    }
+
+    let newDate: string | null = null;
+    if (toStatus !== 'to-be-scheduled' && newDateStr) {
+        newDate = newDateStr;
+    }
+
+    try {
+        const { error: updateError } = await supabase
+            .from('production_schedule')
+            .update({ actual_delivery_date: newDate })
+            .eq('order_id', orderId);
+
+        if (updateError) throw updateError;
+
+        const description = newDate
+            ? `Entrega reagendada para ${format(parseISO(newDate), 'dd/MM/yyyy', { locale: ptBR })}.`
+            : 'Agendamento de entrega removido. Pedido retornado para a fila "Aguardando Envio".';
+
+        const { error: logError } = await supabase.from('order_logs').insert({
+            order_id: orderId,
+            profile_id: userStore.profile.id,
+            log_type: 'STATUS_CHANGE',
+            description: description,
+        });
+
+        if (logError) throw logError;
+
+    } catch (err: any) {
+        console.error('Erro ao reagendar entrega:', err.message);
+    } finally {
+        await fetchScheduledOrders();
+    }
+}
+
 const confirmDelivery = async (order: Order) => {
-  if (!userStore.profile) {
-      alert('Usuário não encontrado. Faça login novamente.');
-      return;
-  }
+  if (!userStore.profile) return;
   try {
-    const { error: updateError } = await supabase
+    await supabase
       .from('production_schedule')
       .update({ delivery_confirmed_at: new Date().toISOString() })
       .eq('order_id', order.id);
 
-    if (updateError) throw updateError;
-
-    // --- ADIÇÃO DO LOG DE AUDITORIA ---
-    const deliveryDay = deliveryDays.find(day => day.orders.some(o => o.id === order.id));
-    const deliveryDateFormatted = deliveryDay ? formatDate(deliveryDay.date, 'dd/MM/yyyy') : 'data agendada';
+    const deliveryDateFormatted = order.actual_delivery_date ? formatDate(order.actual_delivery_date, 'dd/MM/yyyy') : 'data agendada';
 
     await supabase.from('order_logs').insert({
         order_id: order.id,
@@ -223,67 +368,77 @@ const confirmDelivery = async (order: Order) => {
         log_type: 'STATUS_CHANGE',
         description: `Entrega confirmada para ${deliveryDateFormatted}.`
     });
-    // --- FIM DA ADIÇÃO ---
 
-    order.isConfirmed = true;
-    console.log(`Pedido ${order.id} confirmado para entrega.`);
+    const orderInList = allScheduledOrders.value.find(o => o.id === order.id);
+    if(orderInList) orderInList.isConfirmed = true;
 
   } catch (err: any) {
     console.error('Erro ao confirmar entrega:', err.message);
-    alert(`Não foi possível confirmar a entrega: ${err.message}`);
   }
 };
 
-const rejectDelivery = async (order: Order, fromDay: DeliveryDay) => {
-  try {
-    const { error } = await supabase
-      .from('production_schedule')
-      .update({ delivery_confirmed_at: null })
-      .eq('order_id', order.id);
+const rejectDelivery = async (order: Order) => {
+    if (!userStore.profile) return;
+    try {
+        await supabase
+            .from('production_schedule')
+            .update({ delivery_confirmed_at: null, actual_delivery_date: null })
+            .eq('order_id', order.id);
 
-    if (error) throw error;
+        await supabase.from('order_logs').insert({
+            order_id: order.id,
+            profile_id: userStore.profile.id,
+            log_type: 'STATUS_CHANGE',
+            description: 'Agendamento de entrega revertido. Pedido retornou para a fila de agendamento.'
+        });
 
-    fromDay.orders = fromDay.orders.filter(o => o.id !== order.id);
-    toBeScheduledOrders.value.unshift({ ...order, isConfirmed: false, delivery_confirmed_at: null });
+        // Manually update local state for immediate feedback
+        const index = allScheduledOrders.value.findIndex(o => o.id === order.id);
+        if (index > -1) {
+            const revertedOrder = allScheduledOrders.value.splice(index, 1)[0];
+            revertedOrder.isConfirmed = false;
+            revertedOrder.actual_delivery_date = null;
+            toBeScheduledOrders.value.push(revertedOrder);
+        }
+        const historyIndex = deliveredOrders.value.findIndex(o => o.id === order.id);
+        if (historyIndex > -1) {
+            deliveredOrders.value.splice(historyIndex, 1);
+        }
 
-    console.log(`Pedido ${order.id} rejeitado. Voltando para a fila.`);
-  } catch(err: any) {
-    console.error('Erro ao rejeitar entrega:', err.message);
-    alert(`Não foi possível rejeitar a entrega: ${err.message}`);
-  }
+    } catch (err: any) {
+        console.error('Erro ao cancelar entrega:', err.message);
+        await fetchScheduledOrders(); // Refetch on error
+    }
 };
 
-// Funções Auxiliares e de UI
 const openDetailModal = (orderId: string) => {
   selectedOrderId.value = orderId;
   showDetailModal.value = true;
 };
 
-const formatDate = (date: Date | undefined, formatString: string) => {
+const formatDate = (date: Date | string | undefined | null, formatString: string) => {
   if (!date) return '';
-  return format(date, formatString, { locale: ptBR });
+  const dateObj = typeof date === 'string' ? parseISO(date) : new Date(date);
+  return format(dateObj, formatString, { locale: ptBR });
 };
 
-// Busca de Dados
 const fetchScheduledOrders = async () => {
   loading.value = true;
-  initializeDeliveryDays();
   try {
     const { data, error } = await supabase
       .from('orders')
-      .select('id, customer_name, quantity_meters, status, production_date, details, production_schedule!inner(delivery_confirmed_at)')
-      .not('production_date', 'is', null)
-      .in('status', ['production_queue', 'in_printing', 'in_cutting', 'completed']);
+      .select('id, customer_name, quantity_meters, status, production_date, details, creator:created_by(full_name), production_schedule!inner(delivery_confirmed_at, actual_delivery_date)')
+      .in('status', ['completed', 'in_printing', 'in_cutting']);
 
     if (error) throw error;
 
     const formattedData = data?.map((order: any) => ({
       ...order,
+      actual_delivery_date: order.production_schedule[0]?.actual_delivery_date,
       delivery_confirmed_at: order.production_schedule[0]?.delivery_confirmed_at,
     })) || [];
 
     processAndDistributeOrders(formattedData as Order[]);
-
   } catch (err: any) {
     console.error('Erro ao buscar pedidos para entrega:', err.message);
   } finally {
@@ -319,7 +474,7 @@ onMounted(fetchScheduledOrders);
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 280px);
   position: relative;
   overflow: hidden;
 
@@ -357,27 +512,38 @@ onMounted(fetchScheduledOrders);
 }
 
 .order-card {
-  cursor: grab;
   position: relative;
   background-color: rgba(45, 45, 55, 0.9);
   transition: all 0.2s ease-in-out;
   border: 1px solid transparent;
 
-  &:hover {
-    transform: translateY(-4px);
-    border-color: rgba(var(--v-theme-primary), 0.5);
+  &.ghost {
+    background-color: transparent;
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+
+  &:not(.ghost) {
+    cursor: grab;
+    &:hover {
+      transform: translateY(-4px);
+      border-color: rgba(var(--v-theme-primary), 0.5);
+    }
+    &:active {
+      cursor: grabbing;
+      transform: scale(0.98);
+    }
   }
 
   &.confirmed {
-    opacity: 0.8;
     background-color: rgba(30, 60, 40, 0.8);
-    .v-card-text {
-      opacity: 0.7;
-    }
+    cursor: default;
   }
-  &:active {
-    cursor: grabbing;
-    transform: scale(0.98);
+
+  &.past-delivery {
+    cursor: default;
+    opacity: 0.7;
   }
 }
 
@@ -390,7 +556,7 @@ onMounted(fetchScheduledOrders);
     margin-bottom: 4px;
 }
 
-.ghost-card {
+.ghost-card-placeholder {
   opacity: 0.5;
   background: rgba(var(--v-theme-primary), 0.2);
   border: 2px dashed rgba(var(--v-theme-primary), 0.5);
@@ -410,7 +576,11 @@ onMounted(fetchScheduledOrders);
   transition: opacity 0.2s ease-in-out;
 }
 
-.order-card:hover .actions-overlay {
+.order-card:not(.past-delivery):not(.ghost):hover .actions-overlay {
+  opacity: 1;
+}
+
+.order-card.past-delivery:not(.ghost):hover .actions-overlay {
   opacity: 1;
 }
 
@@ -422,14 +592,13 @@ onMounted(fetchScheduledOrders);
     opacity: 0.5;
 }
 
-.empty-column {
-  padding: 2rem;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  color: rgba(255, 255, 255, 0.5);
+.history-card {
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+}
+:deep(.v-data-table__wrapper) {
+    background-color: transparent !important;
 }
 </style>

@@ -34,7 +34,7 @@
             </v-list>
           </v-col>
           <v-col cols="12" md="5">
-             <h4 class="text-subtitle-1 font-weight-bold mb-2">Materiais e Arte</h4>
+             <h4 class="text-subtitle-1 font-weight-bold mb-2">Materiais e Anexos</h4>
               <v-list density="compact" bg-color="transparent" lines="two">
                   <v-list-item title="Tecido" :subtitle="order.details.fabric_type"></v-list-item>
                   <v-list-item title="Metragem" :subtitle="`${order.quantity_meters}m`"></v-list-item>
@@ -49,7 +49,22 @@
                             class="pa-0"
                             prepend-icon="mdi-open-in-new"
                          >
-                            Ver / Baixar
+                            Ver / Baixar Arte
+                         </v-btn>
+                      </template>
+                  </v-list-item>
+                  <v-list-item v-if="order.has_down_payment && order.down_payment_proof_url" title="Comprovante de Entrada">
+                      <template #subtitle>
+                         <v-btn
+                            :href="getProofUrl(order.down_payment_proof_url)"
+                            target="_blank"
+                            size="small"
+                            variant="text"
+                            color="amber"
+                            class="pa-0"
+                            prepend-icon="mdi-receipt-text-check"
+                         >
+                            Ver Comprovante
                          </v-btn>
                       </template>
                   </v-list-item>
@@ -104,6 +119,8 @@ type OrderDetails = {
   created_at: string;
   production_date: string | null;
   quantity_meters: number;
+  has_down_payment: boolean; // NOVO
+  down_payment_proof_url: string | null; // NOVO
   details: {
     fabric_type: string;
     stamp_details: string;
@@ -141,6 +158,12 @@ const formatDateSafe = (dateString: string | null | undefined) => {
     }
 }
 
+const getProofUrl = (path: string | null) => {
+    if (!path) return '#';
+    const { data } = supabase.storage.from('proofs').getPublicUrl(path);
+    return data.publicUrl;
+}
+
 const latestChangeComment = computed(() => {
   if (order.value?.order_logs) {
     const latestLog = order.value.order_logs
@@ -158,6 +181,7 @@ const fetchOrder = async (id: string) => {
   try {
     const { data, error: fetchError } = await supabase
       .from('orders')
+      // Adicionado os novos campos na query
       .select(`*, profiles:created_by (full_name), stores (name), order_logs(created_at, description, log_type)`)
       .eq('id', id)
       .single();

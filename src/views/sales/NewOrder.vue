@@ -12,15 +12,35 @@
         <template v-slot:item.1>
           <v-card flat color="transparent">
             <v-card-text>
-              <h3 class="text-h6 font-weight-bold mb-6 text-center">Informações do Cliente</h3>
+              <h3 class="text-h6 font-weight-bold mb-6 text-center">Informações do Cliente e Entrada</h3>
               <v-text-field
                 v-model="order.customer_name"
                 label="Nome do Cliente"
                 variant="outlined"
                 prepend-inner-icon="mdi-account-outline"
                 :rules="[rules.required]"
-                autofocus
+                class="mb-4"
               ></v-text-field>
+
+              <v-select
+                v-model="order.has_down_payment"
+                :items="[{title: 'Sim', value: true}, {title: 'Não', value: false}]"
+                label="Houve Entrada?"
+                variant="outlined"
+                prepend-inner-icon="mdi-cash-multiple"
+                class="mb-4"
+              ></v-select>
+
+              <v-file-input
+                v-if="order.has_down_payment"
+                v-model="order.down_payment_proof_file"
+                label="Comprovante de Entrada"
+                variant="outlined"
+                prepend-icon="mdi-upload"
+                :rules="[rules.requiredFile]"
+                accept="image/*,.pdf"
+              ></v-file-input>
+
             </v-card-text>
           </v-card>
         </template>
@@ -117,7 +137,6 @@ import { ref, onMounted, computed, reactive, watch } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
 
-// --- TIPAGEM ---
 type StockItem = {
   id: string;
   fabric_type: string;
@@ -129,6 +148,8 @@ type Order = {
   stamp_details: string;
   fabric_type: string | null;
   quantity_meters: number | null;
+  has_down_payment: boolean;
+  down_payment_proof_file: File[] | File | null;
 };
 
 type Feedback = {
@@ -136,7 +157,6 @@ type Feedback = {
     type: 'success' | 'error';
 }
 
-// --- ESTADO ---
 const userStore = useUserStore();
 const step = ref(1);
 const stockItems = ref<StockItem[]>([]);
@@ -148,18 +168,25 @@ const order = reactive<Order>({
   stamp_details: '',
   fabric_type: null,
   quantity_meters: null,
+  has_down_payment: false,
+  down_payment_proof_file: null,
 });
 
 const feedback = reactive<Feedback>({ message: '', type: 'success' });
 
 const stepperItems = [
-    { title: 'Cliente', icon: 'mdi-account-outline' },
+    { title: 'Cliente & Entrada', icon: 'mdi-account-cash' },
     { title: 'Estampa', icon: 'mdi-palette-swatch-outline' },
     { title: 'Material', icon: 'mdi-layers-triple-outline' },
 ];
 
 const rules = {
   required: (v: any) => !!v || 'Campo obrigatório.',
+  requiredFile: (v: File | File[] | null) => {
+    if (!v) return 'Arquivo é obrigatório.';
+    if (Array.isArray(v) && v.length === 0) return 'Arquivo é obrigatório.';
+    return true;
+  },
   positive: (v: number) => (v !== null && v > 0) || 'O valor deve ser maior que zero.',
 };
 
@@ -170,7 +197,18 @@ const selectedStockItem = computed(() => {
 
 const isStepValid = computed(() => {
     switch (step.value) {
-        case 1: return !!order.customer_name?.trim();
+        case 1: {
+            let fileIsValid = true;
+            if (order.has_down_payment) {
+                const file = order.down_payment_proof_file;
+                if (!file) {
+                    fileIsValid = false;
+                } else if (Array.isArray(file) && file.length === 0) {
+                    fileIsValid = false;
+                }
+            }
+            return !!order.customer_name?.trim() && fileIsValid;
+        }
         case 2: return !!order.stamp_details?.trim();
         case 3:
             const quantity = order.quantity_meters;
@@ -213,22 +251,58 @@ const showFeedback = (message: string, type: 'success' | 'error') => {
 const submitOrder = async () => {
   if (!isFormValid.value || !userStore.profile) return;
   isSubmitting.value = true;
-
-  const params = {
-    p_customer_name: order.customer_name,
-    p_quantity_meters: order.quantity_meters,
-    p_details: {
-      stamp_details: order.stamp_details,
-      fabric_type: order.fabric_type,
-    },
-    p_store_id: userStore.profile.store_id,
-    p_created_by: userStore.profile.id,
-    p_value: 0, // Envia 0 como valor padrão
-  };
+  let proofUrl: string | null = null;
 
   try {
-    const { error } = await supabase.rpc('create_order_and_update_stock', params);
-    if (error) throw error;
+    if (order.has_down_payment && order.down_payment_proof_file) {
+      const fileToUpload = Array.isArray(order.down_payment_proof_file)
+        ? order.down_payment_proof_file[0]
+        : order.down_payment_proof_file;
+
+      if (fileToUpload) {
+        const fileName = `${Date.now()}-${fileToUpload.name.replace(/\s/g, '_')}`;
+        const { data, error: uploadError } = await supabase.storage
+          .from('proofs')
+          .upload(fileName, fileToUpload);
+
+        if (uploadError) throw uploadError;
+        proofUrl = data.path;
+      }
+    }
+
+    const { error: rpcError } = await supabase.rpc('create_order_and_update_stock', {
+      p_customer_name: order.customer_name,
+      p_quantity_meters: order.quantity_meters,
+      p_details: {
+        stamp_details: order.stamp_details,
+        fabric_type: order.fabric_type,
+      },
+      p_store_id: userStore.profile.store_id,
+      p_created_by: userStore.profile.id,
+      p_value: 0,
+      p_has_down_payment: order.has_down_payment,
+      p_down_payment_proof_url: proofUrl,
+    });
+    if (rpcError) throw rpcError;
+
+    // --- CORREÇÃO: Lógica de notificação movida para cá ---
+    const { data: designers, error: designerError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('role', 'designer');
+
+    if (designerError) throw designerError;
+
+    if (designers && designers.length > 0) {
+      const notifications = designers.map(d => ({
+        recipient_id: d.id,
+        sender_id: userStore.profile?.id,
+        content: `Novo pedido para design: ${order.customer_name}`,
+        redirect_url: '/design'
+      }));
+      await supabase.from('notifications').insert(notifications);
+    }
+    // --- FIM DA CORREÇÃO ---
 
     showFeedback('Pedido enviado para o design com sucesso!', 'success');
     resetForm();
@@ -243,7 +317,14 @@ const submitOrder = async () => {
 };
 
 const resetForm = () => {
-    Object.assign(order, { customer_name: '', stamp_details: '', fabric_type: null, quantity_meters: null });
+    Object.assign(order, {
+        customer_name: '',
+        stamp_details: '',
+        fabric_type: null,
+        quantity_meters: null,
+        has_down_payment: false,
+        down_payment_proof_file: null,
+    });
     step.value = 1;
 }
 
