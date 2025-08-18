@@ -5,6 +5,14 @@
         <v-icon start size="x-large" class="mr-2">mdi-truck-delivery-outline</v-icon>
         Agenda de Entregas
       </v-toolbar-title>
+      <v-spacer></v-spacer>
+      <div class="d-flex align-center">
+        <v-btn icon="mdi-chevron-left" variant="text" @click="previousWeek"></v-btn>
+        <div class="week-indicator mx-2 text-center" style="min-width: 180px;">
+          <div class="font-weight-bold">{{ weekRangeText }}</div>
+        </div>
+        <v-btn icon="mdi-chevron-right" variant="text" @click="nextWeek"></v-btn>
+      </div>
     </v-toolbar>
 
     <div v-if="loading" class="text-center py-16">
@@ -19,11 +27,11 @@
             <v-icon class="header-icon">mdi-clipboard-clock-outline</v-icon>
             <div>
               <h3 class="column-title text-h6">Aguardando Envio</h3>
-              <p class="text-caption text-grey">{{ toBeScheduledOrders.length }} pedido(s) pronto(s)</p>
+              <p class="text-caption text-grey">{{ toBeScheduledOrders.length }} pedido(s)</p>
             </div>
           </div>
           <draggable
-            v-model="toBeScheduledOrders"
+            :list="toBeScheduledOrders"
             group="orders"
             item-key="id"
             class="column-content pa-3"
@@ -32,7 +40,7 @@
             data-status="to-be-scheduled"
           >
             <template #item="{ element: order }">
-              <v-card class="order-card mb-4" elevation="4" @click="openDetailModal(order.id)" :data-id="order.id">
+               <v-card class="order-card mb-4" elevation="4" @click="openDetailModal(order.id)" :data-id="order.id">
                 <v-card-text>
                   <div class="d-flex align-center justify-space-between mb-2">
                     <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
@@ -53,7 +61,7 @@
           </draggable>
         </div>
 
-        <div v-for="day in deliveryDays" :key="day.date.toISOString()" class="delivery-column">
+        <div v-for="day in weekDeliveryDays" :key="day.date.toISOString()" class="delivery-column">
           <div class="column-header">
             <v-icon class="header-icon">mdi-calendar-blank-outline</v-icon>
             <div>
@@ -62,17 +70,19 @@
             </div>
           </div>
           <draggable
-            v-model="day.orders"
+            :list="day.orders"
             group="orders"
             item-key="id"
             class="column-content pa-3"
             :data-date="day.date.toISOString().split('T')[0]"
             ghost-class="ghost-card"
-             @end="onDragEnd"
+            @end="onDragEnd"
+            :disabled="isPast(day.date)"
           >
             <template #item="{ element: order }">
-              <v-card class="order-card mb-4" elevation="4" :class="{ 'confirmed': order.isConfirmed }" @click="openDetailModal(order.id)" :data-id="order.id">
+               <v-card class="order-card mb-4" elevation="4" :class="{ 'confirmed': order.isConfirmed, 'past-delivery': isPast(day.date) }" @click="openDetailModal(order.id)" :data-id="order.id">
                   <v-icon v-if="order.isConfirmed" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
+                  <v-icon v-if="isPast(day.date)" class="confirmed-icon" style="opacity: 0.6">mdi-lock</v-icon>
                   <v-card-text>
                       <div class="d-flex align-center justify-space-between mb-2">
                           <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
@@ -82,7 +92,7 @@
                       <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
                   </v-card-text>
                 <v-fade-transition>
-                  <v-card-actions class="actions-overlay">
+                  <v-card-actions class="actions-overlay" v-if="!isPast(day.date)">
                     <v-tooltip text="Cancelar Agendamento" location="top">
                         <template v-slot:activator="{ props }">
                             <v-btn v-bind="props" icon="mdi-close" color="red" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
@@ -92,6 +102,13 @@
                       <template v-slot:activator="{ props }">
                         <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click.stop="confirmDelivery(order)"></v-btn>
                       </template>
+                    </v-tooltip>
+                  </v-card-actions>
+                  <v-card-actions class="actions-overlay" v-else-if="userStore.isAdmin && order.isConfirmed">
+                     <v-tooltip text="Reverter Entrega (Admin)" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn v-bind="props" icon="mdi-undo-variant" color="warning" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
+                        </template>
                     </v-tooltip>
                   </v-card-actions>
                 </v-fade-transition>
@@ -105,7 +122,7 @@
         <v-toolbar color="transparent">
           <v-toolbar-title class="font-weight-bold">
             <v-icon start>mdi-history</v-icon>
-            Histórico de Entregas Recentes
+            Histórico de Entregas Recentes (Últimos 30 dias)
           </v-toolbar-title>
         </v-toolbar>
         <v-data-table
@@ -143,14 +160,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import draggable from 'vuedraggable';
 import { useUserStore } from '@/stores/user';
 import {
-  format, addDays, startOfToday, getDay, nextTuesday,
-  nextThursday, nextSaturday, isSameDay, parseISO, isAfter, isBefore
+  format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -169,20 +185,15 @@ type Order = {
   creator: { full_name: string; } | null;
 };
 
-type DeliveryDay = {
-  name: string;
-  date: Date;
-  orders: Order[];
-};
-
 // Estado
 const userStore = useUserStore();
 const loading = ref(true);
 const showDetailModal = ref(false);
 const selectedOrderId = ref<string | null>(null);
+const allScheduledOrders = ref<Order[]>([]);
 const toBeScheduledOrders = ref<Order[]>([]);
-const deliveryDays = reactive<DeliveryDay[]>([]);
 const deliveredOrders = ref<Order[]>([]);
+const currentDeliveryWeekStart = ref(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
 const historyHeaders = [
   { title: 'Cliente', key: 'customer_name' },
@@ -192,33 +203,44 @@ const historyHeaders = [
   { title: 'Vendedor', key: 'creator.full_name' },
 ];
 
-// Lógica de Datas
-const today = startOfToday();
-const getNextDeliveryDay = (date: Date, dayOfWeek: number) => {
-  let result;
-  if (dayOfWeek === 2) result = nextTuesday(date);
-  else if (dayOfWeek === 4) result = nextThursday(date);
-  else result = nextSaturday(date);
+// Lógica de Datas e Navegação
+const isPast = (date: Date): boolean => isBefore(date, startOfToday());
+const nextWeek = () => { currentDeliveryWeekStart.value = addDays(currentDeliveryWeekStart.value, 7); };
+const previousWeek = () => { currentDeliveryWeekStart.value = subDays(currentDeliveryWeekStart.value, 7); };
 
-  if (getDay(date) === dayOfWeek && isAfter(date, addDays(today, -1))) {
-    result = date;
-  }
-  return result;
-};
+const weekRangeText = computed(() => {
+    const start = currentDeliveryWeekStart.value;
+    const end = endOfWeek(start, { weekStartsOn: 1 });
+    return `${format(start, 'dd MMM', { locale: ptBR })} - ${format(end, 'dd MMM', { locale: ptBR })}`;
+});
 
-const initializeDeliveryDays = () => {
-  const days = [
-    { name: 'Terça-feira', date: getNextDeliveryDay(addDays(today, -1), 2), orders: [] },
-    { name: 'Quinta-feira', date: getNextDeliveryDay(addDays(today, -1), 4), orders: [] },
-    { name: 'Sábado', date: getNextDeliveryDay(addDays(today, -1), 6), orders: [] },
-  ].sort((a, b) => a.date.getTime() - b.date.getTime());
-  deliveryDays.splice(0, deliveryDays.length, ...days);
-};
+const weekDeliveryDays = computed(() => {
+    const weekStart = currentDeliveryWeekStart.value;
+    const daysOfWeekToDisplay = [
+        { name: 'Terça-feira', dayOfWeek: 2 },
+        { name: 'Quinta-feira', dayOfWeek: 4 },
+        { name: 'Sábado', dayOfWeek: 6 },
+    ];
 
-// **CORREÇÃO PRINCIPAL #1: Lógica de cálculo de data foi ajustada**
-const calculateInitialDeliveryDate = (completionDate: Date) => {
-    let deliveryDate = new Date(completionDate);
-    const deliveryDaysOfWeek = [2, 4, 6]; // Terça, Quinta, Sábado
+    return daysOfWeekToDisplay.map(dayInfo => {
+        let currentDateInWeek = weekStart;
+        while (getDay(currentDateInWeek) !== dayInfo.dayOfWeek) {
+            currentDateInWeek = addDays(currentDateInWeek, 1);
+        }
+        return {
+            name: dayInfo.name,
+            date: currentDateInWeek,
+            orders: allScheduledOrders.value.filter(order =>
+                order.actual_delivery_date && isSameDay(order.actual_delivery_date, currentDateInWeek)
+            )
+        };
+    });
+});
+
+
+const calculateInitialDeliveryDate = (completionDate: Date): Date => {
+    let deliveryDate = addDays(new Date(completionDate), 1);
+    const deliveryDaysOfWeek = [2, 4, 6];
     while (!deliveryDaysOfWeek.includes(getDay(deliveryDate))) {
         deliveryDate = addDays(deliveryDate, 1);
     }
@@ -227,74 +249,62 @@ const calculateInitialDeliveryDate = (completionDate: Date) => {
 
 // Funções de Manipulação de Pedidos
 const processAndDistributeOrders = (orders: Order[]) => {
-  const readyForScheduling: Order[] = [];
+  const scheduled: Order[] = [];
+  const notScheduled: Order[] = [];
   const history: Order[] = [];
-  deliveryDays.forEach(day => day.orders = []);
+  const thirtyDaysAgo = subDays(startOfToday(), 30);
 
   orders.forEach(order => {
-    // **CORREÇÃO PRINCIPAL #2: Prioriza a data salva no banco, se existir**
-    const productionStartDate = parseISO(order.production_date);
-    order.completion_date = addDays(productionStartDate, 3); // Data de conclusão é sempre 3 dias após a produção
+    order.completion_date = addDays(parseISO(order.production_date), 3);
     order.isConfirmed = !!order.delivery_confirmed_at;
 
-    // Se uma data de entrega JÁ FOI SALVA, use-a. Senão, calcule a data inicial.
     const deliveryDate = order.actual_delivery_date
       ? parseISO(order.actual_delivery_date as any)
       : calculateInitialDeliveryDate(order.completion_date);
-
     order.actual_delivery_date = deliveryDate;
 
-    // Lógica para histórico de entregas
-    if (order.isConfirmed && isBefore(deliveryDate, today)) {
+    if (order.isConfirmed && isBefore(deliveryDate, thirtyDaysAgo)) {
+        // Ignora histórico muito antigo para a lista principal
+    } else if (order.isConfirmed) {
         history.push(order);
-        return;
     }
 
-    // Distribui o pedido na coluna correta ou na lista de espera
-    const targetDay = deliveryDays.find(d => isSameDay(d.date, deliveryDate));
-    if (targetDay) {
-        targetDay.orders.push(order);
+    if (order.actual_delivery_date) {
+        scheduled.push(order);
     } else {
-        readyForScheduling.push(order);
+        notScheduled.push(order);
     }
   });
-  toBeScheduledOrders.value = readyForScheduling;
-  deliveredOrders.value = history.sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
+
+  allScheduledOrders.value = scheduled;
+  toBeScheduledOrders.value = notScheduled;
+  deliveredOrders.value = history.filter(o => isBefore(o.actual_delivery_date!, startOfToday())).sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 };
 
-// **CORREÇÃO PRINCIPAL #3: Função onDragEnd agora salva no banco**
 const onDragEnd = async (event: any) => {
     const { item, to } = event;
     const orderId = item.dataset.id;
-    const newDateStr = to.dataset.date; // A data vem no formato 'YYYY-MM-DD'
+    const newDateStr = to.dataset.date;
+    const toStatus = to.dataset.status;
 
-    if (!orderId || !newDateStr || !userStore.profile) return;
+    if (!orderId) return;
 
-    // Encontra o pedido no estado local para atualizar a data visualmente
-    let orderToUpdate: Order | undefined;
-    const fromDay = deliveryDays.find(d => d.orders.some(o => o.id === orderId));
-    if (fromDay) {
-        orderToUpdate = fromDay.orders.find(o => o.id === orderId);
-    } else {
-        orderToUpdate = toBeScheduledOrders.value.find(o => o.id === orderId);
+    let newDate: string | null = null;
+    if (toStatus !== 'to-be-scheduled' && newDateStr) {
+        newDate = newDateStr;
     }
 
-    if (orderToUpdate) {
-        orderToUpdate.actual_delivery_date = parseISO(newDateStr);
-    }
-
-    // Chama a nova função no Supabase para persistir a alteração
     try {
         const { error } = await supabase.rpc('reagendar_entrega', {
             p_order_id: orderId,
-            p_new_delivery_date: newDateStr,
-            p_profile_id: userStore.profile.id
+            p_new_delivery_date: newDate,
+            p_profile_id: userStore.profile!.id
         });
         if (error) throw error;
     } catch (err: any) {
         console.error('Erro ao reagendar entrega:', err.message);
-        // Idealmente, reverter a alteração visual aqui se a chamada falhar
-        await fetchScheduledOrders(); // Recarrega os dados para garantir consistência
+    } finally {
+        await fetchScheduledOrders();
     }
 }
 
@@ -315,11 +325,8 @@ const confirmDelivery = async (order: Order) => {
         description: `Entrega confirmada para ${deliveryDateFormatted}.`
     });
 
-    const day = deliveryDays.find(d => d.orders.some(o => o.id === order.id));
-    if (day) {
-        const orderInDay = day.orders.find(o => o.id === order.id);
-        if(orderInDay) orderInDay.isConfirmed = true;
-    }
+    const orderInList = allScheduledOrders.value.find(o => o.id === order.id);
+    if(orderInList) orderInList.isConfirmed = true;
 
   } catch (err: any) {
     console.error('Erro ao confirmar entrega:', err.message);
@@ -331,27 +338,17 @@ const rejectDelivery = async (order: Order) => {
     try {
         await supabase
             .from('production_schedule')
-            .update({ delivery_confirmed_at: null, actual_delivery_date: null }) // Limpa a data agendada
+            .update({ delivery_confirmed_at: null, actual_delivery_date: null })
             .eq('order_id', order.id);
 
         await supabase.from('order_logs').insert({
             order_id: order.id,
             profile_id: userStore.profile.id,
             log_type: 'STATUS_CHANGE',
-            description: 'Agendamento de entrega cancelado. Pedido retornou para a fila de agendamento.'
+            description: 'Agendamento de entrega revertido. Pedido retornou para a fila de agendamento.'
         });
 
-        // Atualização visual imediata
-        const day = deliveryDays.find(d => d.orders.some(o => o.id === order.id));
-        if (day) {
-            const index = day.orders.findIndex(o => o.id === order.id);
-            if (index > -1) {
-                const [movedOrder] = day.orders.splice(index, 1);
-                movedOrder.isConfirmed = false;
-                movedOrder.actual_delivery_date = null; // Reseta a data
-                toBeScheduledOrders.value.push(movedOrder);
-            }
-        }
+        await fetchScheduledOrders();
     } catch (err: any) {
         console.error('Erro ao cancelar entrega:', err.message);
     }
@@ -364,14 +361,12 @@ const openDetailModal = (orderId: string) => {
 
 const formatDate = (date: Date | string | undefined | null, formatString: string) => {
   if (!date) return '';
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
+  const dateObj = typeof date === 'string' ? parseISO(date) : new Date(date);
   return format(dateObj, formatString, { locale: ptBR });
 };
 
-// **CORREÇÃO PRINCIPAL #4: Query ajustada para buscar a data salva**
 const fetchScheduledOrders = async () => {
   loading.value = true;
-  initializeDeliveryDays();
   try {
     const { data, error } = await supabase
       .from('orders')
@@ -387,7 +382,6 @@ const fetchScheduledOrders = async () => {
     })) || [];
 
     processAndDistributeOrders(formattedData as Order[]);
-
   } catch (err: any) {
     console.error('Erro ao buscar pedidos para entrega:', err.message);
   } finally {
@@ -423,7 +417,7 @@ onMounted(fetchScheduledOrders);
   display: flex;
   flex-direction: column;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 280px);
   position: relative;
   overflow: hidden;
 
@@ -473,12 +467,14 @@ onMounted(fetchScheduledOrders);
   }
 
   &.confirmed {
-    opacity: 0.8;
     background-color: rgba(30, 60, 40, 0.8);
-    .v-card-text {
-      opacity: 0.7;
-    }
   }
+
+  &.past-delivery {
+    cursor: default;
+    opacity: 0.7;
+  }
+
   &:active {
     cursor: grabbing;
     transform: scale(0.98);
@@ -514,9 +510,13 @@ onMounted(fetchScheduledOrders);
   transition: opacity 0.2s ease-in-out;
 }
 
-.order-card:hover .actions-overlay {
+.order-card:not(.past-delivery):hover .actions-overlay {
   opacity: 1;
 }
+.order-card.past-delivery:hover .actions-overlay {
+  opacity: 1;
+}
+
 
 .confirmed-icon {
     position: absolute;
@@ -526,16 +526,6 @@ onMounted(fetchScheduledOrders);
     opacity: 0.5;
 }
 
-.empty-column {
-  padding: 2rem;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  color: rgba(255, 255, 255, 0.5);
-}
 .history-card {
   backdrop-filter: blur(15px);
   -webkit-backdrop-filter: blur(15px);
