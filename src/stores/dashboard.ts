@@ -50,6 +50,11 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   getters: {
+    // NOVO GETTER ADICIONADO PARA CORRIGIR O CÁLCULO
+    totalMetersAllTime(state): number {
+      return state.orders.reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
+    },
+
     ordersInProductionQueue: (state) => {
         const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
         return state.orders.filter(o => productionStatuses.includes(o.status));
