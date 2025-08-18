@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
 
-// Tipo de Pedido atualizado para incluir os detalhes do tecido
+// Tipo de Pedido atualizado para incluir os novos campos
 export type Order = {
   id: string;
   status: string;
@@ -9,17 +9,22 @@ export type Order = {
   created_at: string;
   created_by: string;
   customer_name: string;
+  has_down_payment: boolean; // NOVO
+  down_payment_proof_url: string | null; // NOVO
   details: {
     fabric_type: string;
-    [key: string]: any; // Permite outras propriedades nos detalhes
+    [key: string]: any;
   };
   stores: {
     name: string;
   } | null;
-  profiles: { // Adicionado para obter o nome de quem criou
+  profiles: { // Renomeado para 'creator' em alguns lugares para clareza
     full_name: string;
   } | null;
-  updated_at: string; // Adicionado para lógica de conclusão
+  creator?: { // Adicionado para consistência
+      full_name: string;
+  };
+  updated_at: string;
 };
 
 export type Task = {
@@ -30,7 +35,6 @@ export type Task = {
   user_id: string;
 };
 
-// Mapa de tecidos para máquinas, centralizado aqui
 const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
   'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA',
   'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA'
@@ -50,11 +54,9 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   getters: {
-    // NOVO GETTER ADICIONADO PARA CORRIGIR O CÁLCULO
     totalMetersAllTime(state): number {
       return state.orders.reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
     },
-
     ordersInProductionQueue: (state) => {
         const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
         return state.orders.filter(o => productionStatuses.includes(o.status));
@@ -69,7 +71,6 @@ export const useDashboardStore = defineStore('dashboard', {
     ordersPendingApprovalCount(): number {
         return this.ordersPendingApproval.length;
     },
-    // **NOVO GETTER: SOMA A METRAGEM DOS PEDIDOS PENDENTES**
     totalMetersPendingApproval(): number {
         return this.ordersPendingApproval.reduce((sum, order) => sum + order.quantity_meters, 0);
     },
@@ -98,7 +99,6 @@ export const useDashboardStore = defineStore('dashboard', {
             .filter(o => getMachineTypeForFabric(o.details.fabric_type) === 'CORRIDA')
             .reduce((sum, order) => sum + order.quantity_meters, 0);
     },
-
     pendingTasks: (state) => (userId: string) => {
         return state.tasks.filter(t => t.user_id === userId && !t.is_completed);
     },
@@ -116,7 +116,7 @@ export const useDashboardStore = defineStore('dashboard', {
         if (!user) throw new Error('Usuário não autenticado.');
 
         const [ordersResponse, tasksResponse] = await Promise.all([
-          supabase.from('orders').select('*, stores(name), profiles:created_by(full_name)'),
+          supabase.from('orders').select('*, stores(name), creator:created_by(full_name)'),
           supabase.from('tasks').select('*'),
         ]);
 
