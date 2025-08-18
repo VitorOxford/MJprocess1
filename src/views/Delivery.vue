@@ -149,8 +149,8 @@ import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import draggable from 'vuedraggable';
 import { useUserStore } from '@/stores/user';
 import {
-  format, addDays, startOfToday, getDay, nextTuesday,
-  nextThursday, nextSaturday, isSameDay, parseISO, isAfter, isBefore
+  format, addDays, startOfToday, getDay,
+  isSameDay, parseISO, isBefore
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -193,31 +193,32 @@ const historyHeaders = [
 ];
 
 // Lógica de Datas
-const today = startOfToday();
-const getNextDeliveryDay = (date: Date, dayOfWeek: number) => {
-  let result;
-  if (dayOfWeek === 2) result = nextTuesday(date);
-  else if (dayOfWeek === 4) result = nextThursday(date);
-  else result = nextSaturday(date);
-
-  if (getDay(date) === dayOfWeek && isAfter(date, addDays(today, -1))) {
-    result = date;
-  }
-  return result;
-};
-
 const initializeDeliveryDays = () => {
-  const days = [
-    { name: 'Terça-feira', date: getNextDeliveryDay(addDays(today, -1), 2), orders: [] },
-    { name: 'Quinta-feira', date: getNextDeliveryDay(addDays(today, -1), 4), orders: [] },
-    { name: 'Sábado', date: getNextDeliveryDay(addDays(today, -1), 6), orders: [] },
-  ].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const today = startOfToday();
+  const days: DeliveryDay[] = [];
+  let currentDate = today;
+
+  // CORREÇÃO: Gera as próximas 6 datas de entrega para cobrir 2 semanas
+  while (days.length < 6) {
+    const dayOfWeek = getDay(currentDate);
+    if (dayOfWeek === 2 || dayOfWeek === 4 || dayOfWeek === 6) { // Terça, Quinta, Sábado
+        if (!days.some(d => isSameDay(d.date, currentDate))) {
+             days.push({
+                name: format(currentDate, 'EEEE', { locale: ptBR }),
+                date: currentDate,
+                orders: [],
+            });
+        }
+    }
+    currentDate = addDays(currentDate, 1);
+  }
+
   deliveryDays.splice(0, deliveryDays.length, ...days);
 };
 
-// **CORREÇÃO PRINCIPAL #1: Lógica de cálculo de data foi ajustada**
+// CORREÇÃO: Inicia a busca pelo dia seguinte à finalização
 const calculateInitialDeliveryDate = (completionDate: Date) => {
-    let deliveryDate = new Date(completionDate);
+    let deliveryDate = addDays(new Date(completionDate), 1);
     const deliveryDaysOfWeek = [2, 4, 6]; // Terça, Quinta, Sábado
     while (!deliveryDaysOfWeek.includes(getDay(deliveryDate))) {
         deliveryDate = addDays(deliveryDate, 1);
@@ -230,27 +231,23 @@ const processAndDistributeOrders = (orders: Order[]) => {
   const readyForScheduling: Order[] = [];
   const history: Order[] = [];
   deliveryDays.forEach(day => day.orders = []);
+  const today = startOfToday();
 
   orders.forEach(order => {
-    // **CORREÇÃO PRINCIPAL #2: Prioriza a data salva no banco, se existir**
     const productionStartDate = parseISO(order.production_date);
-    order.completion_date = addDays(productionStartDate, 3); // Data de conclusão é sempre 3 dias após a produção
+    order.completion_date = addDays(productionStartDate, 3);
     order.isConfirmed = !!order.delivery_confirmed_at;
 
-    // Se uma data de entrega JÁ FOI SALVA, use-a. Senão, calcule a data inicial.
     const deliveryDate = order.actual_delivery_date
       ? parseISO(order.actual_delivery_date as any)
       : calculateInitialDeliveryDate(order.completion_date);
-
     order.actual_delivery_date = deliveryDate;
 
-    // Lógica para histórico de entregas
     if (order.isConfirmed && isBefore(deliveryDate, today)) {
         history.push(order);
         return;
     }
 
-    // Distribui o pedido na coluna correta ou na lista de espera
     const targetDay = deliveryDays.find(d => isSameDay(d.date, deliveryDate));
     if (targetDay) {
         targetDay.orders.push(order);
@@ -262,15 +259,13 @@ const processAndDistributeOrders = (orders: Order[]) => {
   deliveredOrders.value = history.sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 };
 
-// **CORREÇÃO PRINCIPAL #3: Função onDragEnd agora salva no banco**
 const onDragEnd = async (event: any) => {
     const { item, to } = event;
     const orderId = item.dataset.id;
-    const newDateStr = to.dataset.date; // A data vem no formato 'YYYY-MM-DD'
+    const newDateStr = to.dataset.date;
 
     if (!orderId || !newDateStr || !userStore.profile) return;
 
-    // Encontra o pedido no estado local para atualizar a data visualmente
     let orderToUpdate: Order | undefined;
     const fromDay = deliveryDays.find(d => d.orders.some(o => o.id === orderId));
     if (fromDay) {
@@ -283,7 +278,6 @@ const onDragEnd = async (event: any) => {
         orderToUpdate.actual_delivery_date = parseISO(newDateStr);
     }
 
-    // Chama a nova função no Supabase para persistir a alteração
     try {
         const { error } = await supabase.rpc('reagendar_entrega', {
             p_order_id: orderId,
@@ -293,8 +287,7 @@ const onDragEnd = async (event: any) => {
         if (error) throw error;
     } catch (err: any) {
         console.error('Erro ao reagendar entrega:', err.message);
-        // Idealmente, reverter a alteração visual aqui se a chamada falhar
-        await fetchScheduledOrders(); // Recarrega os dados para garantir consistência
+        await fetchScheduledOrders();
     }
 }
 
@@ -320,7 +313,6 @@ const confirmDelivery = async (order: Order) => {
         const orderInDay = day.orders.find(o => o.id === order.id);
         if(orderInDay) orderInDay.isConfirmed = true;
     }
-
   } catch (err: any) {
     console.error('Erro ao confirmar entrega:', err.message);
   }
@@ -331,7 +323,7 @@ const rejectDelivery = async (order: Order) => {
     try {
         await supabase
             .from('production_schedule')
-            .update({ delivery_confirmed_at: null, actual_delivery_date: null }) // Limpa a data agendada
+            .update({ delivery_confirmed_at: null, actual_delivery_date: null })
             .eq('order_id', order.id);
 
         await supabase.from('order_logs').insert({
@@ -341,14 +333,13 @@ const rejectDelivery = async (order: Order) => {
             description: 'Agendamento de entrega cancelado. Pedido retornou para a fila de agendamento.'
         });
 
-        // Atualização visual imediata
         const day = deliveryDays.find(d => d.orders.some(o => o.id === order.id));
         if (day) {
             const index = day.orders.findIndex(o => o.id === order.id);
             if (index > -1) {
                 const [movedOrder] = day.orders.splice(index, 1);
                 movedOrder.isConfirmed = false;
-                movedOrder.actual_delivery_date = null; // Reseta a data
+                movedOrder.actual_delivery_date = null;
                 toBeScheduledOrders.value.push(movedOrder);
             }
         }
@@ -368,7 +359,6 @@ const formatDate = (date: Date | string | undefined | null, formatString: string
   return format(dateObj, formatString, { locale: ptBR });
 };
 
-// **CORREÇÃO PRINCIPAL #4: Query ajustada para buscar a data salva**
 const fetchScheduledOrders = async () => {
   loading.value = true;
   initializeDeliveryDays();
@@ -405,12 +395,9 @@ onMounted(fetchScheduledOrders);
 
 .delivery-board {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 1.25rem;
 
-  @media (max-width: 1280px) {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  }
    @media (max-width: 600px) {
     grid-template-columns: 1fr;
   }
