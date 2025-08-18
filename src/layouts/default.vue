@@ -7,8 +7,8 @@
       <div class="particles-overlay"></div>
     </div>
 
-    <audio ref="notificationSound" src="https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/sounds/notification.mp3" preload="auto"></audio>
-    <audio ref="messageSound" src="https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/sounds/message.mp3" preload="auto"></audio>
+    <audio ref="notificationSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
+    <audio ref="messageSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
 
     <v-app-bar v-if="isMobile" app color="rgba(20, 20, 25, 0.7)" density="compact" class="glassmorphism-app-bar">
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
