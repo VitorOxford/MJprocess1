@@ -80,15 +80,16 @@
         <v-window v-model="tab">
           <v-window-item value="all">
             <v-data-table-virtual :headers="headers" :items="activeOrders" class="bg-transparent" hover height="450">
-              <template v-slot:item="{ item }">
-                <tr class="table-row" @click="selectedOrder = item; showDetailModal = true">
-                  <td>{{ item.customer_name }}</td>
-                  <td>{{ item.stores?.name || 'N/A' }}</td>
-                  <td>{{ formatDate(item.created_at) }}</td>
-                  <td><v-chip size="small" :color="statusColorMap[item.status]" label>{{ statusDisplayMap[item.status] }}</v-chip></td>
-                </tr>
-              </template>
-            </v-data-table-virtual>
+  <template v-slot:item="{ item }">
+    <tr class="table-row" @click="selectedOrder = item; showDetailModal = true">
+      <td>{{ item.customer_name }}</td>
+      <td>{{ item.stores?.name || 'N/A' }}</td>
+      <td class="text-end">{{ item.quantity_meters }}m</td>
+      <td>{{ formatDate(item.created_at) }}</td>
+      <td><v-chip size="small" :color="statusColorMap[item.status]" label>{{ statusDisplayMap[item.status] }}</v-chip></td>
+    </tr>
+  </template>
+</v-data-table-virtual>
           </v-window-item>
           <v-window-item value="design">
              <v-data-table-virtual :headers="headers" :items="designFilteredOrders" class="bg-transparent" hover height="450">
@@ -185,9 +186,11 @@ const {
   ordersPendingApproval
 } = storeToRefs(dashboardStore);
 
+// --- CORREÇÃO APLICADA AQUI ---
 const headers = [
   { title: 'Cliente', key: 'customer_name' },
   { title: 'Loja', key: 'stores.name' },
+  { title: 'Metragem', key: 'quantity_meters', align: 'end' }, // <-- COLUNA ADICIONADA
   { title: 'Lançamento', key: 'created_at' },
   { title: 'Status', key: 'status' },
 ];
@@ -199,15 +202,31 @@ const downPaymentHeaders = [
     { title: 'Comprovante', key: 'down_payment_proof_url', sortable: false, align: 'center' },
 ];
 
+// --- CORREÇÃO APLICADA AQUI ---
 const statusDisplayMap: Record<string, string> = {
-    design_pending: 'Aguardando Design', in_design: 'Em Design', changes_requested: 'Em Alteração',
-    finalizing: 'Finalizando', customer_approval: 'Aprovação Pendente', production_queue: 'Na Fila',
-    in_printing: 'Impressão', in_cutting: 'Corte', completed: 'Finalizado'
+    design_pending: 'Aguardando Design',
+    in_design: 'Em Design',
+    changes_requested: 'Em Alteração',
+    finalizing: 'Finalizando',
+    customer_approval: 'Aprovação Pendente',
+    production_queue: 'Na Fila',
+    in_printing: 'Impressão',
+    in_cutting: 'Corte',
+    completed: 'Finalizado',
+    pending_stock: 'Aguardando Matéria-Prima' // <-- STATUS ADICIONADO
 };
+
 const statusColorMap: Record<string, string> = {
-    design_pending: 'blue-grey', in_design: 'blue', changes_requested: 'red',
-    finalizing: 'purple', customer_approval: 'orange', production_queue: 'grey',
-    in_printing: 'blue', in_cutting: 'orange', completed: 'green'
+    design_pending: 'blue-grey',
+    in_design: 'blue',
+    changes_requested: 'red',
+    finalizing: 'purple',
+    customer_approval: 'orange',
+    production_queue: 'grey',
+    in_printing: 'blue',
+    in_cutting: 'orange',
+    completed: 'green',
+    pending_stock: 'error' // <-- COR DO STATUS ADICIONADA
 };
 
 const activeOrders = computed(() => {
@@ -222,7 +241,7 @@ const designFilteredOrders = computed(() => {
 });
 
 const productionFilteredOrders = computed(() => {
-    const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
+    const productionStatuses = ['production_queue', 'in_printing', 'in_cutting', 'pending_stock']; // Adicionado pending_stock aqui também
     return activeOrders.value.filter(o => productionStatuses.includes(o.status));
 });
 
