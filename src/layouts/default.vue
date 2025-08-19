@@ -8,13 +8,24 @@
     </div>
 
     <audio ref="notificationSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
-    <audio ref="messageSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
+
+    <transition name="toast-slide">
+      <div v-if="showToast" :key="toastKey" class="custom-toast" :style="toastStyle">
+        <div class="toast-content">
+          <v-icon :color="toastContent.color" class="mr-4 toast-icon">{{ toastContent.icon }}</v-icon>
+          <div class="toast-text">
+            <strong>{{ toastContent.title }}</strong>
+            <div>{{ toastContent.message }}</div>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <v-app-bar v-if="isMobile" app color="rgba(20, 20, 25, 0.7)" density="compact" class="glassmorphism-app-bar">
       <v-app-bar-nav-icon @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
       <v-toolbar-title class="app-bar-title">
          <router-link :to="{ name: 'Home' }">
-            <v-img src="@/assets/logo.png" max-height="80" contain></v-img>
+            <v-img src="@/assets/logo.png" max-height="50" contain></v-img>
          </router-link>
       </v-toolbar-title>
     </v-app-bar>
@@ -45,17 +56,7 @@
           @mouseenter="(event) => toggleHoverEffect(event, true, item.value)"
           @mouseleave="(event) => toggleHoverEffect(event, false, item.value)"
         >
-          <template v-slot:title>
-            <span v-if="item.value === 'approvals' && ordersPendingApproval > 0" class="animated-title">
-              <span class="default-text">Aprovar Pedidos</span>
-              <span class="animated-text">
-                {{ ordersPendingApproval }} Aprovaç{{ ordersPendingApproval > 1 ? 'ões' : 'ão' }} Penden{{ ordersPendingApproval > 1 ? 'tes' : 'te' }}!
-              </span>
-            </span>
-            <span v-else>
-              {{ item.title }}
-            </span>
-          </template>
+          <v-list-item-title> {{ item.title }} </v-list-item-title>
         </v-list-item>
       </v-list>
 
@@ -64,9 +65,10 @@
           <v-btn v-if="isAdmin" :to="{ name: 'Admin' }" icon variant="text" title="Painel Admin">
             <v-icon>mdi-security</v-icon>
           </v-btn>
-          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat">
+          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat" disabled>
             <v-icon>mdi-forum-outline</v-icon>
           </v-btn>
+
           <v-menu
             v-model="notificationMenu"
             :close-on-content-click="false"
@@ -81,48 +83,44 @@
                 </v-badge>
               </v-btn>
             </template>
-            <v-card class="glassmorphism-card notifications-panel" min-width="350">
-              <v-card-title class="pa-3 dialog-header">
-                <v-icon start>mdi-bell-ring</v-icon>
-                Notificações
+
+            <v-card class="notifications-panel glassmorphism-card-dialog">
+              <v-toolbar color="transparent" density="compact">
+                <v-toolbar-title class="font-weight-bold">Notificações</v-toolbar-title>
                 <v-spacer></v-spacer>
-                <v-btn v-if="hasReadNotifications" size="small" variant="tonal" @click="clearReadNotifications">Limpar</v-btn>
-              </v-card-title>
+                <v-btn v-if="notifications.length > 0" size="small" variant="text" @click="clearAllNotifications">Limpar Tudo</v-btn>
+              </v-toolbar>
+
               <div class="notification-list-scroll">
-                <div v-if="notifications.length === 0" class="text-center text-grey pa-8">
+                <div v-if="notifications.length === 0" class="empty-notifications">
                   <v-icon size="48" class="mb-2">mdi-check-all</v-icon>
-                  <p>Você não tem novas notificações.</p>
+                  <p>Nenhuma notificação nova.</p>
                 </div>
-                <template v-else>
-                  <v-list class="bg-transparent py-0">
-                    <v-list-subheader class="font-weight-bold">Recentes</v-list-subheader>
-                    <v-list-item
-                      v-for="notification in recentNotifications"
-                      :key="notification.id"
-                      @click="handleNotificationClick(notification)"
-                      :class="{ 'notification-read': notification.is_read }"
-                      class="notification-item"
-                      :active="!notification.is_read"
-                    >
-                      <v-list-item-title class="text-wrap">{{ notification.content }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ formatDistance(notification.created_at) }} atrás</v-list-item-subtitle>
-                    </v-list-item>
-                  </v-list>
-                  <v-divider></v-divider>
-                  <v-list class="bg-transparent py-0" v-if="olderNotifications.length > 0">
-                    <v-list-subheader class="font-weight-bold">Anteriores</v-list-subheader>
-                    <v-list-item
-                      v-for="notification in olderNotifications"
-                      :key="notification.id"
-                      @click="handleNotificationClick(notification)"
-                      :class="{ 'notification-read': notification.is_read }"
-                      class="notification-item"
-                    >
-                      <v-list-item-title class="text-wrap">{{ notification.content }}</v-list-item-title>
-                      <v-list-item-subtitle>{{ formatDistance(notification.created_at) }} atrás</v-list-item-subtitle>
-                    </v-list-item>
-                  </v-list>
-                </template>
+                <v-list v-else class="bg-transparent py-0">
+                  <v-list-item
+                    v-for="notification in notifications"
+                    :key="notification.id"
+                    @click="handleNotificationClick(notification)"
+                    class="notification-item"
+                    lines="two"
+                  >
+                    <template v-slot:prepend>
+                      <v-avatar :color="getNotificationDetails(notification).color" size="40">
+                        <v-icon color="white">{{ getNotificationDetails(notification).icon }}</v-icon>
+                      </v-avatar>
+                    </template>
+
+                    <v-list-item-title class="text-wrap font-weight-bold">{{ getNotificationDetails(notification).title }}</v-list-item-title>
+                    <v-list-item-subtitle class="text-wrap">{{ getNotificationDetails(notification).message }}</v-list-item-subtitle>
+
+                    <template v-slot:append>
+                       <div class="d-flex flex-column align-end">
+                          <span class="text-caption text-grey-lighten-1 mb-1">{{ formatDistance(notification.created_at) }}</span>
+                          <v-btn icon="mdi-close" variant="text" size="x-small" @click.stop="dismissNotification(notification.id)"></v-btn>
+                       </div>
+                    </template>
+                  </v-list-item>
+                </v-list>
               </div>
             </v-card>
           </v-menu>
@@ -138,13 +136,7 @@
           <v-list-item-title class="font-weight-bold text-body-1">{{ profile.full_name || 'Usuário' }}</v-list-item-title>
           <v-list-item-subtitle class="text-caption">{{ userStore.user?.email || '...' }}</v-list-item-subtitle>
         </v-list-item>
-        <v-btn
-          @click="handleLogout"
-          block
-          color="rgba(239, 83, 80, 0.8)"
-          variant="flat"
-          class="mt-3 logout-btn"
-        >
+        <v-btn @click="handleLogout" block color="rgba(239, 83, 80, 0.8)" variant="flat" class="mt-3 logout-btn">
           Sair
         </v-btn>
       </div>
@@ -153,25 +145,6 @@
     <v-main>
       <router-view />
     </v-main>
-
-    <v-snackbar
-        v-model="showToast"
-        :timeout="6000"
-        color="rgba(30,30,35,0.9)"
-        location="bottom right"
-        class="toast-notification"
-    >
-        <div class="d-flex align-center">
-            <v-icon color="primary" class="mr-3">mdi-bell-ring</v-icon>
-            <div>
-                <strong>Nova Notificação</strong>
-                <div>{{ toastMessage }}</div>
-            </div>
-        </div>
-        <template v-slot:actions>
-            <v-btn variant="text" @click="showToast = false">Fechar</v-btn>
-        </template>
-    </v-snackbar>
 
     <PendingApprovalAlertModal
       :show="showPendingApprovalAlert"
@@ -183,24 +156,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch, defineAsyncComponent } from 'vue';
+import { ref, onMounted, onUnmounted, computed, defineAsyncComponent, reactive } from 'vue';
 import { useDisplay } from 'vuetify';
 import { supabase } from '@/api/supabase';
 import { useRouter } from 'vue-router';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useUserStore } from '@/stores/user';
-import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { storeToRefs } from 'pinia';
-import { format, formatDistanceToNow, isToday, isYesterday } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const PendingApprovalAlertModal = defineAsyncComponent(() => import('@/components/admin/PendingApprovalAlertModal.vue'));
 
 const router = useRouter();
 const userStore = useUserStore();
-const dashboardStore = useDashboardStore();
 const { profile, isAdmin } = storeToRefs(userStore);
-
 const { mobile } = useDisplay();
 const isMobile = computed(() => mobile.value);
 const drawer = ref(!isMobile.value);
@@ -213,26 +183,24 @@ const notificationSound = ref<HTMLAudioElement | null>(null);
 const notifications = ref<Notification[]>([]);
 const notificationMenu = ref(false);
 const notificationListener = ref<RealtimeChannel | null>(null);
-const approvalListener = ref<RealtimeChannel | null>(null);
 const isBellRinging = ref(false);
-const showToast = ref(false);
-const toastMessage = ref('');
-const ordersPendingApproval = ref(0);
 const showPendingApprovalAlert = ref(false);
 const pendingAlertContent = ref({ title: '', message: '' });
 
-const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read).length);
-const hasReadNotifications = computed(() => notifications.value.some(n => n.is_read));
+const showToast = ref(false);
+const toastKey = ref(0);
+const toastContent = reactive({ title: '', message: '', icon: '', color: '' });
+const toastStyle = ref({});
+let toastTimeout: NodeJS.Timeout;
 
-const recentNotifications = computed(() => notifications.value.filter(n => !n.is_read || isToday(new Date(n.created_at))).slice(0, 5));
-const olderNotifications = computed(() => notifications.value.filter(n => n.is_read && !isToday(new Date(n.created_at))).slice(0, 10));
+const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read).length);
 
 const allNavItems = [
   { icon: 'mdi-view-dashboard-outline', title: 'Dashboard', value: 'home', to: { name: 'Home' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
   { icon: 'mdi-check-decagram-outline', title: 'Aprovar Pedidos', value: 'approvals', to: { name: 'Approvals' }, roles: ['vendedor', 'designer', 'admin'] },
   { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
   { icon: 'mdi-calendar-check-outline', title: 'Agenda de Produção', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-  { icon: 'mdi-factory', title: 'Pedidos', value: 'production-kanban', to: { name: 'ProductionKanban' }, roles: ['producao', 'admin'] },
+  { icon: 'mdi-factory', title: 'Fila de Produção', value: 'production-kanban', to: { name: 'ProductionKanban' }, roles: ['producao', 'admin'] },
   { icon: 'mdi-cog-sync-outline', title: 'Em Produção', value: 'in-production', to: { name: 'InProduction' }, roles: ['producao', 'admin'] },
   { icon: 'mdi-palette-swatch-outline', title: 'Design', value: 'design-kanban', to: { name: 'DesignKanban' }, roles: ['designer', 'admin'] },
   { icon: 'mdi-truck-delivery-outline', title: 'Agenda de Entrega', value: 'delivery', to: { name: 'Delivery' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
@@ -246,17 +214,6 @@ const navItems = computed(() => {
     return allNavItems.filter(item => item.roles.includes(profile.value.role));
 });
 
-const handleLogout = async () => {
-  if (notificationListener.value) {
-    supabase.removeChannel(notificationListener.value);
-  }
-  if (approvalListener.value) {
-    supabase.removeChannel(approvalListener.value);
-  }
-  await userStore.signOut();
-  router.push({ name: 'Login' });
-};
-
 const toggleHoverEffect = (event: MouseEvent, shouldAdd: boolean, value: string) => {
   const target = event.currentTarget as HTMLElement;
   if (value === 'approvals' || value === 'delivery') {
@@ -264,89 +221,122 @@ const toggleHoverEffect = (event: MouseEvent, shouldAdd: boolean, value: string)
   }
 };
 
+const getNotificationDetails = (notification: Notification) => {
+    const content = notification.content.toLowerCase();
+
+    if (content.includes('alteração solicitada')) {
+        return { title: 'Alteração Solicitada', message: notification.content, icon: 'mdi-alert-circle-outline', color: 'error' };
+    }
+    if (content.includes('pronta para aprovação') || content.includes('aprovação pendente')) {
+        return { title: 'Aprovação Necessária', message: notification.content, icon: 'mdi-send-check-outline', color: 'orange' };
+    }
+    if (content.includes('novo pedido')) {
+        return { title: 'Novo Pedido', message: notification.content, icon: 'mdi-plus-box-outline', color: 'info' };
+    }
+    if (content.includes('aprovado')) {
+        return { title: 'Pedido Aprovado', message: notification.content, icon: 'mdi-check-all', color: 'success' };
+    }
+    if (content.includes('nova tarefa')) {
+        return { title: 'Nova Tarefa', message: notification.content, icon: 'mdi-checkbox-marked-circle-outline', color: 'primary' };
+    }
+
+    return { title: 'Notificação', message: notification.content, icon: 'mdi-bell-outline', color: 'grey' };
+};
+
+const handleLogout = async () => {
+  if (notificationListener.value) {
+    supabase.removeChannel(notificationListener.value);
+  }
+  await userStore.signOut();
+  router.push({ name: 'Login' });
+};
+
 const fetchNotifications = async () => {
     if (!userStore.user) return;
     try {
-        const { data, error } = await supabase.from('notifications').select('*').or(`recipient_id.eq.${userStore.user.id},recipient_id.is.null`).order('created_at', { ascending: false }).limit(30);
+        const { data, error } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(20);
         if (error) throw error;
         notifications.value = data || [];
     } catch (error) { console.error("Erro ao buscar notificações:", error); }
 }
 
-const fetchPendingApprovals = async () => {
-  if (!userStore.user) return;
-  try {
-    const { count, error } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'customer_approval')
-      .eq('created_by', userStore.user.id);
-    if (error) throw error;
-    ordersPendingApproval.value = count || 0;
-  } catch (e) {
-    console.error('Erro ao buscar aprovações pendentes:', e);
-    ordersPendingApproval.value = 0;
-  }
-};
-
-const setupApprovalListener = () => {
-    if (!userStore.user) return;
-    approvalListener.value = supabase.channel('public:orders:approvals-channel')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
-            const { new: newOrder, old: oldOrder, eventType } = payload as any;
-            const userId = userStore.user?.id;
-            if (eventType === 'INSERT' && newOrder.status === 'customer_approval' && newOrder.created_by === userId) {
-                fetchPendingApprovals();
-            } else if (eventType === 'UPDATE') {
-                const oldStatusIsPending = oldOrder?.status === 'customer_approval' && oldOrder?.created_by === userId;
-                const newStatusIsPending = newOrder?.status === 'customer_approval' && newOrder?.created_by === userId;
-                if (oldStatusIsPending || newStatusIsPending) {
-                    fetchPendingApprovals();
-                }
-            } else if (eventType === 'DELETE' && oldOrder?.status === 'customer_approval' && oldOrder?.created_by === userId) {
-                fetchPendingApprovals();
-            }
-        })
-        .subscribe();
-}
-
 const handleNotificationClick = async (notification: Notification) => {
+    // Marcar como lida visualmente e no DB
     if (!notification.is_read) {
         try {
             await supabase.from('notifications').update({ is_read: true }).eq('id', notification.id);
             const index = notifications.value.findIndex(n => n.id === notification.id);
             if (index !== -1) notifications.value[index].is_read = true;
-        } catch(error) { console.error("Erro ao marcar notificação como lida:", error); }
+        } catch(error) { console.error("Erro ao marcar como lida:", error); }
     }
-    if (notification.redirect_url) { router.push(notification.redirect_url); }
+    // Marcar como dispensada para não aparecer mais
+    await dismissNotification(notification.id);
+
+    if (notification.redirect_url) {
+        notificationMenu.value = false;
+        router.push(notification.redirect_url);
+    }
 };
 
-const clearReadNotifications = () => {
-    notifications.value = notifications.value.filter(n => !n.is_read);
+const dismissNotification = async (notificationId: string) => {
+    if(!userStore.user) return;
+    try {
+        const { error } = await supabase
+            .from('user_notification_dismissals')
+            .insert({ user_id: userStore.user.id, notification_id: notificationId });
+        if (error) throw error;
+        // Remove da lista local para a UI atualizar instantaneamente
+        notifications.value = notifications.value.filter(n => n.id !== notificationId);
+    } catch (err) {
+        console.error("Erro ao dispensar notificação:", err);
+    }
 };
+
+const clearAllNotifications = async () => {
+    if(!userStore.user) return;
+    try {
+        const dismissals = notifications.value.map(n => ({
+            user_id: userStore.user!.id,
+            notification_id: n.id
+        }));
+        if (dismissals.length === 0) return;
+        const { error } = await supabase.from('user_notification_dismissals').insert(dismissals);
+        if (error) throw error;
+        notifications.value = [];
+    } catch (err) {
+        console.error("Erro ao limpar notificações:", err);
+    }
+};
+
 
 const handleNewNotification = (payload: any) => {
     const newNotification = payload.new as Notification;
 
-    // **CORREÇÃO APLICADA AQUI**
-    // Lógica para interpretar a notificação de alerta
     if (newNotification.content.startsWith('[ALERT_PENDING_APPROVAL]')) {
       const parts = newNotification.content.replace('[ALERT_PENDING_APPROVAL]', '').split('::');
-      pendingAlertContent.value = {
-        title: parts[0] || 'ALERTA',
-        message: parts[1] || 'Você tem uma aprovação pendente.',
-      };
+      pendingAlertContent.value = { title: parts[0] || 'ALERTA', message: parts[1] || 'Você tem uma aprovação pendente.' };
       showPendingApprovalAlert.value = true;
-      notificationSound.value?.play().catch(e => console.error("Erro ao tocar som:", e));
     } else {
-      // Comportamento para notificações normais
       notifications.value.unshift(newNotification);
-      notificationSound.value?.play().catch(e => console.error("Erro ao tocar som:", e));
-      toastMessage.value = newNotification.content;
+
+      const details = getNotificationDetails(newNotification);
+      toastContent.title = details.title;
+      toastContent.message = details.message;
+      toastContent.icon = details.icon;
+      toastContent.color = details.color;
+      toastStyle.value = { '--pulse-color': `var(--v-theme-${details.color})` };
+      toastKey.value++;
+
       showToast.value = true;
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+          showToast.value = false;
+      }, 6000);
+
       isBellRinging.value = true;
       setTimeout(() => { isBellRinging.value = false; }, 2000);
     }
+    notificationSound.value?.play().catch(e => console.error("Erro ao tocar som:", e));
 };
 
 const setupNotificationListener = () => {
@@ -355,7 +345,11 @@ const setupNotificationListener = () => {
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
             const newNotification = payload.new as Notification;
             if (newNotification.recipient_id === userStore.user?.id || newNotification.recipient_id === null) {
-                handleNewNotification(payload);
+                // Adiciona a verificação para não mostrar notificação que já foi dispensada.
+                const isDismissed = notifications.value.some(n => n.id === newNotification.id);
+                if (!isDismissed) {
+                  handleNewNotification(payload);
+                }
             }
         })
         .subscribe();
@@ -369,9 +363,7 @@ const formatDistance = (dateString: string) => {
 onMounted(async () => {
   if (userStore.isLoggedIn) {
     await fetchNotifications();
-    await fetchPendingApprovals();
     setupNotificationListener();
-    setupApprovalListener();
   }
 });
 
@@ -379,9 +371,7 @@ onUnmounted(() => {
   if (notificationListener.value) {
       supabase.removeChannel(notificationListener.value);
   }
-  if (approvalListener.value) {
-    supabase.removeChannel(approvalListener.value);
-  }
+  clearTimeout(toastTimeout);
 });
 </script>
 
@@ -400,122 +390,32 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
 }
-
-.logo-container {
-  position: relative;
-  width: 200px;
-  height: 200px;
-}
-
-.logo-with-glow {
-  filter: drop-shadow(0 0 10px rgba(255, 208, 0, 0.233)) drop-shadow(0 0 20px rgba(255, 204, 0, 0.637));
-}
-
-.particles-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-.particles-overlay::before,
-.particles-overlay::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  animation-duration: 20s;
-  animation-iteration-count: infinite;
-  animation-timing-function: linear;
-  pointer-events: none;
-  opacity: 0;
-}
-
-.particles-overlay::before {
-  width: 200vw;
-  height: 200vh;
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.2) 1px, transparent 1%);
-  background-size: 25px 25px;
-  animation-name: particles-white;
-}
-
-.particles-overlay::after {
-  width: 200vw;
-  height: 200vh;
-  background-image: radial-gradient(circle, rgba(255, 215, 0, 0.3) 1px, transparent 1%);
-  background-size: 25px 25px;
-  animation-name: particles-gold;
-  animation-delay: 10s;
-}
-
-@keyframes particles-white {
-  0% { transform: translate(-50%, -50%) rotate(0deg) scale(0.5); opacity: 0; }
-  10% { opacity: 1; }
-  100% { transform: translate(-50%, -50%) rotate(360deg) scale(1.5); opacity: 0; }
-}
-
-@keyframes particles-gold {
-  0% { transform: translate(-50%, -50%) rotate(0deg) scale(0.5); opacity: 0; }
-  10% { opacity: 1; }
-  100% { transform: translate(-50%, -50%) rotate(360deg) scale(1.5); opacity: 0; }
-}
-
 .v-application, .v-application__wrap {
-  color: #E0E0E0 !important;
   background: transparent !important;
 }
 .v-main {
   height: 100vh;
   overflow-y: auto;
-  padding-right: 4px;
 }
 .glassmorphism-sidebar {
   background-color: rgba(20, 20, 25, 0.7) !important;
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border-right: 1px solid rgba(255, 255, 255, 0.12) !important;
 }
-
-/* **CORREÇÃO DEFINITIVA PARA ROLAGEM** */
 .v-navigation-drawer > .v-navigation-drawer__content {
   display: flex;
   flex-direction: column;
 }
 .main-nav-list {
-  flex-grow: 1; /* Permite que a lista cresça e empurre o rodapé */
-  overflow-y: auto; /* Adiciona a rolagem quando necessário */
-}
-/* FIM DA CORREÇÃO */
-
-@media (max-width: 600px) {
-  .v-navigation-drawer.glassmorphism-sidebar {
-    display: flex !important;
-    flex-direction: column !important;
-    height: 100vh !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-  }
-  .main-nav-list {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    height: 100% !important;
-    overflow-y: auto !important;
-    max-height: unset !important;
-  }
+  flex-grow: 1;
+  overflow-y: auto;
 }
 
+/* --- ESTILOS DOS BOTÕES DE NAVEGAÇÃO --- */
 .nav-item {
   position: relative;
   overflow: hidden;
   transition: background-color 0.2s ease;
-  border-radius: 8px;
-
-  &.v-list-item--active, &:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-  }
 }
 
 .highlight-red {
@@ -547,39 +447,137 @@ onUnmounted(() => {
   100% { background-position: -100% 0; }
 }
 
-.quick-actions, .user-footer { flex-shrink: 0; }
-.glassmorphism-app-bar {
-  background-color: rgba(20, 20, 25, 0.6) !important;
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+.bell-ringing {
+  animation: ring 1.5s ease-in-out infinite;
 }
-.notifications-panel { max-height: 500px; display: flex; flex-direction: column; }
-.notification-list-scroll { flex-grow: 1; overflow-y: auto; }
-.notification-item.notification-read {
-    opacity: 0.6;
-    .v-list-item-title, .v-list-item-subtitle { color: rgba(255, 255, 255, 0.5); }
-}
-.notification-item:hover { background-color: rgba(255,255,255,0.05); }
-.toast-notification .v-snackbar__content { color: #FFFFFF !important; font-weight: 500; }
-.bell-ringing { animation: ring 1.5s ease-in-out infinite; }
 @keyframes ring {
   0% { transform: rotate(0); } 10% { transform: rotate(25deg); } 20% { transform: rotate(-25deg); }
   30% { transform: rotate(20deg); } 40% { transform: rotate(-20deg); } 50% { transform: rotate(15deg); }
   60% { transform: rotate(-15deg); } 70% { transform: rotate(5deg); } 80% { transform: rotate(-5deg); }
   90%, 100% { transform: rotate(0); }
 }
-.animated-title {
-  display: block; height: 24px; position: relative; overflow: hidden;
-  .default-text, .animated-text { position: absolute; top: 0; left: 0; width: 100%; text-align: left; }
-  .default-text { animation: text-toggle 6s infinite; }
-  .animated-text { animation: text-toggle-rev 6s infinite; }
+
+/* --- ESTILOS E ANIMAÇÕES PARA O POP-UP --- */
+.custom-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background-color: rgba(30, 30, 35, 0.85);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  padding: 16px;
+  min-width: 350px;
+  max-width: 90%;
+  color: white;
+  display: flex;
+  align-items: center;
+  pointer-events: all;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 12px;
+    box-shadow: 0 0 15px 3px var(--pulse-color, transparent);
+    animation: pulse-glow 2s infinite ease-in-out;
+    pointer-events: none;
+    opacity: 0.8;
+  }
 }
-@keyframes text-toggle {
-  0%, 20% { opacity: 1; transform: translateY(0); } 25%, 45% { opacity: 0; transform: translateY(-100%); }
-  50%, 100% { opacity: 1; transform: translateY(0); }
+
+.toast-content {
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
-@keyframes text-toggle-rev {
-  0%, 20% { opacity: 0; transform: translateY(100%); } 25%, 45% { opacity: 1; transform: translateY(0); }
-  50%, 100% { opacity: 0; transform: translateY(100%); }
+
+.toast-icon {
+  font-size: 28px;
+}
+
+.toast-slide-enter-active,
+.toast-slide-leave-active {
+  transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.toast-slide-enter-from,
+.toast-slide-leave-to {
+  transform: translate(-50%, -150%);
+  opacity: 0;
+}
+
+@keyframes pulse-glow {
+  0% { box-shadow: 0 0 10px 2px var(--pulse-color, transparent); opacity: 0.7; }
+  50% { box-shadow: 0 0 25px 8px var(--pulse-color, transparent); opacity: 1; }
+  100% { box-shadow: 0 0 10px 2px var(--pulse-color, transparent); opacity: 0.7; }
+}
+
+/* --- ESTILOS ATUALIZADOS PARA O MODAL DE NOTIFICAÇÕES --- */
+.notifications-panel {
+  width: 400px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+}
+
+.glassmorphism-card-dialog {
+  backdrop-filter: blur(20px) !important;
+  background-color: rgba(40, 40, 45, 0.85) !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.notification-list-scroll {
+  flex-grow: 1;
+  overflow-y: auto;
+  max-height: 50vh;
+}
+
+.notification-item {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  &:last-child {
+    border-bottom: none;
+  }
+  .v-list-item-subtitle {
+    white-space: normal;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    display: -webkit-box;
+    overflow: hidden;
+  }
+}
+
+.empty-notifications {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  height: 200px;
+  color: #757575;
+}
+
+@media (max-width: 600px) {
+  .v-navigation-drawer.glassmorphism-sidebar {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100vh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+  .main-nav-list {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    max-height: unset !important;
+  }
 }
 </style>
