@@ -53,7 +53,7 @@
                          </v-btn>
                       </template>
                   </v-list-item>
-                  <v-list-item v-if="order.has_down_payment && order.down_payment_proof_url" title="Comprovante de Entrada">
+                  <v-list-item v-if="userStore.isAdmin && order.has_down_payment && order.down_payment_proof_url" title="Comprovante de Entrada">
                       <template #subtitle>
                          <v-btn
                             :href="getProofUrl(order.down_payment_proof_url)"
@@ -103,6 +103,7 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { supabase } from '@/api/supabase';
+import { useUserStore } from '@/stores/user'; // <-- Adicionado import
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -112,6 +113,8 @@ const props = defineProps({
 });
 const emit = defineEmits(['close']);
 
+const userStore = useUserStore(); // <-- Instanciado o store do usuário
+
 type OrderDetails = {
   id: string;
   customer_name: string;
@@ -119,8 +122,8 @@ type OrderDetails = {
   created_at: string;
   production_date: string | null;
   quantity_meters: number;
-  has_down_payment: boolean; // NOVO
-  down_payment_proof_url: string | null; // NOVO
+  has_down_payment: boolean;
+  down_payment_proof_url: string | null;
   details: {
     fabric_type: string;
     stamp_details: string;
@@ -138,12 +141,12 @@ const error = ref<string | null>(null);
 const statusDisplayMap: Record<string, string> = {
     design_pending: 'Aguardando Design', in_design: 'Em Design', customer_approval: 'Aguardando Aprovação',
     production_queue: 'Na Fila de Produção', in_printing: 'Em Impressão', in_cutting: 'Corte e Acabamento',
-    completed: 'Pronto para Envio'
+    completed: 'Pronto para Envio', pending_stock: 'Aguardando Matéria-Prima'
 };
 
 const statusColorMap: Record<string, string> = {
     design_pending: 'blue-grey', in_design: 'blue', customer_approval: 'orange',
-    production_queue: 'grey', in_printing: 'blue', in_cutting: 'orange', completed: 'green'
+    production_queue: 'grey', in_printing: 'blue', in_cutting: 'orange', completed: 'green', pending_stock: 'error'
 };
 
 const getStatusColor = (status: string) => statusColorMap[status] || 'grey';
@@ -181,7 +184,6 @@ const fetchOrder = async (id: string) => {
   try {
     const { data, error: fetchError } = await supabase
       .from('orders')
-      // Adicionado os novos campos na query
       .select(`*, profiles:created_by (full_name), stores (name), order_logs(created_at, description, log_type)`)
       .eq('id', id)
       .single();
