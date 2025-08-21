@@ -29,11 +29,29 @@
         hover
       >
         <template v-slot:item.price_se="{ item }">
-          <span v-if="canViewSE">{{ formatCurrency(item.price_se) }}</span>
+          <div v-if="canViewSE" class="price-cell">
+            <div class="price-item">
+              <span class="price-label">À Vista</span>
+              <v-chip color="teal" size="small" label variant="flat">{{ formatCurrency(item.price_se_cash) }}</v-chip>
+            </div>
+            <div class="price-item">
+              <span class="price-label">Prazo</span>
+              <v-chip color="indigo" size="small" label variant="flat">{{ formatCurrency(item.price_se_term) }}</v-chip>
+            </div>
+          </div>
           <v-chip v-else size="small" variant="tonal" color="grey">N/A</v-chip>
         </template>
         <template v-slot:item.price_ne="{ item }">
-          <span v-if="canViewNE">{{ formatCurrency(item.price_ne) }}</span>
+          <div v-if="canViewNE" class="price-cell">
+            <div class="price-item">
+              <span class="price-label">À Vista</span>
+              <v-chip color="teal" size="small" label variant="flat">{{ formatCurrency(item.price_ne_cash) }}</v-chip>
+            </div>
+            <div class="price-item">
+              <span class="price-label">Prazo</span>
+              <v-chip color="indigo" size="small" label variant="flat">{{ formatCurrency(item.price_ne_term) }}</v-chip>
+            </div>
+          </div>
           <v-chip v-else size="small" variant="tonal" color="grey">N/A</v-chip>
         </template>
         <template v-slot:item.unit="{ item }">
@@ -79,13 +97,39 @@
                     <span class="info-value">{{ item.grammage || 'N/A' }}</span>
                 </div>
                 <v-divider class="my-3"></v-divider>
-                <div v-if="canViewSE" class="price-row">
-                    <span class="price-label">Sudeste:</span>
-                    <span class="price-value">{{ formatCurrency(item.price_se) }}</span>
+                <div v-if="canViewSE" class="price-section">
+                    <h4 class="region-title">SUDESTE</h4>
+                    <v-row no-gutters>
+                        <v-col>
+                            <div class="price-item-mobile">
+                                <span class="price-label-mobile">À VISTA</span>
+                                <span class="price-value-mobile cash">{{ formatCurrency(item.price_se_cash) }}</span>
+                            </div>
+                        </v-col>
+                        <v-col>
+                            <div class="price-item-mobile">
+                                <span class="price-label-mobile">A PRAZO</span>
+                                <span class="price-value-mobile term">{{ formatCurrency(item.price_se_term) }}</span>
+                            </div>
+                        </v-col>
+                    </v-row>
                 </div>
-                <div v-if="canViewNE" class="price-row">
-                    <span class="price-label">Nordeste:</span>
-                    <span class="price-value">{{ formatCurrency(item.price_ne) }}</span>
+                 <div v-if="canViewNE" class="price-section mt-3">
+                    <h4 class="region-title">NORDESTE</h4>
+                     <v-row no-gutters>
+                        <v-col>
+                            <div class="price-item-mobile">
+                                <span class="price-label-mobile">À VISTA</span>
+                                <span class="price-value-mobile cash">{{ formatCurrency(item.price_ne_cash) }}</span>
+                            </div>
+                        </v-col>
+                        <v-col>
+                            <div class="price-item-mobile">
+                                <span class="price-label-mobile">A PRAZO</span>
+                                <span class="price-value-mobile term">{{ formatCurrency(item.price_ne_term) }}</span>
+                            </div>
+                        </v-col>
+                    </v-row>
                 </div>
             </v-card-text>
         </v-card>
@@ -105,12 +149,14 @@ type Product = {
   composition: string;
   grammage: string;
   unit: 'metro' | 'kg';
-  price_se: number;
-  price_ne: number;
+  price_se_cash: number;
+  price_se_term: number;
+  price_ne_cash: number;
+  price_ne_term: number;
 };
 
 const userStore = useUserStore();
-const { mobile: isMobile } = useDisplay(); // Detecta se a tela é mobile
+const { mobile: isMobile } = useDisplay();
 const loading = ref(true);
 const search = ref('');
 const products = ref<Product[]>([]);
@@ -122,8 +168,8 @@ const headers = computed(() => [
   { title: 'Produto', key: 'name', width: '30%' },
   { title: 'Composição', key: 'composition' },
   { title: 'Gramatura', key: 'grammage' },
-  ...(canViewSE.value ? [{ title: 'Preço Sudeste', key: 'price_se', align: 'end' }] : []),
-  ...(canViewNE.value ? [{ title: 'Preço Nordeste', key: 'price_ne', align: 'end' }] : []),
+  ...(canViewSE.value ? [{ title: 'Preço Sudeste', key: 'price_se', align: 'start' }] : []),
+  ...(canViewNE.value ? [{ title: 'Preço Nordeste', key: 'price_ne', align: 'start' }] : []),
   { title: 'Unidade', key: 'unit', sortable: false },
 ]);
 
@@ -150,7 +196,7 @@ const fetchPrices = async () => {
 };
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 };
 
 onMounted(fetchPrices);
@@ -169,7 +215,27 @@ onMounted(fetchPrices);
   background-color: rgba(var(--v-theme-primary), 0.1) !important;
 }
 
-// Estilos para os cards em modo mobile
+/* --- Estilos para a tabela Desktop --- */
+.price-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+.price-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.price-label {
+  font-size: 0.8rem;
+  color: #a0a0a0;
+  font-weight: 500;
+}
+
+
+/* --- Estilos para os cards Mobile --- */
 .mobile-price-card {
   background-color: rgba(35, 35, 40, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -177,24 +243,52 @@ onMounted(fetchPrices);
   border-radius: 8px;
 }
 
-.info-row, .price-row {
+.info-row {
   display: flex;
   justify-content: space-between;
   padding: 4px 0;
-}
-
-.info-label, .price-label {
-  color: #a0a0a0;
   font-size: 0.9rem;
+  color: #a0a0a0;
+  .info-value {
+    color: white;
+    font-weight: 500;
+  }
 }
 
-.info-value {
-  font-weight: 500;
+.price-section {
+  .region-title {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #a0a0a0;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
 }
 
-.price-value {
-  font-size: 1.1rem;
-  font-weight: bold;
-  color: rgb(var(--v-theme-primary));
+.price-item-mobile {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  background-color: rgba(0,0,0,0.2);
+  border-radius: 6px;
+  text-align: center;
+
+  .price-label-mobile {
+    font-size: 0.7rem;
+    color: #a0a0a0;
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+
+  .price-value-mobile {
+    font-size: 1.1rem;
+    font-weight: bold;
+    &.cash {
+      color: #4DB6AC; // teal-lighten-2
+    }
+    &.term {
+      color: #7986CB; // indigo-lighten-2
+    }
+  }
 }
 </style>
