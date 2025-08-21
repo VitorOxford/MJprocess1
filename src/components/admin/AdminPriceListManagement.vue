@@ -16,8 +16,12 @@
         class="elevation-0 bg-transparent"
         item-value="id"
     >
-        <template v-slot:item.price_se="{ item }">{{ formatCurrency(item.price_se) }}</template>
-        <template v-slot:item.price_ne="{ item }">{{ formatCurrency(item.price_ne) }}</template>
+        <template v-slot:item.price_se="{ item }">
+          {{ formatCurrency(item.price_se_cash) }} / {{ formatCurrency(item.price_se_term) }}
+        </template>
+        <template v-slot:item.price_ne="{ item }">
+          {{ formatCurrency(item.price_ne_cash) }} / {{ formatCurrency(item.price_ne_term) }}
+        </template>
         <template v-slot:item.actions="{ item }">
             <v-btn icon="mdi-pencil-outline" variant="text" size="small" @click="openDialog(item)"></v-btn>
             <v-btn icon="mdi-delete-outline" variant="text" size="small" color="error" @click="deleteItem(item)"></v-btn>
@@ -34,10 +38,16 @@
           <v-select v-model="editedItem.unit" :items="['metro', 'kg']" label="Unidade de Medida" variant="outlined"></v-select>
           <v-row>
             <v-col cols="12" sm="6">
-              <v-text-field v-model.number="editedItem.price_se" label="Preço Sudeste (R$)" type="number" variant="outlined"></v-text-field>
+              <v-text-field v-model.number="editedItem.price_se_cash" label="Preço Sudeste (À Vista)" type="number" variant="outlined"></v-text-field>
             </v-col>
             <v-col cols="12" sm="6">
-              <v-text-field v-model.number="editedItem.price_ne" label="Preço Nordeste (R$)" type="number" variant="outlined"></v-text-field>
+              <v-text-field v-model.number="editedItem.price_se_term" label="Preço Sudeste (Prazo)" type="number" variant="outlined"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model.number="editedItem.price_ne_cash" label="Preço Nordeste (À Vista)" type="number" variant="outlined"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6">
+              <v-text-field v-model.number="editedItem.price_ne_term" label="Preço Nordeste (Prazo)" type="number" variant="outlined"></v-text-field>
             </v-col>
           </v-row>
         </v-card-text>
@@ -55,18 +65,17 @@
 import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 
-// ... (Restante do script igual ao de cima, para formatação, etc)
-
 type Product = {
   id: string;
   name: string;
   composition: string;
   grammage: string;
   unit: 'metro' | 'kg';
-  price_se: number;
-  price_ne: number;
+  price_se_cash: number;
+  price_se_term: number;
+  price_ne_cash: number;
+  price_ne_term: number;
 };
-
 
 const products = ref<Product[]>([]);
 const loading = ref(true);
@@ -79,14 +88,16 @@ const editedItem = ref<Partial<Product>>({
     composition: '',
     grammage: '',
     unit: 'metro',
-    price_se: 0,
-    price_ne: 0,
+    price_se_cash: 0,
+    price_se_term: 0,
+    price_ne_cash: 0,
+    price_ne_term: 0,
 });
 
 const headers = [
   { title: 'Produto', key: 'name' },
-  { title: 'Preço Sudeste', key: 'price_se' },
-  { title: 'Preço Nordeste', key: 'price_ne' },
+  { title: 'Preço Sudeste (À Vista/Prazo)', key: 'price_se' },
+  { title: 'Preço Nordeste (À Vista/Prazo)', key: 'price_ne' },
   { title: 'Ações', key: 'actions', sortable: false, align: 'end' },
 ];
 
@@ -104,7 +115,7 @@ const fetchProducts = async () => {
 
 const openDialog = (item: Product | null) => {
     editedIndex.value = item ? products.value.indexOf(item) : -1;
-    editedItem.value = item ? { ...item } : { name: '', composition: '', grammage: '', unit: 'metro', price_se: 0, price_ne: 0 };
+    editedItem.value = item ? { ...item } : { name: '', composition: '', grammage: '', unit: 'metro', price_se_cash: 0, price_se_term: 0, price_ne_cash: 0, price_ne_term: 0 };
     dialog.value = true;
 };
 
@@ -144,9 +155,8 @@ const deleteItem = async (item: Product) => {
     }
 };
 
-
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 };
 
 onMounted(fetchProducts);
@@ -154,7 +164,6 @@ onMounted(fetchProducts);
 </script>
 
 <style scoped>
-/* ... Estilos similares ao stock management */
 .glassmorphism-card {
   backdrop-filter: blur(15px);
   background-color: rgba(35, 35, 40, 0.85);
