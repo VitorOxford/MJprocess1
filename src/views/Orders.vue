@@ -50,7 +50,7 @@
             </v-card>
         </div>
 
-        <div class="d-flex justify-space-between align-center ga-4 px-4 pb-4">
+        <div class="d-flex flex-column flex-sm-row justify-space-between align-center ga-4 px-4 pb-4">
             <div class="d-flex align-center">
                 <v-sheet height="12" width="12" color="cyan" rounded class="mr-2"></v-sheet>
                 <span class="text-caption">Máquina MESA</span>
@@ -59,7 +59,7 @@
                  <v-sheet height="12" width="12" color="amber" rounded class="mr-2"></v-sheet>
                 <span class="text-caption">Máquina CORRIDA</span>
             </div>
-             <v-spacer></v-spacer>
+             <v-spacer class="d-none d-sm-block"></v-spacer>
              <v-text-field
                 v-model="searchQuery"
                 variant="solo-filled"
@@ -68,9 +68,11 @@
                 label="Buscar cliente ou vendedor..."
                 prepend-inner-icon="mdi-magnify"
                 hide-details
+                class="w-100"
                 style="max-width: 300px;"
             ></v-text-field>
         </div>
+
 
         <div class="kanban-container d-none d-md-flex">
           <div v-for="day in weekDays" :key="day.date.toISOString()" class="kanban-column">
@@ -123,10 +125,24 @@
         </div>
 
         <div class="d-md-none vertical-list-container">
-            <div v-for="day in weekDays" :key="`mobile-${day.date.toISOString()}`" class="mb-8">
+            <div v-for="day in weekDays" :key="`mobile-${day.date.toISOString()}`" class="mb-6">
               <div class="vertical-day-header">
-                <h3>{{ day.name }}</h3>
-                <span>{{ getShortDate(day.date) }}</span>
+                <div class="d-flex justify-space-between align-baseline w-100">
+                    <h3>{{ day.name }}</h3>
+                    <span>{{ getShortDate(day.date) }}</span>
+                </div>
+                <div class="w-100 mt-2">
+                    <v-progress-linear
+                      :model-value="(getDayProduction(day.date).total / getDailyLimit(day.date)) * 100"
+                      :color="isDayOverloaded(day.date) ? 'error' : 'primary'"
+                      height="6"
+                      rounded
+                      class="my-2"
+                    ></v-progress-linear>
+                    <div class="text-center">
+                        <v-chip size="small" variant="tonal">{{ getDayProduction(day.date).total.toLocaleString('pt-BR') }}m / {{ getDailyLimit(day.date).toLocaleString('pt-BR') }}m</v-chip>
+                    </div>
+                </div>
               </div>
               <div v-if="getEntriesForDay(day.date).length > 0" class="mt-4">
                 <v-card v-for="entry in getEntriesForDay(day.date)" :key="`mobile-order-${entry.id}`" class="order-card-vertical mb-3" variant="flat">
@@ -509,11 +525,11 @@ onMounted(fetchAllData);
   flex-grow: 1;
 }
 .vertical-day-header {
-  padding-bottom: 8px;
+  padding: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
   h3 { font-size: 1.25rem; font-weight: 700; }
   span { opacity: 0.8; }
 }
