@@ -31,6 +31,12 @@ const routes: Array<RouteRecordRaw> = [
         meta: { roles: ['producao', 'admin'] }
       },
       {
+        path: 'tabela-precos',
+        name: 'PriceList',
+        component: () => import('@/views/sales/PriceList.vue'),
+        meta: { roles: ['vendedor', 'admin'] }
+      },
+      {
         path: 'estoque',
         name: 'Stock',
         component: () => import('@/views/Stock.vue'),
