@@ -81,18 +81,17 @@
             :data-date="day.date.toISOString().split('T')[0]"
             ghost-class="ghost-card"
             @end="onDragEnd"
-            :disabled="isPast(day.date)"
           >
             <template #item="{ element: order }">
                <v-card
                   class="order-card mb-4"
-                  :class="{ 'ghost': order.status !== 'completed', 'confirmed': order.isConfirmed, 'past-delivery': isPast(day.date) }"
+                  :class="{ 'ghost': order.status !== 'completed', 'confirmed': order.isConfirmed, 'past-delivery': isPast(day.date) && !isToday(day.date) }"
                   elevation="4"
                   @click="openDetailModal(order.id)"
                   :data-id="order.id"
                 >
                   <v-icon v-if="order.isConfirmed" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
-                  <v-icon v-if="isPast(day.date)" class="confirmed-icon" style="opacity: 0.6">mdi-lock</v-icon>
+                  <v-icon v-if="isPast(day.date) && !isToday(day.date)" class="confirmed-icon" style="opacity: 0.6">mdi-lock</v-icon>
                   <v-card-text>
                       <div class="d-flex align-center justify-space-between mb-2">
                           <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
@@ -102,7 +101,7 @@
                       <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
                   </v-card-text>
                 <v-fade-transition>
-                  <v-card-actions class="actions-overlay" v-if="!isPast(day.date) && order.status === 'completed'">
+                  <v-card-actions class="actions-overlay" v-if="!order.isConfirmed">
                     <v-tooltip text="Cancelar Agendamento" location="top">
                         <template v-slot:activator="{ props }">
                             <v-btn v-bind="props" icon="mdi-close" color="red" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
@@ -176,11 +175,11 @@ import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import draggable from 'vuedraggable';
 import { useUserStore } from '@/stores/user';
 import {
-  format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays
+  format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays, isToday
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// Tipos
+// Types
 type Order = {
   id: string;
   customer_name: string;
@@ -195,7 +194,7 @@ type Order = {
   creator: { full_name: string; } | null;
 };
 
-// Estado
+// State
 const userStore = useUserStore();
 const loading = ref(true);
 const showDetailModal = ref(false);
@@ -213,7 +212,7 @@ const historyHeaders = [
   { title: 'Vendedor', key: 'creator.full_name' },
 ];
 
-// Lógica de Datas e Navegação
+// Date & Navigation Logic
 const isPast = (date: Date): boolean => isBefore(date, startOfToday());
 const nextWeek = () => { currentDeliveryWeekStart.value = addDays(currentDeliveryWeekStart.value, 7); };
 const previousWeek = () => { currentDeliveryWeekStart.value = subDays(currentDeliveryWeekStart.value, 7); };
@@ -247,9 +246,6 @@ const weekDeliveryDays = computed(() => {
     });
 });
 
-// ==========================================================
-// ===== CORREÇÃO 1: FUNÇÃO DE DIAS ÚTEIS ADICIONADA AQUI =====
-// ==========================================================
 function addBusinessDays(date: Date, days: number): Date {
   const newDate = new Date(date);
   let addedDays = 0;
@@ -258,8 +254,8 @@ function addBusinessDays(date: Date, days: number): Date {
 
   while (addedDays < targetDays) {
     newDate.setDate(newDate.getDate() + step);
-    const dayOfWeek = newDate.getDay(); // Domingo = 0
-    if (dayOfWeek !== 0) { // Não conta domingos
+    const dayOfWeek = newDate.getDay();
+    if (dayOfWeek !== 0) {
       addedDays++;
     }
   }
@@ -268,46 +264,43 @@ function addBusinessDays(date: Date, days: number): Date {
 
 const calculateInitialDeliveryDate = (completionDate: Date): Date => {
     let deliveryDate = addDays(new Date(completionDate), 1);
-    const deliveryDaysOfWeek = [2, 4, 6]; // Terça, Quinta, Sábado
+    const deliveryDaysOfWeek = [2, 4, 6];
     while (!deliveryDaysOfWeek.includes(getDay(deliveryDate))) {
         deliveryDate = addDays(deliveryDate, 1);
     }
     return deliveryDate;
 }
 
-// Funções de Manipulação de Pedidos
 const processAndDistributeOrders = (orders: Order[]) => {
   const scheduled: Order[] = [];
   const notScheduled: Order[] = [];
-  const history: Order[] = [];
-  const thirtyDaysAgo = subDays(startOfToday(), 30);
 
   orders.forEach(order => {
-    // ==========================================================
-    // ===== CORREÇÃO 2: USANDO A FUNÇÃO DE DIAS ÚTEIS AQUI   =====
-    // ==========================================================
     order.completion_date = addBusinessDays(parseISO(order.production_date), 3);
     order.isConfirmed = !!order.delivery_confirmed_at;
 
-    const deliveryDate = order.actual_delivery_date
-      ? parseISO(order.actual_delivery_date as any)
-      : calculateInitialDeliveryDate(order.completion_date);
-    order.actual_delivery_date = deliveryDate;
-
-    if (order.isConfirmed && isBefore(deliveryDate, thirtyDaysAgo)) {
-        // Ignora histórico muito antigo para a lista principal
-    } else if (order.isConfirmed) {
-        history.push(order);
+    if (order.status === 'completed' && !order.actual_delivery_date) {
+      notScheduled.push(order);
     }
-    
-    // Adiciona todos os pedidos (em produção e concluídos) à lista de agendados
-    // para que possam aparecer no calendário.
-    scheduled.push(order);
+    else {
+      const deliveryDate = order.actual_delivery_date
+        ? parseISO(order.actual_delivery_date as any)
+        : calculateInitialDeliveryDate(order.completion_date!);
+      order.actual_delivery_date = deliveryDate;
+      scheduled.push(order);
+    }
   });
 
   allScheduledOrders.value = scheduled;
   toBeScheduledOrders.value = notScheduled;
-  deliveredOrders.value = history.filter(o => o.isConfirmed && isBefore(o.actual_delivery_date!, startOfToday())).sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
+
+  const thirtyDaysAgo = subDays(startOfToday(), 30);
+  deliveredOrders.value = scheduled.filter(o =>
+    o.isConfirmed &&
+    o.actual_delivery_date &&
+    isBefore(o.actual_delivery_date, startOfToday()) &&
+    !isBefore(o.actual_delivery_date, thirtyDaysAgo)
+  ).sort((a, b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 };
 
 const onDragEnd = async (event: any) => {
@@ -324,18 +317,38 @@ const onDragEnd = async (event: any) => {
     }
 
     try {
-        const { error } = await supabase.rpc('reagendar_entrega', {
+        const { error: rpcError } = await supabase.rpc('reagendar_entrega', {
             p_order_id: orderId,
             p_new_delivery_date: newDate,
             p_profile_id: userStore.profile!.id
         });
-        if (error) throw error;
+        if (rpcError) throw rpcError;
+
+        if (newDate) {
+            const newDateObj = parseISO(newDate);
+            if (isPast(newDateObj) && !isToday(newDateObj)) {
+
+                const { error: confirmError } = await supabase
+                    .from('production_schedule')
+                    .update({ delivery_confirmed_at: new Date().toISOString() })
+                    .eq('order_id', orderId);
+
+                if (confirmError) throw confirmError;
+
+                await supabase.from('order_logs').insert({
+                    order_id: orderId,
+                    profile_id: userStore.profile!.id,
+                    log_type: 'STATUS_CHANGE',
+                    description: `Entrega confirmada retroativamente para ${format(newDateObj, 'dd/MM/yyyy')}.`
+                });
+            }
+        }
     } catch (err: any) {
-        console.error('Erro ao reagendar entrega:', err.message);
+        console.error('Erro ao reagendar e/ou confirmar entrega:', err.message);
     } finally {
         await fetchScheduledOrders();
     }
-}
+};
 
 const confirmDelivery = async (order: Order) => {
   if (!userStore.profile) return;
@@ -354,8 +367,7 @@ const confirmDelivery = async (order: Order) => {
         description: `Entrega confirmada para ${deliveryDateFormatted}.`
     });
 
-    const orderInList = allScheduledOrders.value.find(o => o.id === order.id);
-    if(orderInList) orderInList.isConfirmed = true;
+    await fetchScheduledOrders();
 
   } catch (err: any) {
     console.error('Erro ao confirmar entrega:', err.message);
@@ -397,13 +409,10 @@ const formatDate = (date: Date | string | undefined | null, formatString: string
 const fetchScheduledOrders = async () => {
   loading.value = true;
   try {
-    // ==========================================================
-    // ===== CORREÇÃO 3: BUSCANDO PEDIDOS EM PRODUÇÃO TAMBÉM  =====
-    // ==========================================================
     const { data, error } = await supabase
       .from('orders')
       .select('id, customer_name, quantity_meters, status, production_date, details, creator:created_by(full_name), production_schedule!inner(delivery_confirmed_at, actual_delivery_date)')
-      .in('status', ['completed', 'in_printing', 'in_cutting']); // Agora busca os 3 status
+      .in('status', ['completed', 'in_printing', 'in_cutting']);
 
     if (error) throw error;
 
