@@ -565,20 +565,18 @@ onUnmounted(() => {
   color: #757575;
 }
 
-@media (max-width: 600px) {
-  .v-navigation-drawer.glassmorphism-sidebar {
-    display: flex !important;
-    flex-direction: column !important;
-    height: 100vh !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-  }
-  .main-nav-list {
-    flex: 1 1 auto !important;
-    min-height: 0 !important;
-    height: 100% !important;
-    overflow-y: auto !important;
-    max-height: unset !important;
-  }
+.v-navigation-drawer.glassmorphism-sidebar {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+.main-nav-list {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  overflow-y: auto !important;
+  max-height: unset !important;
 }
 </style>
