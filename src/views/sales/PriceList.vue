@@ -98,8 +98,6 @@
           </div>
           <v-chip v-else size="small" variant="tonal" color="grey">N/A</v-chip>
         </template>
-        <template v-slot:item.unit>
-          </template>
         <template v-slot:loading>
           <v-skeleton-loader type="table-row@10"></v-skeleton-loader>
         </template>
@@ -147,6 +145,11 @@
                     <span class="info-label">Gramatura:</span>
                     <span class="info-value">{{ item.grammage || 'N/A' }}</span>
                 </div>
+                <div v-if="item.unit === 'kg' && item.rendimento" class="info-row">
+                    <span class="info-label">Rendimento:</span>
+                    <span class="info-value">{{ item.rendimento }}</span>
+                </div>
+
                 <v-divider class="my-3"></v-divider>
                 <div v-if="canViewSE" class="price-section">
                     <h4 class="region-title">SUDESTE</h4>
@@ -200,6 +203,7 @@ type Product = {
   composition: string;
   grammage: string;
   unit: 'metro' | 'kg';
+  rendimento?: string | null; // NOVO CAMPO
   price_se_cash: number;
   price_se_term: number;
   price_ne_cash: number;
@@ -219,9 +223,10 @@ const headers = computed(() => [
   { title: 'Produto', key: 'name', width: '35%' },
   { title: 'Composição', key: 'composition' },
   { title: 'Gramatura', key: 'grammage' },
+  // NOVA COLUNA DE RENDIMENTO
+  { title: 'Rendimento', key: 'rendimento' },
   ...(canViewSE.value ? [{ title: 'Preço Sudeste', key: 'price_se', align: 'start' }] : []),
   ...(canViewNE.value ? [{ title: 'Preço Nordeste', key: 'price_ne', align: 'start' }] : []),
-  { title: '', key: 'unit', sortable: false, width: '50px' },
 ]);
 
 const filteredProducts = computed(() => {
@@ -361,7 +366,7 @@ onMounted(fetchPrices);
   }
 }
 
-/* --- NOVOS ESTILOS PARA DIFERENCIAÇÃO POR UNIDADE --- */
+/* --- ESTILOS PARA DIFERENCIAÇÃO POR UNIDADE --- */
 .mobile-price-card.unit--kg {
   background-color: rgba(103, 58, 183, 0.1);
   border-left-color: #7E57C2;
