@@ -13,6 +13,8 @@
         <v-tab value="reports" class="tab-item"><v-icon start>mdi-chart-line</v-icon>Relatórios</v-tab>
         <v-tab value="notifications" class="tab-item"><v-icon start>mdi-bullhorn-outline</v-icon>Notificações</v-tab>
         <v-tab value="stock" class="tab-item"><v-icon start>mdi-warehouse</v-icon>Estoque</v-tab>
+        <v-tab value="prices" class="tab-item"><v-icon start>mdi-currency-usd</v-icon>Tabela de Preços</v-tab>
+        <v-tab value="users" class="tab-item"><v-icon start>mdi-account-group-outline</v-icon>Usuários</v-tab>
       </v-tabs>
 
       <v-divider></v-divider>
@@ -33,6 +35,14 @@
         <v-window-item value="stock">
           <StockManagement />
         </v-window-item>
+
+        <v-window-item value="prices">
+          <AdminPriceListManagement />
+        </v-window-item>
+
+        <v-window-item value="users">
+          <AdminUserManagement />
+        </v-window-item>
       </v-window>
     </v-card>
   </v-container>
@@ -40,12 +50,12 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-// Importa o componente de estoque
 import StockManagement from '@/views/admin/StockManagement.vue';
-// Importa os NOVOS componentes de abas
 import AdminAuditTab from '@/components/admin/AdminAuditTab.vue';
 import AdminReportsTab from '@/components/admin/AdminReportsTab.vue';
 import AdminNotificationsTab from '@/components/admin/AdminNotificationsTab.vue';
+import AdminPriceListManagement from '@/components/admin/AdminPriceListManagement.vue';
+import AdminUserManagement from '@/components/admin/AdminUserManagement.vue'; // <-- NOVO IMPORT
 
 const tab = ref('audit');
 </script>

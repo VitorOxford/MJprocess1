@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
-import type { Profile } from '@/types'; // Criaremos este arquivo de tipos a seguir
+import type { Profile } from '@/types';
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -32,7 +32,8 @@ export const useUserStore = defineStore('user', {
       try {
         const { data: profileData, error } = await supabase
           .from('profiles')
-          .select('*')
+          // Apenas esta linha foi alterada para buscar a nova coluna
+          .select('*, allowed_regions')
           .eq('id', this.session.user.id)
           .single();
 

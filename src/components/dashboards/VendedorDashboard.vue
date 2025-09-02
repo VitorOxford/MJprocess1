@@ -20,12 +20,23 @@
 
       <v-col cols="12" md="8">
         <v-card class="dashboard-card" color="rgba(30,30,35,0.8)">
-          <v-card-title class="d-flex align-center">
-            Meus Pedidos Ativos
+          <v-card-title class="d-flex align-center flex-wrap">
+            <span>Meus Pedidos Ativos</span>
             <v-spacer></v-spacer>
-            <v-btn :to="{ name: 'NewOrder' }" color="primary" variant="tonal" prepend-icon="mdi-plus-box-outline">
-              Lançar Pedido
-            </v-btn>
+            <div class="d-flex ga-2 mt-2 mt-sm-0">
+              <v-btn
+                @click="goToEditor"
+                :loading="isRedirectingToEditor"
+                color="secondary"
+                variant="tonal"
+                prepend-icon="mdi-image-edit-outline"
+              >
+                Editor de Imagens
+              </v-btn>
+              <v-btn :to="{ name: 'NewOrder' }" color="primary" variant="tonal" prepend-icon="mdi-plus-box-outline">
+                Lançar Pedido
+              </v-btn>
+            </div>
           </v-card-title>
           <v-data-table
             :headers="headers"
@@ -61,12 +72,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { useUserStore } from '@/stores/user';
+import { supabase } from '@/api/supabase'; // Importe o Supabase
 
 const dashboardStore = useDashboardStore();
 const userStore = useUserStore();
+
+const isRedirectingToEditor = ref(false);
 
 const headers = [
   { title: 'Cliente', key: 'customer_name' },
@@ -106,6 +120,24 @@ const salesFunnel = computed(() => {
         { name: 'Em Produção', count: productionCount, percentage: (productionCount / total) * 100, color: 'purple' },
     ];
 });
+
+const goToEditor = async () => {
+  isRedirectingToEditor.value = true;
+  try {
+    const { data, error } = await supabase.functions.invoke('generate-editor-token');
+
+    if (error) throw error;
+
+    const editorUrl = `https://mjmockups.onrender.com?token=${data.token}`;
+    window.open(editorUrl, '_blank');
+
+  } catch (err: any) {
+    console.error("Erro ao gerar token para o editor:", err);
+    alert("Não foi possível acessar o editor. Tente novamente.");
+  } finally {
+    isRedirectingToEditor.value = false;
+  }
+};
 </script>
 
 <style scoped lang="scss">

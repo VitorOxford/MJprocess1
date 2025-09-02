@@ -44,18 +44,14 @@
             </v-img>
 
             <v-card-text class="pb-1">
-              <div class="info-line">
-                <v-icon size="small" class="mr-2 icon-color">mdi-layers-triple-outline</v-icon>
-                <span>{{ order.details.fabric_type }}</span>
-              </div>
-              <div class="info-line">
-                <v-icon size="small" class="mr-2 icon-color">mdi-ruler-square</v-icon>
-                <span>{{ order.quantity_meters }} metros</span>
-              </div>
-              <div class="info-line">
-                <v-icon size="small" class="mr-2 icon-color">mdi-account-edit-outline</v-icon>
-                <span>Arte por: {{ order.designer?.full_name || 'N/A' }}</span>
-              </div>
+                <div class="info-line">
+                    <v-icon size="small" class="mr-2 icon-color">mdi-alert-circle-outline</v-icon>
+                    <span>{{ getPendingItemsCount(order) }} item(s) para aprovar</span>
+                </div>
+                <div class="info-line">
+                    <v-icon size="small" class="mr-2 icon-color">mdi-account-edit-outline</v-icon>
+                    <span>Arte por: {{ getDesignerName(order) }}</span>
+                </div>
             </v-card-text>
 
             <v-card-actions class="pa-3">
@@ -80,22 +76,21 @@
 import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
+import { onActivated } from 'vue';
 
-type DesignerProfile = {
-  full_name: string;
-  avatar_url: string;
-}
+type OrderItem = {
+    id: string;
+    status: string;
+    stamp_image_url?: string;
+    [key: string]: any;
+};
 
 type Order = {
   id: string;
   customer_name: string;
-  quantity_meters: number;
   created_at: string;
-  details: {
-      fabric_type: string;
-      final_art_url?: string;
-  };
-  designer: DesignerProfile | null;
+  order_items: OrderItem[];
+  designer: { full_name: string } | null;
 };
 
 const userStore = useUserStore();
@@ -107,8 +102,7 @@ const filteredOrders = computed(() => {
     if(!searchQuery.value) return orders.value;
     const query = searchQuery.value.toLowerCase();
     return orders.value.filter(order =>
-        order.customer_name.toLowerCase().includes(query) ||
-        (order.designer && order.designer.full_name.toLowerCase().includes(query))
+        order.customer_name.toLowerCase().includes(query)
     );
 });
 
@@ -118,14 +112,14 @@ const fetchPendingOrders = async () => {
   try {
     const { data, error } = await supabase
       .from('orders')
-      .select('id, customer_name, quantity_meters, created_at, details, designer:designer_id(full_name, avatar_url)')
-      .eq('status', 'customer_approval')
-      // A LINHA ABAIXO FOI REMOVIDA PARA QUE TODOS OS VENDEDORES VEJAM
-      // .eq('created_by', userStore.profile.id)
+      .select('id, customer_name, created_at, designer:designer_id(full_name), order_items(*)')
+      .eq('is_launch', true)
+      .eq('order_items.status', 'customer_approval')
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    orders.value = (data as Order[]) || [];
+    // Garante que apenas pedidos com itens pendentes sejam mostrados.
+    orders.value = (data as Order[]).filter(o => o.order_items && o.order_items.length > 0) || [];
   } catch (e) {
     console.error('Erro ao buscar pedidos para aprovação:', e);
   } finally {
@@ -133,17 +127,30 @@ const fetchPendingOrders = async () => {
   }
 };
 
-const isImageUrl = (url?: string): boolean => {
-    if (!url) return false;
-    return /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(url);
-}
-
 const getArtPreview = (order: Order): string => {
-    if (order.details.final_art_url && isImageUrl(order.details.final_art_url)) {
-        return order.details.final_art_url;
+    const pendingItem = order.order_items.find(item => item.status === 'customer_approval');
+    if (pendingItem && pendingItem.stamp_image_url) {
+        return pendingItem.stamp_image_url;
     }
     return `https://drprfuinwglmzquqtqzq.supabase.co/storage/v1/object/public/media/placeholder-art.png`;
 }
+
+const getPendingItemsCount = (order: Order): number => {
+    return order.order_items.filter(item => item.status === 'customer_approval').length;
+}
+
+const getDesignerName = (order: Order): string => {
+    return order.designer?.full_name || 'N/A';
+}
+
+// *** CORREÇÃO APLICADA AQUI ***
+// onActivated é um hook do Vue Router que é chamado toda vez que a página se torna ativa.
+// Isso garante que a lista seja sempre atualizada ao navegar para esta tela.
+onActivated(() => {
+    if (userStore.isLoggedIn) {
+        fetchPendingOrders();
+    }
+})
 
 onMounted(() => {
   if (userStore.isLoggedIn) {
@@ -153,73 +160,24 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
-.approvals-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.search-field {
-  max-width: 320px;
-}
-
+.approvals-container { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.search-field { max-width: 320px; }
 .approval-card {
-  border-radius: 16px;
-  background-color: rgba(30, 30, 35, 0.7);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
+  border-radius: 16px; background-color: rgba(30, 30, 35, 0.7);
+  backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   overflow: hidden;
-
   &:hover {
     transform: translateY(-8px);
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.25), 0 10px 10px rgba(0, 0, 0, 0.22);
     border-color: rgba(var(--v-theme-primary), 0.4);
   }
 }
-
-.art-preview {
-  position: relative;
-}
-
-.art-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.8) 10%, rgba(0,0,0,0) 60%);
-}
-
-.text-shadow {
-  text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
-}
-
-.info-line {
-  display: flex;
-  align-items: center;
-  padding: 4px 0;
-  font-size: 0.9rem;
-  color: #E0E0E0;
-
-  .icon-color {
-    color: rgba(var(--v-theme-primary-rgb), 0.8);
-  }
-}
-
-.action-btn {
-    transition: background-color 0.2s ease-in-out;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  flex-grow: 1;
-  color: #757575;
-}
+.art-preview { position: relative; }
+.art-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(to top, rgba(0,0,0,0.8) 10%, rgba(0,0,0,0) 60%); }
+.text-shadow { text-shadow: 2px 2px 4px rgba(0,0,0,0.8); }
+.info-line { display: flex; align-items: center; padding: 4px 0; font-size: 0.9rem; color: #E0E0E0; .icon-color { color: rgba(var(--v-theme-primary-rgb), 0.8); } }
+.action-btn { transition: background-color 0.2s ease-in-out; }
+.empty-state { display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; flex-grow: 1; color: #757575; }
 </style>

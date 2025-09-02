@@ -2,192 +2,208 @@
   <v-container>
     <div v-if="loading" class="text-center py-16">
       <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-      <p class="mt-4">Carregando dados do pedido...</p>
     </div>
+    <v-alert v-else-if="error" type="error" prominent>{{ error }}</v-alert>
 
-    <v-alert v-else-if="error" type="error" class="mx-auto" max-width="800" prominent>
-      {{ error }}
-    </v-alert>
-
-    <v-card v-else-if="order" class="glassmorphism-card-approve mx-auto" max-width="800">
+    <v-card v-else-if="order" class="glassmorphism-card-approve mx-auto" max-width="900">
       <v-toolbar color="transparent">
         <v-toolbar-title class="font-weight-bold">
           <v-icon start>mdi-check-decagram-outline</v-icon>
-          Aprovação de Arte Final
+          Aprovação de Itens
         </v-toolbar-title>
       </v-toolbar>
 
       <v-card-text class="pa-5">
-        <v-row>
-          <v-col cols="12" md="6">
-            <h3 class="text-h6">Pedido de: {{ order.customer_name }}</h3>
-            <v-list density="compact" bg-color="transparent">
-              <v-list-item title="Tecido" :subtitle="order.details.fabric_type"></v-list-item>
-              <v-list-item title="Metragem" :subtitle="`${order.quantity_meters}m`"></v-list-item>
-              <v-list-item title="Status Atual">
-                 <template v-slot:subtitle>
-                    <v-chip size="small" variant="flat" color="orange">Aguardando Aprovação</v-chip>
-                 </template>
-              </v-list-item>
-            </v-list>
-          </v-col>
+        <h3 class="text-h6 mb-4">Pedido de: {{ order.customer_name }}</h3>
+        <p class="text-medium-emphasis mb-6">
+          Os seguintes itens foram enviados pelo designer e precisam da sua aprovação para continuar.
+        </p>
 
-          <v-col cols="12" md="6">
-             <h3 class="text-h6">Arte para Aprovação:</h3>
-             <v-card class="mt-2" variant="tonal">
-                <v-img
-                    v-if="isImage(order.details.final_art_url)"
-                    :src="order.details.final_art_url"
-                    height="250"
-                    cover
-                ></v-img>
-                 <div v-else class="d-flex flex-column align-center justify-center pa-8" style="height: 250px;">
-                    <v-icon size="64">mdi-file-document-outline</v-icon>
-                    <p class="mt-2">Arquivo de arte</p>
-                 </div>
-                 <v-card-actions>
+        <div v-for="item in itemsToApprove" :key="item.id" class="item-approval-card">
+          <v-row no-gutters>
+            <v-col cols="12" md="5">
+              <v-img :src="item.stamp_image_url" height="100%" cover class="rounded-s"></v-img>
+            </v-col>
+            <v-col cols="12" md="7">
+              <div class="pa-4 d-flex flex-column fill-height">
+                <h4 class="text-h6 font-weight-bold">{{ item.stamp_ref }}</h4>
+                <p class="text-body-2">{{ item.fabric_type }} - {{ item.quantity_meters }}m</p>
+                <v-spacer></v-spacer>
+                <div class="mt-4">
+                  <div class="d-flex flex-wrap ga-2">
                     <v-btn
-                        :href="order.details.final_art_url"
-                        target="_blank"
-                        block
-                        variant="text"
-                        color="cyan"
+                      color="orange"
+                      variant="outlined"
+                      @click="openRejectModal(item)"
                     >
-                        Ver / Baixar Arte Completa
+                      Solicitar Alteração
                     </v-btn>
-                 </v-card-actions>
-             </v-card>
-          </v-col>
-        </v-row>
-
-        <v-divider class="my-6"></v-divider>
-
-        <div class="d-flex flex-wrap justify-center ga-4">
-            <v-btn
-                @click="showRequestChangesModal = true"
-                color="orange"
-                variant="outlined"
-                size="large"
-                :loading="isSubmitting"
-            >
-                <v-icon start>mdi-arrow-left</v-icon>
-                Solicitar Alteração
-            </v-btn>
-            <v-btn
-                @click="approveOrder"
-                color="green"
-                variant="flat"
-                size="large"
-                :loading="isSubmitting"
-            >
-                 <v-icon start>mdi-check-all</v-icon>
-                Aprovar e Encaminhar
-            </v-btn>
+                    <v-btn
+                      color="green"
+                      variant="flat"
+                      @click="approveItem(item)"
+                    >
+                      Aprovar Item
+                    </v-btn>
+                  </div>
+                </div>
+              </div>
+            </v-col>
+          </v-row>
         </div>
+
       </v-card-text>
     </v-card>
 
-    <RequestChangesModal
-        :show="showRequestChangesModal"
-        :order="order"
-        @close="showRequestChangesModal = false"
-        @submitted="handleChangesSubmitted"
-    />
+    <v-dialog v-model="showRejectModal" max-width="500px" persistent>
+      <v-card>
+        <v-card-title>Solicitar Alteração para "{{ itemToReject?.stamp_ref }}"</v-card-title>
+        <v-card-text>
+          <v-textarea
+            v-model="rejectionComment"
+            label="Descreva a alteração necessária (obrigatório)"
+            variant="outlined"
+            rows="4"
+            autofocus
+          ></v-textarea>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer></v-spacer>
+          <v-btn text @click="showRejectModal = false">Cancelar</v-btn>
+          <v-btn
+            color="orange"
+            variant="flat"
+            :disabled="!rejectionComment.trim()"
+            @click="rejectItem"
+          >
+            Enviar Solicitação
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
-import RequestChangesModal from '@/components/RequestChangesModal.vue';
 
+// --- TYPES ---
+type OrderItem = {
+  id: string; fabric_type: string; stamp_ref: string; quantity_meters: number;
+  stamp_image_url: string; status: string;
+};
 type Order = {
-  id: string;
-  customer_name: string;
-  quantity_meters: number;
-  status: string;
-  designer_id: string;
-  details: {
-    fabric_type: string;
-    final_art_url: string;
-  };
+  id: string; customer_name: string; order_items: OrderItem[];
 };
 
+// --- STATE ---
 const route = useRoute();
 const router = useRouter();
 const userStore = useUserStore();
 const order = ref<Order | null>(null);
 const loading = ref(true);
-const isSubmitting = ref(false);
 const error = ref<string | null>(null);
-const showRequestChangesModal = ref(false);
 const orderId = route.params.id as string;
 
-const fetchOrderDetails = async () => {
+const showRejectModal = ref(false);
+const itemToReject = ref<OrderItem | null>(null);
+const rejectionComment = ref('');
+
+// --- COMPUTED ---
+const itemsToApprove = computed(() => {
+  return order.value?.order_items.filter(item => item.status === 'customer_approval') || [];
+});
+
+// --- METHODS ---
+const fetchOrderForApproval = async () => {
   loading.value = true;
   error.value = null;
   try {
-    const { data, error: fetchError } = await supabase.from('orders').select('*').eq('id', orderId).single();
-    if (fetchError || !data) throw new Error('Pedido não encontrado.');
-    if(data.status !== 'customer_approval') {
-        router.push({ name: 'Home' });
-        return;
-    }
+    const { data, error: fetchError } = await supabase
+      .from('orders')
+      .select('id, customer_name, order_items(*)')
+      .eq('id', orderId)
+      .single();
+
+    if (fetchError || !data) throw new Error('Pedido não encontrado ou sem itens para aprovação.');
     order.value = data;
-  } catch (e: any) { error.value = e.message; }
-  finally { loading.value = false; }
-};
 
-const isImage = (url: string) => /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(url);
-
-const approveOrder = async () => {
-    if (!order.value || !userStore.profile) return;
-    isSubmitting.value = true;
-    try {
-        // --- MUDANÇA PRINCIPAL ---
-        // Em vez de 'approve_order_and_schedule', chamamos uma nova função
-        // que irá calcular a melhor data e definir o status para 'production_queue'.
-        const { error: rpcError } = await supabase.rpc('schedule_order_automatically', {
-            p_order_id: order.value.id
-        });
-        if (rpcError) throw rpcError;
-
-        // O log agora reflete que o pedido foi agendado.
-        await supabase.from('order_logs').insert({
-            order_id: order.value.id,
-            profile_id: userStore.profile.id,
-            log_type: 'STATUS_CHANGE',
-            description: 'Arte aprovada. Pedido encaminhado para a fila de produção e agendamento automático.'
-        });
-
-        // Notifica o time de produção ou administradores.
-        await supabase.from('notifications').insert({
-            sender_id: userStore.profile.id,
-            content: `Pedido de "${order.value.customer_name}" foi APROVADO e agendado.`,
-            redirect_url: '/pedidos' // Link para a Agenda de Produção
-        });
-
-        router.push({ name: 'Orders' }); // Redireciona para a agenda
-
-    } catch(e: any) {
-        alert(`Erro ao aprovar e agendar o pedido: ${e.message}`);
-        error.value = `Erro: ${e.message}`; // Mostra o erro na tela
-    } finally {
-        isSubmitting.value = false;
+    if (itemsToApprove.value.length === 0) {
+      router.push({ name: 'Approvals' });
     }
+  } catch (e: any) {
+    error.value = e.message;
+  } finally {
+    loading.value = false;
+  }
 };
 
-const handleChangesSubmitted = () => {
-    showRequestChangesModal.value = false;
-    router.push({ name: 'Home' });
+const approveItem = async (item: OrderItem) => {
+    // Ao aprovar, o status muda para 'approved_by_seller'
+    await processDecision(item.id, 'approved_by_seller', `Arte para o item "${item.stamp_ref}" aprovada pelo vendedor.`);
 };
 
-onMounted(() => {
-  fetchOrderDetails();
-});
+const openRejectModal = (item: OrderItem) => {
+  itemToReject.value = item;
+  rejectionComment.value = '';
+  showRejectModal.value = true;
+};
+
+// ==========================================================
+// ===== INÍCIO DA CORREÇÃO =================================
+// ==========================================================
+
+const rejectItem = async () => {
+  if (!itemToReject.value || !rejectionComment.value.trim()) return;
+
+  loading.value = true;
+  try {
+    const { error: rpcError } = await supabase.rpc('request_item_changes', {
+      p_item_id: itemToReject.value.id,
+      p_comment: rejectionComment.value.trim(),
+      p_profile_id: userStore.profile?.id
+    });
+    if (rpcError) throw rpcError;
+
+    // Recarrega os dados para atualizar a UI
+    await fetchOrderForApproval();
+  } catch(e: any) {
+    error.value = `Erro ao solicitar alteração: ${e.message}`;
+  } finally {
+    showRejectModal.value = false;
+    loading.value = false;
+  }
+};
+
+const processDecision = async (itemId: string, decision: string, comment: string) => {
+  loading.value = true;
+  try {
+    // Usamos a função RPC antiga, pois ela ainda é válida para aprovações
+    const { error: rpcError } = await supabase.rpc('process_seller_item_decision', {
+      p_item_id: itemId,
+      p_decision: decision,
+      p_comment: comment,
+      p_profile_id: userStore.profile?.id
+    });
+    if (rpcError) throw rpcError;
+
+    await fetchOrderForApproval();
+  } catch(e: any) {
+    error.value = `Erro ao processar decisão: ${e.message}`;
+  } finally {
+    loading.value = false;
+  }
+};
+
+// ==========================================================
+// ===== FIM DA CORREÇÃO ====================================
+// ==========================================================
+
+onMounted(fetchOrderForApproval);
 </script>
 
 <style scoped lang="scss">
@@ -196,5 +212,16 @@ onMounted(() => {
   background-color: rgba(25, 25, 30, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 12px;
+}
+.item-approval-card {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+.rounded-s {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
 }
 </style>

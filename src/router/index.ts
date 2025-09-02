@@ -30,6 +30,19 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/production/InProduction.vue'),
         meta: { roles: ['producao', 'admin'] }
       },
+      // ROTA REMOVIDA
+      // {
+      //   path: 'acompanhamento',
+      //   name: 'OrderStatus',
+      //   component: () => import('@/views/OrderStatus.vue'),
+      //   meta: { requiresAuth: true }
+      // },
+      {
+        path: 'tabela-precos',
+        name: 'PriceList',
+        component: () => import('@/views/sales/PriceList.vue'),
+        meta: { roles: ['vendedor', 'admin'] }
+      },
       {
         path: 'estoque',
         name: 'Stock',

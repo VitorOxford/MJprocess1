@@ -14,7 +14,7 @@ export type Order = {
   details: {
     fabric_type: string;
     [key: string]: any;
-  };
+  } | null; // *** IMPORTANTE: O campo details PODE ser nulo ***
   stores: {
     name: string;
   } | null;
@@ -57,8 +57,21 @@ export const useDashboardStore = defineStore('dashboard', {
     totalMetersAllTime(state): number {
       return state.orders.reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
     },
+    // NOVO GETTER ADICIONADO AQUI
+    totalMetersCurrentMonth(state): number {
+      const now = new Date();
+      const currentMonth = now.getMonth();
+      const currentYear = now.getFullYear();
+
+      return state.orders
+        .filter(order => {
+          const orderDate = new Date(order.created_at);
+          return orderDate.getMonth() === currentMonth && orderDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
+    },
     ordersInProductionQueue: (state) => {
-        const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
+        const productionStatuses = ['production_queue', 'in_printing', 'in_cutting', 'pending_stock']; // Adicionado pending_stock
         return state.orders.filter(o => productionStatuses.includes(o.status));
     },
     ordersInDesignQueue: (state) => {
@@ -91,12 +104,12 @@ export const useDashboardStore = defineStore('dashboard', {
     },
     metersInProductionMesa(): number {
         return this.ordersInProductionQueue
-            .filter(o => getMachineTypeForFabric(o.details.fabric_type) === 'MESA')
+            .filter(o => o.details && getMachineTypeForFabric(o.details.fabric_type) === 'MESA')
             .reduce((sum, order) => sum + order.quantity_meters, 0);
     },
     metersInProductionCorrida(): number {
         return this.ordersInProductionQueue
-            .filter(o => getMachineTypeForFabric(o.details.fabric_type) === 'CORRIDA')
+            .filter(o => o.details && getMachineTypeForFabric(o.details.fabric_type) === 'CORRIDA')
             .reduce((sum, order) => sum + order.quantity_meters, 0);
     },
     pendingTasks: (state) => (userId: string) => {

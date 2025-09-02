@@ -2,9 +2,7 @@
   <v-dialog :model-value="show" @update:model-value="$emit('close')" max-width="800px" persistent>
     <v-card class="glassmorphism-card">
       <v-toolbar color="transparent" density="compact">
-        <v-toolbar-title class="font-weight-bold">
-          Detalhes do Pedido
-        </v-toolbar-title>
+        <v-toolbar-title class="font-weight-bold">Detalhes do Pedido</v-toolbar-title>
         <v-spacer></v-spacer>
         <v-btn icon="mdi-close" variant="text" @click="$emit('close')"></v-btn>
       </v-toolbar>
@@ -12,85 +10,98 @@
       <div v-if="loading" class="text-center py-16">
         <v-progress-circular indeterminate color="primary" size="48"></v-progress-circular>
       </div>
-
-      <v-alert v-else-if="error" type="error" prominent class="ma-4">
-        {{ error }}
-      </v-alert>
+      <v-alert v-else-if="error" type="error" prominent class="ma-4">{{ error }}</v-alert>
 
       <v-card-text v-else-if="order" class="py-4">
         <v-row>
           <v-col cols="12" md="7">
             <v-list density="compact" bg-color="transparent">
               <v-list-item title="Cliente" :subtitle="order.customer_name"></v-list-item>
-              <v-list-item title="Status Atual">
+              <v-list-item title="Status Geral">
                  <template #subtitle>
-                    <v-chip size="small" :color="getStatusColor(order.status)" variant="flat">{{ statusDisplayMap[order.status] || order.status }}</v-chip>
+                    <v-chip size="small" :color="statusColorMap[order.status]" variant="flat">{{ statusDisplayMap[order.status] || order.status }}</v-chip>
                  </template>
               </v-list-item>
               <v-list-item title="Criado por" :subtitle="order.profiles?.full_name || 'N/A'"></v-list-item>
               <v-list-item title="Loja de Origem" :subtitle="order.stores?.name || 'N/A'"></v-list-item>
-              <v-list-item title="Data de Criação" :subtitle="formatDateSafe(order.created_at)"></v-list-item>
-              <v-list-item v-if="order.production_date" title="Data de Produção" :subtitle="formatDateSafe(order.production_date)"></v-list-item>
             </v-list>
           </v-col>
           <v-col cols="12" md="5">
-             <h4 class="text-subtitle-1 font-weight-bold mb-2">Materiais e Anexos</h4>
+             <h4 class="text-subtitle-1 font-weight-bold mb-2">Detalhes Gerais</h4>
               <v-list density="compact" bg-color="transparent" lines="two">
-                  <v-list-item title="Tecido" :subtitle="order.details.fabric_type"></v-list-item>
-                  <v-list-item title="Metragem" :subtitle="`${order.quantity_meters}m`"></v-list-item>
-                  <v-list-item v-if="order.details.final_art_url" title="Arte Final">
-                      <template #subtitle>
-                         <v-btn
-                            :href="order.details.final_art_url"
-                            target="_blank"
-                            size="small"
-                            variant="text"
-                            color="cyan"
-                            class="pa-0"
-                            prepend-icon="mdi-open-in-new"
-                         >
-                            Ver / Baixar Arte
-                         </v-btn>
-                      </template>
+                  <v-list-item title="Tipo">
+                    <template #subtitle>
+                      <v-chip size="small">{{ order.is_launch ? `Lançamento (${order.order_items.length} itens)` : 'Pedido Único' }}</v-chip>
+                    </template>
                   </v-list-item>
-                  <v-list-item v-if="order.has_down_payment && order.down_payment_proof_url" title="Comprovante de Entrada">
-                      <template #subtitle>
-                         <v-btn
-                            :href="getProofUrl(order.down_payment_proof_url)"
-                            target="_blank"
-                            size="small"
-                            variant="text"
-                            color="amber"
-                            class="pa-0"
-                            prepend-icon="mdi-receipt-text-check"
-                         >
-                            Ver Comprovante
-                         </v-btn>
-                      </template>
-                  </v-list-item>
+                  <v-list-item title="Metragem Total" :subtitle="`${order.quantity_meters}m`"></v-list-item>
               </v-list>
           </v-col>
         </v-row>
 
-        <div v-if="order.status === 'changes_requested'" class="mt-4">
-          <v-divider class="my-4"></v-divider>
-          <v-alert
-            type="warning"
-            variant="tonal"
-            icon="mdi-comment-alert-outline"
-            class="change-request-alert"
-          >
-            <div class="font-weight-bold">Alteração Solicitada</div>
-            <div class="text-body-2 mt-1">{{ latestChangeComment }}</div>
-          </v-alert>
+        <v-divider class="my-4"></v-divider>
+
+        <div v-if="focusedItem && order.is_launch" class="focused-item-card pa-4 mb-4">
+            <h4 class="text-subtitle-1 font-weight-bold mb-2">Item em Destaque</h4>
+            <div class="d-flex align-center">
+                 <v-img :key="focusedItem.id" :src="focusedItem.stamp_image_url" class="item-thumbnail mr-4" cover></v-img>
+                 <div>
+                  <span class="font-weight-bold">{{ focusedItem.stamp_ref }}</span>
+                  <span class="text-caption d-block">{{ focusedItem.fabric_type }} - {{ focusedItem.quantity_meters }}m</span>
+                </div>
+                <v-spacer></v-spacer>
+                <v-btn
+                  v-if="focusedItem.is_op_generated"
+                  color="info"
+                  variant="text"
+                  size="small"
+                  class="ml-2"
+                  icon="mdi-file-pdf-box"
+                  @click="emit('generatePdf', focusedItem)"
+                >
+                  <v-icon></v-icon>
+                  <v-tooltip activator="parent" location="top">Gerar Ordem de Produção (OP)</v-tooltip>
+                </v-btn>
+                <v-chip size="small" :color="getItemDisplay(focusedItem).color" label>{{ getItemDisplay(focusedItem).text }}</v-chip>
+            </div>
         </div>
 
-        <v-divider class="my-4"></v-divider>
-         <h4 class="text-subtitle-1 font-weight-bold mb-2">Observações da Estampa</h4>
-         <p class="text-body-2 text-medium-emphasis pa-2">
-            {{ order.details.stamp_details }}
-         </p>
-      </v-card-text>
+        <div v-if="!order.is_launch && order.details">
+             <h4 class="text-subtitle-1 font-weight-bold mb-2">Observações da Estampa</h4>
+             <p class="text-body-2 text-medium-emphasis pa-2">{{ order.details.stamp_details }}</p>
+        </div>
+
+        <div v-else-if="order.is_launch">
+            <h4 class="text-subtitle-1 font-weight-bold mb-2">
+                {{ focusedItem ? 'Outros Itens do Lançamento' : 'Itens do Lançamento' }}
+            </h4>
+            <div v-for="item in otherItems" :key="item.id" class="item-row-detail">
+              <div class="d-flex align-center">
+                <v-img :src="item.stamp_image_url" class="item-thumbnail mr-4" cover></v-img>
+                <div>
+                  <span class="font-weight-bold">{{ item.stamp_ref }}</span>
+                  <span class="text-caption d-block">{{ item.fabric_type }} - {{ item.quantity_meters }}m</span>
+                </div>
+              </div>
+              <div class="d-flex align-center">
+                <v-icon v-if="isItemReleasedForProd(item.status)" color="success" class="mr-2" title="Item liberado para produção">mdi-check-circle</v-icon>
+                <v-chip size="small" :color="getItemDisplay(item).color" label>{{ getItemDisplay(item).text }}</v-chip>
+                <v-btn
+                  v-if="item.is_op_generated"
+                  color="info"
+                  variant="text"
+                  size="small"
+                  class="ml-2"
+                  icon="mdi-file-pdf-box"
+                  @click="emit('generatePdf', item)"
+                >
+                  <v-icon></v-icon>
+                  <v-tooltip activator="parent" location="top">Gerar Ordem de Produção (OP)</v-tooltip>
+                </v-btn>
+              </div>
+            </div>
+        </div>
+         </v-card-text>
 
       <v-card-actions class="dialog-footer">
         <v-spacer></v-spacer>
@@ -103,76 +114,63 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { supabase } from '@/api/supabase';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 const props = defineProps({
   show: Boolean,
   orderId: String,
+  itemId: String, // Opcional: para saber qual item focar
 });
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'generatePdf']);
 
-type OrderDetails = {
-  id: string;
-  customer_name: string;
-  status: string;
-  created_at: string;
-  production_date: string | null;
-  quantity_meters: number;
-  has_down_payment: boolean; // NOVO
-  down_payment_proof_url: string | null; // NOVO
-  details: {
-    fabric_type: string;
-    stamp_details: string;
-    final_art_url?: string;
-  };
-  profiles: { full_name: string; } | null;
-  stores: { name: string; } | null;
-  order_logs?: { created_at: string; description: string; log_type: string; }[];
-};
-
-const order = ref<OrderDetails | null>(null);
+const order = ref<any | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+// Computeds para focar no item clicado e mostrar os outros
+const focusedItem = computed(() => {
+    if (!props.itemId || !order.value || !order.value.order_items) return null;
+    return order.value.order_items.find((item: any) => item.id === props.itemId);
+});
+
+const otherItems = computed(() => {
+    if (!order.value || !order.value.order_items) return [];
+    if (!focusedItem.value) return order.value.order_items; // Mostra todos se nenhum focado
+    return order.value.order_items.filter((item: any) => item.id !== focusedItem.value.id);
+});
+
 const statusDisplayMap: Record<string, string> = {
-    design_pending: 'Aguardando Design', in_design: 'Em Design', customer_approval: 'Aguardando Aprovação',
-    production_queue: 'Na Fila de Produção', in_printing: 'Em Impressão', in_cutting: 'Corte e Acabamento',
-    completed: 'Pronto para Envio'
+    design_pending: 'No Design', in_design: 'Em Design', customer_approval: 'Aprovação Vendedor',
+    approved_by_designer: 'Aprovado (Designer)', approved_by_seller: 'Aprovado (Vendedor)',
+    production_queue: 'Fila de Produção', in_printing: 'Em Impressão',
+    in_cutting: 'Em Corte', completed: 'Finalizado', pending_stock: 'Aguardando Estoque'
 };
-
 const statusColorMap: Record<string, string> = {
-    design_pending: 'blue-grey', in_design: 'blue', customer_approval: 'orange',
-    production_queue: 'grey', in_printing: 'blue', in_cutting: 'orange', completed: 'green'
+    design_pending: 'blue-grey', customer_approval: 'orange',
+    approved_by_designer: 'teal', approved_by_seller: 'green',
+    production_queue: 'grey', in_printing: 'blue', in_cutting: 'purple',
+    completed: 'success', pending_stock: 'error'
+};
+const tagColorMap: Record<string, string> = {
+    'Desenvolvimento': 'primary', 'Alteração': 'warning', 'Finalização': 'success', 'Aprovado': 'green'
+}
+
+const isItemReleasedForProd = (status: string) => {
+    const releasedStatuses = ['approved_by_designer', 'approved_by_seller', 'production_queue', 'in_printing', 'in_cutting', 'completed'];
+    return releasedStatuses.includes(status);
 };
 
-const getStatusColor = (status: string) => statusColorMap[status] || 'grey';
-
-const formatDateSafe = (dateString: string | null | undefined) => {
-    if (!dateString) return 'N/A';
-    try {
-        return format(new Date(dateString), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
-    } catch (e) {
-        console.error("Erro ao formatar data:", e);
-        return dateString;
+const getItemDisplay = (item: any) => {
+    if (order.value?.status === 'design_pending') {
+        return {
+            text: item.design_tag,
+            color: tagColorMap[item.design_tag] || 'default'
+        }
+    }
+    return {
+        text: statusDisplayMap[item.status] || item.status,
+        color: statusColorMap[item.status] || 'default'
     }
 }
-
-const getProofUrl = (path: string | null) => {
-    if (!path) return '#';
-    const { data } = supabase.storage.from('proofs').getPublicUrl(path);
-    return data.publicUrl;
-}
-
-const latestChangeComment = computed(() => {
-  if (order.value?.order_logs) {
-    const latestLog = order.value.order_logs
-      .filter(log => log.log_type === 'COMMENT')
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    return latestLog[0]?.description || 'Detalhes da alteração não fornecidos.';
-  }
-  return 'Detalhes da alteração não fornecidos.';
-});
 
 const fetchOrder = async (id: string) => {
   if (!id) return;
@@ -181,8 +179,7 @@ const fetchOrder = async (id: string) => {
   try {
     const { data, error: fetchError } = await supabase
       .from('orders')
-      // Adicionado os novos campos na query
-      .select(`*, profiles:created_by (full_name), stores (name), order_logs(created_at, description, log_type)`)
+      .select('*, profiles:created_by (full_name), stores (name), order_items(*)')
       .eq('id', id)
       .single();
 
@@ -201,22 +198,34 @@ watch(() => props.orderId, (newId) => {
   } else {
     order.value = null;
   }
-});
+}, { immediate: true });
 </script>
 
 <style scoped lang="scss">
 .glassmorphism-card {
   backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
   background-color: rgba(30, 30, 30, 0.85) !important;
   border-radius: 12px !important;
 }
-.dialog-header, .dialog-footer {
-  border-color: rgba(255, 255, 255, 0.1) !important;
+.dialog-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
-
-.change-request-alert {
-  border-left: 4px solid rgb(var(--v-theme-warning)) !important;
-  background-color: rgba(255, 152, 0, 0.1) !important;
+.item-row-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  &:last-child { border-bottom: none; }
+}
+.item-thumbnail {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+}
+.focused-item-card {
+    background-color: rgba(var(--v-theme-primary-rgb), 0.1);
+    border: 1px solid rgba(var(--v-theme-primary-rgb), 0.3);
+    border-radius: 8px;
 }
 </style>

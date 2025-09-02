@@ -22,7 +22,8 @@
                     {{ item.available_meters }}m </v-chip>
             </template>
             <template v-slot:item.actions="{ item }">
-                <v-btn icon="mdi-pencil-outline" variant="text" size="small" @click="openEditDialog(item)"></v-btn> </template>
+                <v-btn icon="mdi-pencil-outline" variant="text" size="small" @click="openEditDialog(item)"></v-btn>
+            </template>
             <template v-slot:loading>
                 <v-skeleton-loader type="table-row@5"></v-skeleton-loader>
             </template>
@@ -46,6 +47,14 @@
                     label="Nome do Tecido"
                     variant="outlined"
                     autofocus
+                    class="mb-4"
+                ></v-text-field>
+                <v-text-field
+                    v-model.number="editedItem.meters_per_roll"
+                    label="Metros por Rolo (Padrão)"
+                    type="number"
+                    variant="outlined"
+                    class="mb-4"
                 ></v-text-field>
                 <v-text-field
                     v-model.number="editedItem.quantity"
@@ -75,6 +84,7 @@ type StockItem = {
   id: string;
   fabric_type: string;
   available_meters: number;
+  meters_per_roll: number | null; // COLUNA NOVA
 };
 
 const stockItems = ref<StockItem[]>([]);
@@ -87,11 +97,13 @@ const editedItem = ref<{
     id: string | null;
     fabric_type: string;
     quantity: number | null;
+    meters_per_roll: number | null; // COLUNA NOVA
     current_stock?: number;
 }>({
     id: null,
     fabric_type: '',
     quantity: null,
+    meters_per_roll: null, // COLUNA NOVA
 });
 
 const headers = [
@@ -117,14 +129,19 @@ const fetchStock = async () => {
 
 const openNewItemDialog = () => {
   isEditing.value = false;
-  editedItem.value = { id: null, fabric_type: '', quantity: null };
+  editedItem.value = { id: null, fabric_type: '', quantity: null, meters_per_roll: null };
   dialog.value = true;
 };
 
-// FUNÇÃO ATUALIZADA para receber 'item' diretamente
 const openEditDialog = (item: StockItem) => {
   isEditing.value = true;
-  editedItem.value = { id: item.id, fabric_type: item.fabric_type, quantity: null, current_stock: item.available_meters };
+  editedItem.value = {
+      id: item.id,
+      fabric_type: item.fabric_type,
+      quantity: null,
+      meters_per_roll: item.meters_per_roll,
+      current_stock: item.available_meters
+  };
   dialog.value = true;
 };
 
@@ -138,26 +155,32 @@ const saveStock = async () => {
       alert("O nome do tecido é obrigatório.");
       return;
   }
-  if (editedItem.value.quantity === null) {
-      alert("A quantidade é obrigatória.");
-      return;
-  }
 
   isSaving.value = true;
 
   try {
       if (isEditing.value) {
-          const { error } = await supabase.rpc('increment', {
-              table_name: 'stock',
-              row_id: editedItem.value.id,
-              x: editedItem.value.quantity
-          });
-          if (error) throw error;
+          // Atualiza a metragem do rolo
+          const { error: updateError } = await supabase
+            .from('stock')
+            .update({ meters_per_roll: editedItem.value.meters_per_roll })
+            .eq('id', editedItem.value.id);
+          if (updateError) throw updateError;
 
-      } else {
+          // Adiciona ou remove do estoque se uma quantidade for informada
+          if (editedItem.value.quantity !== null && editedItem.value.quantity !== 0) {
+              const { error: rpcError } = await supabase.rpc('increment', {
+                  table_name: 'stock',
+                  row_id: editedItem.value.id,
+                  x: editedItem.value.quantity
+              });
+              if (rpcError) throw rpcError;
+          }
+      } else { // Cria um novo item
           const { error } = await supabase.from('stock').insert({
               fabric_type: editedItem.value.fabric_type,
-              available_meters: editedItem.value.quantity
+              available_meters: editedItem.value.quantity || 0,
+              meters_per_roll: editedItem.value.meters_per_roll
           });
           if (error) throw error;
       }
