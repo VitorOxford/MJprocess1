@@ -6,9 +6,17 @@
           <v-icon start>mdi-plus-box-outline</v-icon>
           Lançar Novo Pedido
         </v-toolbar-title>
+        <v-spacer></v-spacer>
+        <div class="pa-2 text-right">
+          <div class="text-caption text-grey">Próximo Pedido</div>
+          <div v-if="loadingNextOrderNumber" class="text-center">
+             <v-progress-circular indeterminate size="20" width="2"></v-progress-circular>
+          </div>
+          <div v-else class="text-h6 font-weight-bold">#{{ String(nextOrderNumber).padStart(4, '0') }}</div>
+        </div>
       </v-toolbar>
 
-      <v-stepper v-model="step" :items="stepperItems" alt-labels class="stepper-transparent">
+      <v-stepper v-if="!orderCreatedSuccess" v-model="step" :items="stepperItems" alt-labels class="stepper-transparent">
         <template v-slot:item.1>
           <v-card flat color="transparent" class="pa-md-4">
             <v-card-text>
@@ -57,7 +65,7 @@
         <template v-slot:item.2>
           <v-card flat color="transparent">
             <v-card-text>
-              <h3 class="text-h6 font-weight-bold mb-4 text-center">Itens do Lançamento</h3>
+              <h3 class="text-h6 font-weight-bold mb-4 text-center">Itens do Pedido</h3>
               <v-row>
                 <v-col cols="12" md="5">
                   <v-card class="item-list-card" variant="outlined">
@@ -239,6 +247,32 @@
         </template>
       </v-stepper>
 
+      <div v-else class="pa-8 text-center">
+        <v-icon size="80" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
+        <h2 class="text-h5 font-weight-bold">Pedido #{{ String(createdOrderNumber).padStart(4, '0') }} criado com sucesso!</h2>
+        <p class="mt-2 text-medium-emphasis">O pedido foi enviado para a equipe de design.</p>
+        <div class="mt-8">
+            <v-btn
+                color="primary"
+                size="large"
+                variant="flat"
+                class="mr-4"
+                @click="generateAndUploadQuotePdf"
+                :loading="isGeneratingPdf"
+            >
+                <v-icon left>mdi-file-pdf-box</v-icon>
+                Gerar e Anexar Orçamento
+            </v-btn>
+            <v-btn
+                size="large"
+                variant="tonal"
+                @click="resetForm"
+            >
+                Lançar Novo Pedido
+            </v-btn>
+        </div>
+      </div>
+
       <v-alert v-if="feedback.message" :type="feedback.type" class="ma-4" closable @click:close="feedback.message = ''">
         {{ feedback.message }}
       </v-alert>
@@ -251,8 +285,18 @@ import { ref, onMounted, computed, reactive, nextTick, toRaw } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
 import type { VForm } from 'vuetify/components';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
-type StockItem = { fabric_type: string; available_meters: number; };
+
+type StockItem = {
+    fabric_type: string;
+    available_meters: number;
+    unit_of_measure?: 'metro' | 'kg';
+    base_price?: number;
+};
 
 type OrderHeader = { customer_name: string; has_down_payment: boolean; down_payment_proof_file: File | null; };
 type OrderItem = {
@@ -260,7 +304,7 @@ type OrderItem = {
   stamp_ref: string;
   quantity_meters: number | null;
   stamp_image_file: File | null;
-  stamp_image_file_preview: string | null; // Adicionado para a pré-visualização
+  stamp_image_file_preview: string | null;
   notes: string;
   design_tag: 'Desenvolvimento' | 'Alteração' | 'Finalização' | 'Aprovado';
 };
@@ -277,6 +321,14 @@ const stepperItems = [
   { title: 'Cliente & Vendedor', icon: 'mdi-account-cash' },
   { title: 'Itens do Pedido', icon: 'mdi-format-list-bulleted-square' }
 ];
+
+const nextOrderNumber = ref<number | null>(null);
+const loadingNextOrderNumber = ref(true);
+
+const orderCreatedSuccess = ref(false);
+const createdOrderId = ref<string | null>(null);
+const createdOrderNumber = ref<number | null>(null);
+const isGeneratingPdf = ref(false);
 
 const tagColorMap = {
   'Desenvolvimento': '#40c4ff',
@@ -351,7 +403,6 @@ const prepareNewItem = async () => {
 
 const editItem = (index: number) => {
   editedItemIndex.value = index;
-  // Criar uma cópia profunda para edição
   const itemToEdit = structuredClone(toRaw(orderItems.value[index]));
   editedItem.value = itemToEdit;
 }
@@ -367,7 +418,6 @@ const handleFileChange = (event: Event) => {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files[0]) {
         editedItem.value.stamp_image_file = input.files[0];
-        // Cria uma URL temporária para pré-visualização
         editedItem.value.stamp_image_file_preview = URL.createObjectURL(input.files[0]);
     } else {
         editedItem.value.stamp_image_file = null;
@@ -403,6 +453,21 @@ const fetchStock = async () => {
     loadingStock.value = false;
   }
 };
+
+const fetchNextOrderNumber = async () => {
+    loadingNextOrderNumber.value = true;
+    try {
+        const { data, error } = await supabase.rpc('get_next_order_number');
+        if (error) throw error;
+        nextOrderNumber.value = data;
+    } catch (e) {
+        console.error("Erro ao buscar próximo número do pedido:", e);
+        nextOrderNumber.value = 0;
+    } finally {
+        loadingNextOrderNumber.value = false;
+    }
+};
+
 
 const showFeedback = (message: string, type: 'success' | 'error') => {
   feedback.message = message;
@@ -453,7 +518,7 @@ const submitLaunch = async () => {
       };
     }));
 
-    const { error: rpcError } = await supabase.rpc('create_launch_order', {
+    const { data: newOrderNumber, error: rpcError } = await supabase.rpc('create_launch_order', {
       p_customer_name: orderHeader.customer_name,
       p_created_by: userStore.profile?.id,
       p_store_id: userStore.profile?.store_id,
@@ -464,8 +529,12 @@ const submitLaunch = async () => {
 
     if (rpcError) throw rpcError;
 
-    showFeedback('Lançamento enviado com sucesso!', 'success');
-    resetForm();
+    const { data: orderData } = await supabase.from('orders').select('id').eq('order_number', newOrderNumber).single();
+    if (orderData) {
+        createdOrderId.value = orderData.id;
+    }
+    createdOrderNumber.value = newOrderNumber;
+    orderCreatedSuccess.value = true;
 
   } catch (error: any) {
     console.error('Erro ao criar lançamento:', error);
@@ -475,6 +544,154 @@ const submitLaunch = async () => {
   }
 };
 
+const formatCurrency = (value: number | undefined) => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+};
+
+const imageToBase64 = (url: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx?.drawImage(img, 0, 0);
+            const dataURL = canvas.toDataURL('image/png');
+            resolve(dataURL);
+        };
+        img.onerror = reject;
+        img.src = url;
+    });
+};
+
+// ==========================================================
+// ===== INÍCIO DA CORREÇÃO =================================
+// ==========================================================
+const generateAndUploadQuotePdf = async () => {
+    isGeneratingPdf.value = true;
+    try {
+        const itemDetailsWithPrice = await Promise.all(
+            orderItems.value.map(async (item) => {
+                const stockInfo = stockItems.value.find(s => s.fabric_type === item.fabric_type);
+                const price = stockInfo?.base_price || 0;
+                const total = (item.quantity_meters || 0) * price;
+                return {
+                    base: item.fabric_type,
+                    estampa: item.stamp_ref,
+                    metragem: `${item.quantity_meters}m`,
+                    valorUnit: formatCurrency(price),
+                    valorTotal: formatCurrency(total),
+                };
+            })
+        );
+
+        const grandTotal = itemDetailsWithPrice.reduce((sum, item) => {
+            const value = parseFloat(item.valorTotal.replace('R$', '').replace(/\./g, '').replace(',', '.'));
+            return sum + value;
+        }, 0);
+
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+
+        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+        const logoBase64 = await imageToBase64(logoUrl);
+
+        const logoProps = doc.getImageProperties(logoBase64);
+        const logoWidth = 50;
+        const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
+        doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
+
+        doc.setFontSize(9);
+        doc.setTextColor(100);
+        const companyInfo = [
+            "MR JACKY - 20.631.721/0001-07",
+            "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
+            "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
+        ];
+        doc.text(companyInfo, pageWidth - 15, 15, { align: 'right' });
+
+        const orderTitle = `Pedido #${String(createdOrderNumber.value).padStart(4, '0')}`;
+        doc.setFontSize(18);
+        doc.setTextColor(0);
+        doc.setFont('helvetica', 'bold');
+        doc.text(orderTitle, pageWidth - 15, 45, { align: 'right' });
+
+        doc.setLineWidth(0.5);
+        doc.line(15, 55, pageWidth - 15, 55);
+
+
+        autoTable(doc, {
+            startY: 60,
+            head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']],
+            body: [[
+                orderHeader.customer_name,
+                userStore.profile?.full_name || 'N/A',
+                format(new Date(), 'dd/MM/yyyy', { locale: ptBR })
+            ]],
+            theme: 'striped',
+        });
+
+        autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY + 10,
+            head: [['Base', 'Estampa', 'Metragem', 'Valor Unit.', 'Valor Total']],
+            body: itemDetailsWithPrice.map(i => [i.base, i.estampa, i.metragem, i.valorUnit, i.valorTotal]),
+            theme: 'grid',
+            foot: [['', '', '', 'Total do Pedido:', formatCurrency(grandTotal)]],
+            footStyles: { fontStyle: 'bold', fontSize: 11, halign: 'right' },
+            didDrawPage: (data) => {
+                const signatureY = pageHeight - 40;
+                doc.setLineWidth(0.5);
+                doc.setDrawColor(100, 100, 100);
+                doc.line(40, signatureY, pageWidth - 40, signatureY);
+                doc.setFontSize(10);
+                doc.setTextColor(100);
+                doc.text(`Assinatura do Cliente: ${orderHeader.customer_name}`, pageWidth / 2, signatureY + 5, { align: 'center' });
+
+                const footerY = pageHeight - 15;
+                doc.setFontSize(9);
+                doc.setTextColor(150);
+                doc.text('Orçamento gerado com MJProcess', pageWidth / 2, footerY, { align: 'center' });
+            }
+        });
+
+        const pdfBlob = doc.output('blob');
+
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Pedido_${String(createdOrderNumber.value).padStart(4, '0')}_${orderHeader.customer_name}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        const pdfPath = `sales_orders/pedido_${createdOrderNumber.value}.pdf`;
+        const publicUrl = await uploadFile(pdfBlob, 'sales-orders', pdfPath);
+
+        const { error: updateError } = await supabase
+            .from('orders')
+            .update({ sales_order_pdf_url: publicUrl })
+            .eq('id', createdOrderId.value);
+
+        if (updateError) throw updateError;
+
+        showFeedback('Orçamento em PDF gerado e anexado com sucesso!', 'success');
+
+    } catch (error: any) {
+        console.error("Erro ao gerar PDF do orçamento:", error);
+        showFeedback(`Erro ao gerar PDF: ${error.message}`, 'error');
+    } finally {
+        isGeneratingPdf.value = false;
+    }
+}
+// ==========================================================
+// ===== FIM DA CORREÇÃO ====================================
+// ==========================================================
+
+
 const resetForm = () => {
   orderHeader.customer_name = '';
   orderHeader.has_down_payment = false;
@@ -482,9 +699,16 @@ const resetForm = () => {
   orderItems.value = [];
   prepareNewItem();
   step.value = 1;
+  orderCreatedSuccess.value = false;
+  createdOrderId.value = null;
+  createdOrderNumber.value = null;
+  fetchNextOrderNumber();
 };
 
-onMounted(fetchStock);
+onMounted(() => {
+    fetchStock();
+    fetchNextOrderNumber();
+});
 </script>
 
 <style scoped lang="scss">

@@ -77,19 +77,12 @@
 
             <div v-else class="d-flex flex-column ga-2" style="min-width: 180px;">
               <v-btn
-                v-if="item.design_tag === 'Aprovado'"
+                v-if="item.design_tag === 'Aprovado' || item.design_tag === 'Finalização'"
                 color="teal"
                 @click="emit('releaseItem', item)"
               >
                 <v-icon start>mdi-send</v-icon>
                 Liberar p/ Produção
-              </v-btn>
-              <v-btn
-                v-else-if="item.design_tag === 'Finalização'"
-                color="success"
-                @click="emit('approve', item)"
-              >
-                Aprovar Direto
               </v-btn>
               <v-btn
                 v-else
@@ -99,8 +92,8 @@
                 Enviar para Aprovação
               </v-btn>
             </div>
-          </div>
-          </div>
+            </div>
+        </div>
 
         <div v-if="canBeReleased" class="text-center mt-8">
             <v-btn color="success" size="large" variant="flat" @click="emit('releaseToProduction', order)">
@@ -141,18 +134,17 @@ const isItemInProduction = (status: string) => {
 }
 
 // ===== INÍCIO DA CORREÇÃO =====
-// Nova função helper para determinar se o checkbox da OP deve aparecer.
-// Isso inclui todos os cenários onde o item é considerado "aprovado".
 const isReadyForProductionFlow = (item: any) => {
     // Se já foi aprovado pelo vendedor
     if (isItemApprovedBySeller(item.status)) return true;
     // Se já está na produção
     if (isItemInProduction(item.status)) return true;
-    // Se o designer marcou como 'Aprovado' para liberação direta
-    if (item.status === 'design_pending' && item.design_tag === 'Aprovado') return true;
+    // Se o designer marcou como 'Aprovado' ou 'Finalização' para liberação direta
+    if (item.status === 'design_pending' && (item.design_tag === 'Aprovado' || item.design_tag === 'Finalização')) return true;
 
     return false;
 };
+// ===== FIM DA CORREÇÃO =====
 
 const toggleOpGenerated = async (item: any) => {
     const newValue = !item.is_op_generated;
@@ -162,15 +154,13 @@ const toggleOpGenerated = async (item: any) => {
             .update({ is_op_generated: newValue })
             .eq('id', item.id);
         if (error) throw error;
-        // Atualiza o estado localmente para refletir a mudança imediatamente
         item.is_op_generated = newValue;
-        emit('itemUpdated'); // Notifica o componente pai para recarregar os dados
+        emit('itemUpdated');
     } catch (err) {
         console.error("Erro ao atualizar a flag is_op_generated:", err);
         alert("Ocorreu um erro ao tentar salvar a liberação da OP.");
     }
 };
-// ===== FIM DA CORREÇÃO =====
 
 const canBeReleased = computed(() => {
     if (!props.order || !props.order.order_items) return false;

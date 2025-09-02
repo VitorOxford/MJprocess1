@@ -282,6 +282,7 @@ type OrderItem = {
 type Order = {
   id: string; customer_name: string; status: string; created_at: string;
   quantity_meters: number; is_launch: boolean;
+  order_number: number;
   details: { fabric_type: string; stamp_details: string; } | null;
   creator?: { full_name: string; };
   order_items: OrderItem[];
@@ -541,9 +542,6 @@ const imageToBase64 = (url: string): Promise<string> => {
 };
 
 
-// ==========================================================
-// ===== INÍCIO DA CORREÇÃO =================================
-// ==========================================================
 const generatePdf = async (item: OrderItem) => {
   const parentOrder = allOrders.value.find(o => o.id === item.order_id);
 
@@ -555,7 +553,6 @@ const generatePdf = async (item: OrderItem) => {
     const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', {
         p_item_id: item.id
     });
-
     if (rpcError) throw rpcError;
 
     const today = new Date().toISOString().split('T')[0];
@@ -564,9 +561,9 @@ const generatePdf = async (item: OrderItem) => {
     });
     if (forecastError) throw forecastError;
 
-
     const formattedOpNumber = String(opNumber).padStart(4, '0');
     const formattedForecastDate = format(new Date(forecastDate), 'dd/MM/yyyy', { locale: ptBR });
+    const formattedOrderNumber = String(parentOrder.order_number).padStart(4, '0');
 
     const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
@@ -592,21 +589,28 @@ const generatePdf = async (item: OrderItem) => {
     ];
     doc.text(companyInfo, pageWidth - 15, 15, { align: 'right' });
 
+    // ===== INÍCIO DA CORREÇÃO =====
+    const opTitle = `OP #${formattedOpNumber}`;
+    const orderTitle = `Pedido #${formattedOrderNumber}`;
     const itemIndex = parentOrder.order_items.findIndex(oi => oi.id === item.id) + 1;
     const totalItems = parentOrder.order_items.length;
-    const opTitle = `OP #${formattedOpNumber}`;
-    const opSubtitle = `Item ${itemIndex} de ${totalItems} (${parentOrder.customer_name})`;
+    const itemSubtitle = `Item ${itemIndex} de ${totalItems}`;
 
     doc.setFontSize(18);
     doc.setTextColor(0);
     doc.text(opTitle, 15, 45);
 
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text(orderTitle, pageWidth - 15, 45, { align: 'right' });
+
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(opSubtitle, 15, 51);
+    doc.text(itemSubtitle, pageWidth - 15, 51, { align: 'right' });
 
     doc.setLineWidth(0.5);
     doc.line(15, 55, pageWidth - 15, 55);
+    // ===== FIM DA CORREÇÃO =====
 
     autoTable(doc, {
         startY: 60,
@@ -642,28 +646,28 @@ const generatePdf = async (item: OrderItem) => {
 
     const artX = 15;
     const artY = artStartY + 5;
-    const maxImgWidth = pageWidth - (artX * 2);
 
-    // ===== CORREÇÃO APLICADA AQUI =====
-    // Aumentamos a margem inferior de 30 para 45 para dar espaço ao rodapé.
-    const maxImgHeight = pageHeight - artStartY - 45;
+    // ===== INÍCIO DA CORREÇÃO =====
+    const maxImgWidth = pageWidth - (artX * 2);
+    const maxImgHeight = pageHeight - artStartY - 45; // Margem inferior aumentada
 
     const imgProps = doc.getImageProperties(artBase64);
+    // Calcula a proporção para caber tanto na largura quanto na altura máxima
     const ratio = Math.min(maxImgWidth / imgProps.width, maxImgHeight / imgProps.height);
     const imgWidth = imgProps.width * ratio;
     const imgHeight = imgProps.height * ratio;
 
-    const imgXCentered = (pageWidth - imgWidth) / 2; // Centraliza a imagem horizontalmente
+    // Centraliza a imagem horizontalmente
+    const imgXCentered = (pageWidth - imgWidth) / 2;
+    // ===== FIM DA CORREÇÃO =====
 
-    // Desenha a borda
     doc.setDrawColor(180, 180, 180);
     doc.setLineWidth(0.5);
     doc.rect(imgXCentered - 1, artY - 1, imgWidth + 2, imgHeight + 2, 'S');
 
-    // Adiciona a imagem
     doc.addImage(artBase64, 'PNG', imgXCentered, artY, imgWidth, imgHeight);
 
-    const footerY = doc.internal.pageSize.height - 15;
+    const footerY = pageHeight - 15;
     doc.setFontSize(9);
     doc.setTextColor(150);
     doc.text('OP gerada com MJProcess', pageWidth / 2, footerY, { align: 'center' });
@@ -675,9 +679,6 @@ const generatePdf = async (item: OrderItem) => {
     alert("Não foi possível gerar o PDF. Verifique se as imagens estão acessíveis e tente novamente.");
   }
 };
-// ==========================================================
-// ===== FIM DA CORREÇÃO ====================================
-// ==========================================================
 
 
 onActivated(fetchAllData);
