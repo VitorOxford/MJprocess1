@@ -566,6 +566,7 @@ const imageToBase64 = (url: string): Promise<string> => {
     });
 };
 
+
 // ==========================================================
 // ===== INÍCIO DA CORREÇÃO =================================
 // ==========================================================
@@ -576,12 +577,13 @@ const generateAndUploadQuotePdf = async () => {
             orderItems.value.map(async (item) => {
                 const stockInfo = stockItems.value.find(s => s.fabric_type === item.fabric_type);
                 const price = stockInfo?.base_price || 0;
+                const unit = stockInfo?.unit_of_measure === 'kg' ? 'kg' : 'm'; // <<< CORREÇÃO AQUI
                 const total = (item.quantity_meters || 0) * price;
                 return {
                     base: item.fabric_type,
                     estampa: item.stamp_ref,
-                    metragem: `${item.quantity_meters}m`,
-                    valorUnit: formatCurrency(price),
+                    quantidade: `${item.quantity_meters}${unit}`, // <<< CORREÇÃO AQUI
+                    valorUnit: `${formatCurrency(price)} /${unit}`, // <<< CORREÇÃO AQUI
                     valorTotal: formatCurrency(total),
                 };
             })
@@ -593,8 +595,8 @@ const generateAndUploadQuotePdf = async () => {
         }, 0);
 
         const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
 
         const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
         const logoBase64 = await imageToBase64(logoUrl);
@@ -604,27 +606,13 @@ const generateAndUploadQuotePdf = async () => {
         const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
         doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
 
-        doc.setFontSize(9);
-        doc.setTextColor(100);
-        const companyInfo = [
-            "MR JACKY - 20.631.721/0001-07",
-            "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
-            "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
-        ];
-        doc.text(companyInfo, pageWidth - 15, 15, { align: 'right' });
-
-        const orderTitle = `Pedido #${String(createdOrderNumber.value).padStart(4, '0')}`;
         doc.setFontSize(18);
-        doc.setTextColor(0);
         doc.setFont('helvetica', 'bold');
-        doc.text(orderTitle, pageWidth - 15, 45, { align: 'right' });
-
-        doc.setLineWidth(0.5);
-        doc.line(15, 55, pageWidth - 15, 55);
+        doc.text(`Pedido #${String(createdOrderNumber.value).padStart(4, '0')}`, pageWidth - 15, 25, { align: 'right' });
 
 
         autoTable(doc, {
-            startY: 60,
+            startY: 40,
             head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']],
             body: [[
                 orderHeader.customer_name,
@@ -636,8 +624,8 @@ const generateAndUploadQuotePdf = async () => {
 
         autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 10,
-            head: [['Base', 'Estampa', 'Metragem', 'Valor Unit.', 'Valor Total']],
-            body: itemDetailsWithPrice.map(i => [i.base, i.estampa, i.metragem, i.valorUnit, i.valorTotal]),
+            head: [['Base', 'Estampa', 'Quantidade', 'Valor Unit.', 'Valor Total']], // <<< CORREÇÃO AQUI
+            body: itemDetailsWithPrice.map(i => [i.base, i.estampa, i.quantidade, i.valorUnit, i.valorTotal]), // <<< CORREÇÃO AQUI
             theme: 'grid',
             foot: [['', '', '', 'Total do Pedido:', formatCurrency(grandTotal)]],
             footStyles: { fontStyle: 'bold', fontSize: 11, halign: 'right' },
@@ -649,11 +637,6 @@ const generateAndUploadQuotePdf = async () => {
                 doc.setFontSize(10);
                 doc.setTextColor(100);
                 doc.text(`Assinatura do Cliente: ${orderHeader.customer_name}`, pageWidth / 2, signatureY + 5, { align: 'center' });
-
-                const footerY = pageHeight - 15;
-                doc.setFontSize(9);
-                doc.setTextColor(150);
-                doc.text('Orçamento gerado com MJProcess', pageWidth / 2, footerY, { align: 'center' });
             }
         });
 
@@ -690,7 +673,6 @@ const generateAndUploadQuotePdf = async () => {
 // ==========================================================
 // ===== FIM DA CORREÇÃO ====================================
 // ==========================================================
-
 
 const resetForm = () => {
   orderHeader.customer_name = '';
