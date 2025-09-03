@@ -40,7 +40,7 @@
           </div>
           <draggable
             :list="toBeScheduledOrders"
-            group="orders"
+            :group="{ name: 'orders', pull: canDragOrder, put: true }"
             item-key="id"
             class="column-content pa-3"
             ghost-class="ghost-card"
@@ -48,8 +48,8 @@
             data-status="to-be-scheduled"
           >
             <template #item="{ element: order }">
-               <v-card class="order-card mb-4" elevation="4" @click="openDetailModal(order.id)" :data-id="order.id">
-                <v-card-text>
+               <v-card class="order-card mb-4" elevation="4" :data-id="order.id">
+                <v-card-text @click="openDetailModal(order.id)">
                   <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
                   <v-chip v-if="order.is_launch" size="small" variant="tonal" color="info" class="mt-2">
                     <v-icon start size="x-small">mdi-package-variant-closed</v-icon>
@@ -58,6 +58,18 @@
                   <p v-else class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details.fabric_type }}</p>
                   <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
                 </v-card-text>
+                <v-card-actions v-if="isReadyForBilling(order) && !order.billed_at" class="justify-center">
+                    <v-btn color="success" variant="flat" block @click.stop="openBillingModal(order)">
+                        <v-icon start>mdi-cash-register</v-icon>
+                        Faturar Pedido
+                    </v-btn>
+                </v-card-actions>
+                <div v-else-if="!isReadyForBilling(order)" class="text-center pa-2 text-caption text-amber">
+                    Aguardando todos os itens serem finalizados na produção.
+                </div>
+                 <div v-else-if="order.billed_at" class="text-center pa-2 text-caption text-success">
+                    Pronto para agendar. Arraste para um dia.
+                </div>
               </v-card>
             </template>
           </draggable>
@@ -143,6 +155,7 @@
     </div>
 
     <OrderDetailModal :show="showDetailModal" :order-id="selectedOrderId" @close="showDetailModal = false"/>
+    <BillingModal :show="showBillingModal" :order="selectedOrderForBilling" @close="showBillingModal = false" @billed="handleBilled" />
 
     <v-dialog v-model="showHistoryModal" max-width="1200px" persistent>
         <v-card class="glassmorphism-card-dialog">
@@ -200,21 +213,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, defineAsyncComponent } from 'vue';
 import { supabase } from '@/api/supabase';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
+import BillingModal from '@/components/BillingModal.vue';
 import draggable from 'vuedraggable';
 import { useUserStore } from '@/stores/user';
 import { format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // Types
-type OrderItem = { id: string; status: string; fabric_type: string; };
+type OrderItem = { id: string; status: string; fabric_type: string; quantity_meters: number; billed_quantity: number | null; };
 type Order = {
   id: string; customer_name: string; quantity_meters: number; status: string;
   is_launch: boolean; details: { fabric_type: string; };
   actual_delivery_date: Date | null; delivery_confirmed_at: string | null;
   production_date: string | null;
+  billed_at: string | null;
+  order_number: number;
   order_items: OrderItem[];
   creator: { full_name: string; } | null;
 };
@@ -230,7 +246,8 @@ const currentDeliveryWeekStart = ref(startOfWeek(new Date(), { weekStartsOn: 1 }
 const showHistoryModal = ref(false);
 const historySearch = ref('');
 const selectedFabrics = ref<string[]>([]);
-
+const showBillingModal = ref(false);
+const selectedOrderForBilling = ref<Order | null>(null);
 
 const historyHeaders = [
   { title: 'Cliente', key: 'customer_name' },
@@ -241,17 +258,25 @@ const historyHeaders = [
 
 const toBeScheduledOrders = computed(() => allOrders.value.filter(o => o.status === 'completed' && !o.actual_delivery_date));
 const scheduledOrders = computed(() => allOrders.value.filter(o => !!o.actual_delivery_date));
-
 const deliveredOrders = computed(() => {
     return scheduledOrders.value.filter(o => o.delivery_confirmed_at)
         .sort((a,b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 });
-
 const inProductionOrders = computed(() => {
     return allOrders.value.filter(o =>
         ['in_printing', 'in_cutting'].includes(o.status) && o.production_date
     );
 });
+
+const isReadyForBilling = (order: Order) => {
+    if (!order.is_launch) return true;
+    return order.order_items.every(item => item.status === 'completed');
+};
+
+const canDragOrder = (order: Order) => {
+    return !!order.billed_at;
+};
+
 
 const addBusinessDays = (startDate: Date, days: number): Date => {
   const newDate = new Date(startDate);
@@ -325,18 +350,13 @@ const onDragEnd = async (event: any) => {
     const newDate = newDateStr ? newDateStr : null;
     try {
         const { error } = await supabase
-            .from('production_schedule')
+            .from('orders')
             .update({ actual_delivery_date: newDate })
-            .eq('order_id', orderId);
+            .eq('id', orderId);
 
         if (error) throw error;
+        await fetchDeliveryOrders();
 
-        if (newDate && isPast(parseISO(newDate)) && !isToday(parseISO(newDate))) {
-            const order = allOrders.value.find(o => o.id === orderId);
-            if(order) await confirmDelivery(order);
-        } else {
-             await fetchDeliveryOrders();
-        }
     } catch (err: any) {
         console.error('Erro ao reagendar entrega:', err.message);
     }
@@ -345,9 +365,9 @@ const onDragEnd = async (event: any) => {
 const confirmDelivery = async (order: Order) => {
   try {
     const { error } = await supabase
-        .from('production_schedule')
-        .update({ delivery_confirmed_at: new Date().toISOString() })
-        .eq('order_id', order.id);
+        .from('orders')
+        .update({ delivery_confirmed_at: new Date().toISOString(), status: 'delivered' })
+        .eq('id', order.id);
     if (error) throw error;
     await fetchDeliveryOrders();
   } catch (err: any) {
@@ -358,20 +378,31 @@ const confirmDelivery = async (order: Order) => {
 const rejectDelivery = async (order: Order) => {
     try {
         const { error } = await supabase
-            .from('production_schedule')
-            .update({ delivery_confirmed_at: null, actual_delivery_date: null })
-            .eq('order_id', order.id);
+            .from('orders')
+            .update({ delivery_confirmed_at: null, actual_delivery_date: null, status: 'completed' })
+            .eq('id', order.id);
         if (error) throw error;
         await fetchDeliveryOrders();
     } catch (err: any) {
         console.error('Erro ao cancelar entrega:', err.message);
-    }
+  }
 };
 
 const openDetailModal = (orderId: string) => {
   selectedOrderId.value = orderId;
   showDetailModal.value = true;
 };
+
+const openBillingModal = (order: Order) => {
+    selectedOrderForBilling.value = order;
+    showBillingModal.value = true;
+};
+
+const handleBilled = () => {
+    showBillingModal.value = false;
+    fetchDeliveryOrders();
+};
+
 
 const formatDate = (date: Date | string | null | undefined, formatString: string) => {
   if (!date) return '';
@@ -385,10 +416,10 @@ const fetchDeliveryOrders = async () => {
     const { data, error } = await supabase
       .from('orders')
       .select(`
-        id, customer_name, quantity_meters, status, is_launch, details, production_date,
+        id, customer_name, quantity_meters, status, is_launch, details, production_date, billed_at, order_number,
         creator:created_by(full_name),
-        production_schedule(actual_delivery_date, delivery_confirmed_at),
-        order_items(id, status, fabric_type)
+        actual_delivery_date, delivery_confirmed_at,
+        order_items(id, status, fabric_type, quantity_meters, billed_quantity)
       `)
       .in('status', ['completed', 'delivered', 'in_printing', 'in_cutting']);
 
@@ -396,8 +427,7 @@ const fetchDeliveryOrders = async () => {
 
     allOrders.value = (data || []).map((o: any) => ({
         ...o,
-        actual_delivery_date: o.production_schedule[0]?.actual_delivery_date ? parseISO(o.production_schedule[0].actual_delivery_date) : null,
-        delivery_confirmed_at: o.production_schedule[0]?.delivery_confirmed_at
+        actual_delivery_date: o.actual_delivery_date ? parseISO(o.actual_delivery_date) : null,
     }));
   } catch (err: any) {
     console.error('Erro ao buscar pedidos para entrega:', err.message);
@@ -477,7 +507,6 @@ onMounted(fetchDeliveryOrders);
   background-color: rgba(30, 30, 30, 0.85) !important;
   border-radius: 12px !important;
 }
-/* CORREÇÃO APLICADA AQUI */
 :deep(.v-data-table__wrapper tbody tr) {
   cursor: pointer;
 }

@@ -18,6 +18,7 @@ declare module 'vue' {
     AppFooter: typeof import('./components/AppFooter.vue')['default']
     ApprovalModal: typeof import('./components/ApprovalModal.vue')['default']
     ApprovalWarningModal: typeof import('./components/admin/ApprovalWarningModal.vue')['default']
+    BillingModal: typeof import('./components/BillingModal.vue')['default']
     CalendarViewModal: typeof import('./components/CalendarViewModal.vue')['default']
     DesignerDashboard: typeof import('./components/dashboards/DesignerDashboard.vue')['default']
     DminUserManagement: typeof import('./components/admin/dminUserManagement.vue')['default']

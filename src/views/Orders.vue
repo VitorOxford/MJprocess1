@@ -115,7 +115,7 @@
                     </div>
                 </v-card-text>
                  <v-card-actions v-if="userStore.isAdmin" class="pa-1 justify-center">
-                    <v-btn color="primary" variant="tonal" size="small" @click="openFastTrackModal(item.order)">
+                    <v-btn color="primary" variant="tonal" size="small" @click="openFastTrackModal(item)">
                         <v-icon start>mdi-rocket-launch-outline</v-icon>
                         Adiantar Entrega
                     </v-btn>
@@ -240,15 +240,14 @@
     <v-dialog v-model="showFastTrackModal" max-width="500px" persistent>
         <v-card class="glassmorphism-card-dialog">
             <v-card-title class="dialog-header">
-                <span class="text-h5">Adiantar Pedido?</span>
+                <span class="text-h5">Adiantar Item?</span>
             </v-card-title>
             <v-card-text class="py-4">
                 <p>
-                    Tem certeza que deseja adiantar o pedido de <strong>{{ selectedOrderForFastTrack?.customer_name }}</strong>?
+                    Tem certeza que deseja adiantar o item <strong>{{ selectedItemForFastTrack?.stamp_ref }}</strong> do pedido de <strong>{{ selectedItemForFastTrack?.order.customer_name }}</strong>?
                 </p>
                 <p class="mt-2 text-medium-emphasis">
-                    Esta ação irá mover o pedido diretamente para a fila de entregas, marcando-o como 'Concluído'.
-                    A ação será registrada no histórico.
+                    Esta ação irá mover o item diretamente para o status 'Concluído'. Se todos os outros itens do pedido também estiverem concluídos, o pedido será movido para a fila de entrega.
                 </p>
             </v-card-text>
             <v-card-actions class="dialog-footer">
@@ -330,7 +329,7 @@ const modalOrders = ref<Order[]>([]);
 const searchQuery = ref('');
 const showFastTrackModal = ref(false);
 const isFastTracking = ref(false);
-const selectedOrderForFastTrack = ref<Order | null>(null);
+const selectedItemForFastTrack = ref<ScheduledItem | null>(null);
 
 const modalHeaders = [
     { title: 'Cliente', key: 'customer_name' },
@@ -466,29 +465,29 @@ const openQueueModal = (queueType: 'stock' | 'schedule' | 'design') => {
     showQueueModal.value = true;
 };
 
-const openFastTrackModal = (order: Order) => {
-    selectedOrderForFastTrack.value = order;
+const openFastTrackModal = (item: ScheduledItem) => {
+    selectedItemForFastTrack.value = item;
     showFastTrackModal.value = true;
 };
 
 const closeFastTrackModal = () => {
     showFastTrackModal.value = false;
-    selectedOrderForFastTrack.value = null;
+    selectedItemForFastTrack.value = null;
 };
 
 const confirmFastTrack = async () => {
-    if (!selectedOrderForFastTrack.value || !userStore.profile?.id) return;
+    if (!selectedItemForFastTrack.value || !userStore.profile?.id) return;
     isFastTracking.value = true;
     try {
-        const { error } = await supabase.rpc('adiantar_pedido', {
-            p_order_id: selectedOrderForFastTrack.value.id,
+        const { error } = await supabase.rpc('adiantar_item_producao', {
+            p_item_id: selectedItemForFastTrack.value.id,
             p_admin_id: userStore.profile.id
         });
         if (error) throw error;
         await fetchAllData();
         closeFastTrackModal();
     } catch (err: any) {
-        console.error("Erro ao adiantar pedido:", err);
+        console.error("Erro ao adiantar item:", err);
     } finally {
         isFastTracking.value = false;
     }
@@ -589,7 +588,6 @@ const generatePdf = async (item: OrderItem) => {
     ];
     doc.text(companyInfo, pageWidth - 15, 15, { align: 'right' });
 
-    // ===== INÍCIO DA CORREÇÃO =====
     const opTitle = `OP #${formattedOpNumber}`;
     const orderTitle = `Pedido #${formattedOrderNumber}`;
     const itemIndex = parentOrder.order_items.findIndex(oi => oi.id === item.id) + 1;
@@ -610,7 +608,6 @@ const generatePdf = async (item: OrderItem) => {
 
     doc.setLineWidth(0.5);
     doc.line(15, 55, pageWidth - 15, 55);
-    // ===== FIM DA CORREÇÃO =====
 
     autoTable(doc, {
         startY: 60,
@@ -647,19 +644,15 @@ const generatePdf = async (item: OrderItem) => {
     const artX = 15;
     const artY = artStartY + 5;
 
-    // ===== INÍCIO DA CORREÇÃO =====
     const maxImgWidth = pageWidth - (artX * 2);
-    const maxImgHeight = pageHeight - artStartY - 45; // Margem inferior aumentada
+    const maxImgHeight = pageHeight - artStartY - 45;
 
     const imgProps = doc.getImageProperties(artBase64);
-    // Calcula a proporção para caber tanto na largura quanto na altura máxima
     const ratio = Math.min(maxImgWidth / imgProps.width, maxImgHeight / imgProps.height);
     const imgWidth = imgProps.width * ratio;
     const imgHeight = imgProps.height * ratio;
 
-    // Centraliza a imagem horizontalmente
     const imgXCentered = (pageWidth - imgWidth) / 2;
-    // ===== FIM DA CORREÇÃO =====
 
     doc.setDrawColor(180, 180, 180);
     doc.setLineWidth(0.5);
