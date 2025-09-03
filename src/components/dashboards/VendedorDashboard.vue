@@ -129,27 +129,27 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRouter } from 'vue-router'; // Importa o useRouter
 import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { useUserStore } from '@/stores/user';
 import { storeToRefs } from 'pinia';
-import { supabase } from '@/api/supabase'; // Importe o Supabase
+import { supabase } from '@/api/supabase';
 
 const dashboardStore = useDashboardStore();
 const userStore = useUserStore();
+const router = useRouter(); // Inicializa o router
 const { itemsPendingSellerApprovalCount } = storeToRefs(dashboardStore);
 
 const tab = ref('new');
 const loadingEditorToken = ref(false);
 const editorError = ref<string | null>(null);
 
-// Cabeçalhos para a tabela do NOVO dashboard (Lançamentos)
 const headers = [
   { title: 'Nº Pedido', key: 'order_number', width: '120px' },
   { title: 'Cliente', key: 'customer_name' },
   { title: 'Status', key: 'status', width: '180px', align: 'end' },
 ];
 
-// Cabeçalhos para a tabela do dashboard LEGADO
 const legacyHeaders = [
     { title: 'Cliente', key: 'customer_name' },
     { title: 'Metragem', key: 'quantity_meters' },
@@ -174,11 +174,9 @@ const myOrders = computed((): Order[] => {
     return dashboardStore.orders.filter(o => o.created_by === userStore.profile.id);
 });
 
-// Apenas pedidos do NOVO sistema (Lançamentos)
 const myLaunchOrders = computed(() => myOrders.value.filter(order => order.is_launch));
 const myActiveLaunchOrders = computed(() => myLaunchOrders.value.filter(order => order.status !== 'completed'));
 
-// Apenas pedidos ATIVOS do sistema ANTIGO
 const myLegacyActiveOrders = computed(() => myOrders.value.filter(order => !order.is_launch && order.status !== 'completed'));
 
 const totalOrdersCreated = computed(() => myOrders.value.length);
@@ -208,12 +206,23 @@ const openEditor = async () => {
   loadingEditorToken.value = true;
   editorError.value = null;
   try {
+    const { error: sessionError } = await supabase.auth.refreshSession();
+
+    // ---- INÍCIO DA CORREÇÃO ----
+    // Se o refresh token for inválido, desloga o usuário
+    if (sessionError) {
+      alert('Sua sessão expirou. Por favor, faça login novamente.');
+      await userStore.signOut();
+      router.push({ name: 'Login' });
+      return; // Interrompe a execução
+    }
+    // ---- FIM DA CORREÇÃO ----
+
     const { data, error } = await supabase.functions.invoke('generate-editor-token');
     if (error) throw error;
 
     if (data.token) {
-      // Substitua pela URL real do seu editor
-      const editorUrl = `https://seu-editor-externo.com?token=${data.token}`;
+      const editorUrl = `https://mjmockups.onrender.com?token=${data.token}`;
       window.open(editorUrl, '_blank');
     } else {
       throw new Error('Token de acesso ao editor não foi recebido.');
