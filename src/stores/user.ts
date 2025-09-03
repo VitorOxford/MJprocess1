@@ -32,7 +32,6 @@ export const useUserStore = defineStore('user', {
       try {
         const { data: profileData, error } = await supabase
           .from('profiles')
-          // Apenas esta linha foi alterada para buscar a nova coluna
           .select('*, allowed_regions')
           .eq('id', this.session.user.id)
           .single();
@@ -45,14 +44,19 @@ export const useUserStore = defineStore('user', {
       }
     },
 
+    // ===== INÍCIO DA CORREÇÃO =====
     async signOut() {
         const { error } = await supabase.auth.signOut();
+
+        // Se houver um erro, registre-o, mas não impeça o logout do frontend.
         if (error) {
-            console.error('Erro no logout:', error);
-        } else {
-            this.session = null;
-            this.profile = null;
+            console.error('Erro no logout do Supabase:', error.message);
         }
+
+        // Limpa o estado local de qualquer maneira para garantir que o usuário seja deslogado da interface.
+        this.session = null;
+        this.profile = null;
     },
+    // ===== FIM DA CORREÇÃO =====
   },
 });

@@ -57,6 +57,16 @@
                     class="mb-4"
                 ></v-text-field>
                 <v-text-field
+                    v-if="editedItem.unit_of_measure === 'kg'"
+                    v-model.number="editedItem.rendimento"
+                    label="Rendimento (metros por kg)"
+                    type="number"
+                    variant="outlined"
+                    class="mb-4"
+                    hint="Ex: 3.5"
+                    persistent-hint
+                ></v-text-field>
+                <v-text-field
                     v-model.number="editedItem.quantity"
                     label="Quantidade a Adicionar/Remover"
                     type="number"
@@ -84,7 +94,9 @@ type StockItem = {
   id: string;
   fabric_type: string;
   available_meters: number;
-  meters_per_roll: number | null; // COLUNA NOVA
+  meters_per_roll: number | null;
+  unit_of_measure: 'metro' | 'kg';
+  rendimento: number | null;
 };
 
 const stockItems = ref<StockItem[]>([]);
@@ -97,13 +109,17 @@ const editedItem = ref<{
     id: string | null;
     fabric_type: string;
     quantity: number | null;
-    meters_per_roll: number | null; // COLUNA NOVA
+    meters_per_roll: number | null;
+    unit_of_measure: 'metro' | 'kg';
+    rendimento: number | null;
     current_stock?: number;
 }>({
     id: null,
     fabric_type: '',
     quantity: null,
-    meters_per_roll: null, // COLUNA NOVA
+    meters_per_roll: null,
+    unit_of_measure: 'metro',
+    rendimento: null
 });
 
 const headers = [
@@ -129,7 +145,7 @@ const fetchStock = async () => {
 
 const openNewItemDialog = () => {
   isEditing.value = false;
-  editedItem.value = { id: null, fabric_type: '', quantity: null, meters_per_roll: null };
+  editedItem.value = { id: null, fabric_type: '', quantity: null, meters_per_roll: null, unit_of_measure: 'metro', rendimento: null };
   dialog.value = true;
 };
 
@@ -140,6 +156,8 @@ const openEditDialog = (item: StockItem) => {
       fabric_type: item.fabric_type,
       quantity: null,
       meters_per_roll: item.meters_per_roll,
+      unit_of_measure: item.unit_of_measure,
+      rendimento: item.rendimento,
       current_stock: item.available_meters
   };
   dialog.value = true;
@@ -159,11 +177,16 @@ const saveStock = async () => {
   isSaving.value = true;
 
   try {
+      const payload = {
+          meters_per_roll: editedItem.value.meters_per_roll,
+          rendimento: editedItem.value.unit_of_measure === 'kg' ? editedItem.value.rendimento : null
+      };
+
       if (isEditing.value) {
-          // Atualiza a metragem do rolo
+          // Atualiza os dados do item
           const { error: updateError } = await supabase
             .from('stock')
-            .update({ meters_per_roll: editedItem.value.meters_per_roll })
+            .update(payload)
             .eq('id', editedItem.value.id);
           if (updateError) throw updateError;
 
@@ -180,7 +203,9 @@ const saveStock = async () => {
           const { error } = await supabase.from('stock').insert({
               fabric_type: editedItem.value.fabric_type,
               available_meters: editedItem.value.quantity || 0,
-              meters_per_roll: editedItem.value.meters_per_roll
+              meters_per_roll: editedItem.value.meters_per_roll,
+              unit_of_measure: editedItem.value.unit_of_measure,
+              rendimento: payload.rendimento
           });
           if (error) throw error;
       }

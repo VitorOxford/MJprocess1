@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
+import { useUserStore } from '@/stores/user';
 
 // Tipo de Pedido atualizado para incluir os novos campos
 export type Order = {
@@ -9,21 +10,21 @@ export type Order = {
   created_at: string;
   created_by: string;
   customer_name: string;
-  has_down_payment: boolean; // NOVO
-  down_payment_proof_url: string | null; // NOVO
+  order_number: number | null;
+  is_launch: boolean;
+  has_down_payment: boolean;
+  down_payment_proof_url: string | null;
   details: {
     fabric_type: string;
     [key: string]: any;
-  } | null; // *** IMPORTANTE: O campo details PODE ser nulo ***
+  } | null;
   stores: {
     name: string;
   } | null;
-  profiles: { // Renomeado para 'creator' em alguns lugares para clareza
+  creator?: {
     full_name: string;
-  } | null;
-  creator?: { // Adicionado para consistência
-      full_name: string;
   };
+  order_items: { id: string, status: string }[];
   updated_at: string;
 };
 
@@ -54,10 +55,26 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   getters: {
+    // ===== INÍCIO DA CORREÇÃO =====
+    // Este getter agora ignora completamente os pedidos legados.
+    itemsPendingSellerApprovalCount(): number {
+        const userStore = useUserStore();
+        if (!userStore.profile?.id) return 0;
+
+        let count = 0;
+        this.orders.forEach(order => {
+            // Conta apenas itens de pedidos do vendedor logado QUE SEJAM LANÇAMENTOS (is_launch = true)
+            if (order.created_by === userStore.profile.id && order.is_launch && order.order_items) {
+                count += order.order_items.filter(item => item.status === 'customer_approval').length;
+            }
+        });
+        return count;
+    },
+    // ===== FIM DA CORREÇÃO =====
+
     totalMetersAllTime(state): number {
       return state.orders.reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
     },
-    // NOVO GETTER ADICIONADO AQUI
     totalMetersCurrentMonth(state): number {
       const now = new Date();
       const currentMonth = now.getMonth();
@@ -71,7 +88,7 @@ export const useDashboardStore = defineStore('dashboard', {
         .reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
     },
     ordersInProductionQueue: (state) => {
-        const productionStatuses = ['production_queue', 'in_printing', 'in_cutting', 'pending_stock']; // Adicionado pending_stock
+        const productionStatuses = ['production_queue', 'in_printing', 'in_cutting', 'pending_stock'];
         return state.orders.filter(o => productionStatuses.includes(o.status));
     },
     ordersInDesignQueue: (state) => {
@@ -129,7 +146,7 @@ export const useDashboardStore = defineStore('dashboard', {
         if (!user) throw new Error('Usuário não autenticado.');
 
         const [ordersResponse, tasksResponse] = await Promise.all([
-          supabase.from('orders').select('*, stores(name), creator:created_by(full_name)'),
+          supabase.from('orders').select('*, creator:created_by(full_name), order_items(id, status)'),
           supabase.from('tasks').select('*'),
         ]);
 

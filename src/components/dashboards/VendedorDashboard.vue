@@ -1,70 +1,112 @@
 <template>
   <v-container fluid>
     <v-row>
-      <v-col cols="12" sm="6">
+      <v-col cols="12" sm="6" md="4">
         <v-card class="kpi-card text-center" color="rgba(255, 152, 0, 0.3)">
           <v-card-text>
-            <div class="text-h4 font-weight-bold">{{ ordersPendingApproval }}</div>
-            <div class="text-subtitle-2 text-white-50">Aprovações Pendentes</div>
+            <div class="text-h4 font-weight-bold">{{ itemsPendingSellerApprovalCount }}</div>
+            <div class="text-subtitle-2 text-white-50">Itens para Aprovar</div>
           </v-card-text>
         </v-card>
       </v-col>
-      <v-col cols="12" sm="6">
+      <v-col cols="12" sm="6" md="4">
         <v-card class="kpi-card text-center" color="rgba(3, 169, 244, 0.3)">
           <v-card-text>
-            <div class="text-h4 font-weight-bold">{{ totalOrdersCreated }}</div>
-            <div class="text-subtitle-2 text-white-50">Meus Pedidos Criados</div>
+            <div class="text-h4 font-weight-bold">{{ myActiveLaunchOrders.length }}</div>
+            <div class="text-subtitle-2 text-white-50">Meus Lançamentos Ativos</div>
           </v-card-text>
         </v-card>
       </v-col>
-
-      <v-col cols="12" md="8">
-        <v-card class="dashboard-card" color="rgba(30,30,35,0.8)">
-          <v-card-title class="d-flex align-center flex-wrap">
-            <span>Meus Pedidos Ativos</span>
-            <v-spacer></v-spacer>
-            <div class="d-flex ga-2 mt-2 mt-sm-0">
-              <v-btn
-                @click="goToEditor"
-                :loading="isRedirectingToEditor"
-                color="secondary"
-                variant="tonal"
-                prepend-icon="mdi-image-edit-outline"
-              >
-                Editor de Imagens
-              </v-btn>
-              <v-btn :to="{ name: 'NewOrder' }" color="primary" variant="tonal" prepend-icon="mdi-plus-box-outline">
-                Lançar Pedido
-              </v-btn>
-            </div>
-          </v-card-title>
-          <v-data-table
-            :headers="headers"
-            :items="myActiveOrders"
-            class="bg-transparent"
-            density="compact"
-          >
-            <template v-slot:item.status="{ value, item }">
-              <v-chip v-if="value !== 'customer_approval'" size="small" :color="statusColorMap[value]" label>{{ statusDisplayMap[value] }}</v-chip>
-              <v-btn v-else :to="{ name: 'ApproveOrder', params: { id: item.id } }" color="orange" size="small" variant="tonal">
-                Aprovar Arte
-              </v-btn>
-            </template>
-          </v-data-table>
-        </v-card>
-      </v-col>
-      <v-col cols="12" md="4">
-        <v-card class="dashboard-card" color="rgba(30,30,35,0.8)">
-          <v-card-title>Funil de Pedidos</v-card-title>
+      <v-col cols="12" sm="12" md="4">
+         <v-card class="kpi-card text-center" color="rgba(156, 39, 176, 0.3)">
           <v-card-text>
-            <div v-for="stage in salesFunnel" :key="stage.name" class="mb-4">
-              <div class="d-flex justify-space-between mb-1">
-                <span class="font-weight-bold">{{ stage.name }}</span>
-                <span class="text-grey">{{ stage.count }} pedido(s)</span>
-              </div>
-              <v-progress-linear :model-value="stage.percentage" :color="stage.color" height="8" rounded></v-progress-linear>
-            </div>
+            <div class="text-h4 font-weight-bold">{{ totalLaunchOrdersCreated }}</div>
+            <div class="text-subtitle-2 text-white-50">Total de Lançamentos Criados</div>
           </v-card-text>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <v-row>
+      <v-col cols="12">
+        <v-card class="dashboard-card mt-4" color="rgba(30,30,35,0.8)">
+            <v-toolbar color="transparent">
+                <v-tabs v-model="tab" color="primary">
+                    <v-tab value="new">
+                        <v-icon start>mdi-rocket-launch-outline</v-icon>
+                        Dashboard Atual (Lançamentos)
+                    </v-tab>
+                    <v-tab value="legacy">
+                        <v-icon start>mdi-history</v-icon>
+                        Pedidos Legados
+                    </v-tab>
+                </v-tabs>
+                 <v-spacer></v-spacer>
+                 <v-btn :to="{ name: 'NewOrder' }" color="primary" variant="tonal" prepend-icon="mdi-plus-box-outline" class="mr-4">
+                    Lançar Pedido
+                </v-btn>
+            </v-toolbar>
+
+            <v-window v-model="tab">
+                <v-window-item value="new">
+                    <v-row class="pa-4">
+                        <v-col cols="12" md="8">
+                            <v-data-table
+                                :headers="headers"
+                                :items="myActiveLaunchOrders"
+                                class="bg-transparent"
+                                density="compact"
+                                item-value="id"
+                                no-data-text="Nenhum lançamento ativo encontrado."
+                            >
+                                <template v-slot:item.order_number="{ item }">
+                                    <span class="font-weight-bold">#{{ String(item.order_number).padStart(4, '0') }}</span>
+                                </template>
+                                <template v-slot:item.status="{ value, item }">
+                                  <v-chip v-if="value !== 'customer_approval'" size="small" :color="statusColorMap[value]" label>{{ statusDisplayMap[value] || value }}</v-chip>
+                                  <v-btn v-else :to="{ name: 'ApproveOrder', params: { id: item.id } }" color="orange" size="small" variant="tonal">
+                                      Aprovar Itens
+                                  </v-btn>
+                                </template>
+                            </v-data-table>
+                        </v-col>
+                        <v-col cols="12" md="4">
+                             <h3 class="text-h6 mb-4">Funil de Lançamentos</h3>
+                             <div v-if="myActiveLaunchOrders.length > 0">
+                                <div v-for="stage in salesFunnel" :key="stage.name" class="mb-4">
+                                    <div class="d-flex justify-space-between mb-1">
+                                        <span class="font-weight-bold">{{ stage.name }}</span>
+                                        <span class="text-grey">{{ stage.count }} pedido(s)</span>
+                                    </div>
+                                    <v-progress-linear :model-value="stage.percentage" :color="stage.color" height="8" rounded></v-progress-linear>
+                                </div>
+                             </div>
+                             <div v-else class="text-center text-grey mt-8">
+                                Nenhum dado para exibir no funil.
+                             </div>
+                        </v-col>
+                    </v-row>
+                </v-window-item>
+
+                <v-window-item value="legacy">
+                     <div class="pa-4">
+                        <p class="text-h6 mb-2">Pedidos do Sistema Antigo</p>
+                        <p class="text-caption text-medium-emphasis mb-4">Esta visão mostra apenas os pedidos criados antes da implementação do sistema de Lançamentos.</p>
+                        <v-data-table
+                            :headers="legacyHeaders"
+                            :items="myLegacyActiveOrders"
+                            class="bg-transparent"
+                            density="compact"
+                            item-value="id"
+                            no-data-text="Nenhum pedido legado ativo encontrado."
+                        >
+                            <template v-slot:item.status="{ value }">
+                                <v-chip size="small" :color="statusColorMap[value]" label>{{ statusDisplayMap[value] || value }}</v-chip>
+                            </template>
+                        </v-data-table>
+                     </div>
+                </v-window-item>
+            </v-window>
         </v-card>
       </v-col>
     </v-row>
@@ -75,27 +117,39 @@
 import { computed, ref } from 'vue';
 import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { useUserStore } from '@/stores/user';
-import { supabase } from '@/api/supabase'; // Importe o Supabase
+import { storeToRefs } from 'pinia';
 
 const dashboardStore = useDashboardStore();
 const userStore = useUserStore();
+const { itemsPendingSellerApprovalCount } = storeToRefs(dashboardStore);
 
-const isRedirectingToEditor = ref(false);
+const tab = ref('new');
 
+// Cabeçalhos para a tabela do NOVO dashboard (Lançamentos)
 const headers = [
+  { title: 'Nº Pedido', key: 'order_number', width: '120px' },
   { title: 'Cliente', key: 'customer_name' },
-  { title: 'Status', key: 'status', width: '180px' },
+  { title: 'Status', key: 'status', width: '180px', align: 'end' },
+];
+
+// Cabeçalhos para a tabela do dashboard LEGADO
+const legacyHeaders = [
+    { title: 'Cliente', key: 'customer_name' },
+    { title: 'Metragem', key: 'quantity_meters' },
+    { title: 'Status', key: 'status' },
 ];
 
 const statusDisplayMap: Record<string, string> = {
-    design_pending: 'No Design', in_design: 'No Design', changes_requested: 'No Design',
-    finalizing: 'No Design', customer_approval: 'Aprovação', production_queue: 'Produção',
-    in_printing: 'Produção', in_cutting: 'Produção', completed: 'Finalizado'
+    design_pending: 'No Design', in_design: 'Em Design', changes_requested: 'Alteração Solicitada',
+    finalizing: 'Finalizando Arte', customer_approval: 'Aguardando Aprovação',
+    production_queue: 'Fila de Produção', in_printing: 'Em Impressão',
+    in_cutting: 'Em Corte', completed: 'Finalizado'
 };
 const statusColorMap: Record<string, string> = {
     design_pending: 'blue-grey', in_design: 'blue', changes_requested: 'red',
-    finalizing: 'purple', customer_approval: 'orange', production_queue: 'grey',
-    in_printing: 'blue', in_cutting: 'orange', completed: 'green'
+    finalizing: 'purple', customer_approval: 'orange',
+    production_queue: 'grey', in_printing: 'cyan', in_cutting: 'amber',
+    completed: 'green'
 };
 
 const myOrders = computed((): Order[] => {
@@ -103,16 +157,28 @@ const myOrders = computed((): Order[] => {
     return dashboardStore.orders.filter(o => o.created_by === userStore.profile.id);
 });
 
-const myActiveOrders = computed((): Order[] => myOrders.value.filter(order => order.status !== 'completed'));
-const ordersPendingApproval = computed(() => myActiveOrders.value.filter(order => order.status === 'customer_approval').length);
+// Apenas pedidos do NOVO sistema (Lançamentos)
+const myLaunchOrders = computed(() => myOrders.value.filter(order => order.is_launch));
+const myActiveLaunchOrders = computed(() => myLaunchOrders.value.filter(order => order.status !== 'completed'));
+
+// Apenas pedidos ATIVOS do sistema ANTIGO
+const myLegacyActiveOrders = computed(() => myOrders.value.filter(order => !order.is_launch && order.status !== 'completed'));
+
 const totalOrdersCreated = computed(() => myOrders.value.length);
+const totalLaunchOrdersCreated = computed(() => myLaunchOrders.value.length);
 
 const salesFunnel = computed(() => {
-    const total = myActiveOrders.value.length;
+    const activeLaunches = myActiveLaunchOrders.value;
+    const total = activeLaunches.length;
     if (total === 0) return [];
-    const designCount = myActiveOrders.value.filter(o => ['design_pending', 'in_design', 'changes_requested', 'finalizing'].includes(o.status)).length;
-    const approvalCount = ordersPendingApproval.value;
-    const productionCount = myActiveOrders.value.filter(o => ['production_queue', 'in_printing', 'in_cutting'].includes(o.status)).length;
+
+    const designCount = activeLaunches.filter(o => ['design_pending', 'in_design', 'changes_requested', 'finalizing'].includes(o.status)).length;
+
+    const approvalCount = activeLaunches.filter(o =>
+        o.order_items.some(item => item.status === 'customer_approval')
+    ).length;
+
+    const productionCount = activeLaunches.filter(o => ['production_queue', 'in_printing', 'in_cutting'].includes(o.status)).length;
 
     return [
         { name: 'Em Design', count: designCount, percentage: (designCount / total) * 100, color: 'blue' },
@@ -121,23 +187,6 @@ const salesFunnel = computed(() => {
     ];
 });
 
-const goToEditor = async () => {
-  isRedirectingToEditor.value = true;
-  try {
-    const { data, error } = await supabase.functions.invoke('generate-editor-token');
-
-    if (error) throw error;
-
-    const editorUrl = `https://mjmockups.onrender.com?token=${data.token}`;
-    window.open(editorUrl, '_blank');
-
-  } catch (err: any) {
-    console.error("Erro ao gerar token para o editor:", err);
-    alert("Não foi possível acessar o editor. Tente novamente.");
-  } finally {
-    isRedirectingToEditor.value = false;
-  }
-};
 </script>
 
 <style scoped lang="scss">

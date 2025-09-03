@@ -79,7 +79,7 @@
                       variant="outlined"
                       size="small"
                       class="ml-4"
-                      @click="generatePdf(order_item)"
+                      @click="generatePdf(order_item, item)"
                     >
                       <v-icon start>mdi-file-pdf-box</v-icon>
                       Gerar OP
@@ -103,6 +103,11 @@ import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+type StockItem = {
+    fabric_type: string;
+    unit_of_measure: 'metro' | 'kg';
+    rendimento: number | null;
+}
 type OrderItem = {
   id: string; fabric_type: string; stamp_ref: string; quantity_meters: number;
   stamp_image_url: string; status: string; is_op_generated: boolean;
@@ -110,12 +115,14 @@ type OrderItem = {
 type Order = {
   id: string; customer_name: string; created_at: string; status: string;
   is_launch: boolean;
+  order_number: number;
   created_by: { full_name: string };
   order_items: OrderItem[];
 };
 
 const loading = ref(true);
 const activeOrders = ref<Order[]>([]);
+const stockInfo = ref<StockItem[]>([]);
 const expanded = ref([]);
 
 const headers = [
@@ -155,7 +162,7 @@ const fetchActiveOrders = async () => {
     const { data, error } = await supabase
       .from('orders')
       .select(`
-        id, customer_name, created_at, status, is_launch,
+        id, customer_name, created_at, status, is_launch, order_number,
         created_by:profiles!created_by(full_name),
         order_items(*)
       `)
@@ -164,6 +171,11 @@ const fetchActiveOrders = async () => {
 
     if (error) throw error;
     activeOrders.value = data || [];
+
+    const { data: stockData, error: stockError } = await supabase.from('stock').select('fabric_type, unit_of_measure, rendimento');
+    if (stockError) throw stockError;
+    stockInfo.value = stockData || [];
+
   } catch (err) {
     console.error("Erro ao buscar pedidos:", err);
   } finally {
@@ -189,28 +201,40 @@ const imageToBase64 = (url: string): Promise<string> => {
     });
 };
 
-
-const generatePdf = async (item: OrderItem) => {
-  const parentOrder = activeOrders.value.find(o => Array.isArray(o.order_items) && o.order_items.some(oi => oi.id === item.id));
-
+const generatePdf = async (item: OrderItem, parentOrder: Order) => {
   if (!parentOrder) {
       alert("Erro: não foi possível encontrar os dados do pedido principal.");
       return;
   }
 
   try {
+    const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', {
+        p_item_id: item.id
+    });
+    if (rpcError) throw rpcError;
+
+    const today = new Date().toISOString().split('T')[0];
+    const { data: forecastDate, error: forecastError } = await supabase.rpc('calculate_delivery_forecast', {
+        p_op_date: today
+    });
+    if (forecastError) throw forecastError;
+
+    const formattedOpNumber = String(opNumber).padStart(4, '0');
+    const formattedForecastDate = format(new Date(forecastDate), 'dd/MM/yyyy', { locale: ptBR });
+    const formattedOrderNumber = String(parentOrder.order_number).padStart(4, '0');
+
     const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
     const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
 
-    const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Design_sem_nome_054257ac-8323-43b0-848d-dc5fac9fafa3.png?v=1755884541';
+    const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
     const [logoBase64, artBase64] = await Promise.all([
       imageToBase64(logoUrl),
       imageToBase64(item.stamp_image_url)
     ]);
 
     const logoProps = doc.getImageProperties(logoBase64);
-    const logoWidth = 40;
+    const logoWidth = 50;
     const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
     doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
 
@@ -223,89 +247,71 @@ const generatePdf = async (item: OrderItem) => {
     ];
     doc.text(companyInfo, pageWidth - 15, 15, { align: 'right' });
 
-    doc.setFontSize(18);
-    doc.setTextColor(0);
-    doc.text(`ORDEM DE PRODUÇÃO #${item.id.substring(0, 8).toUpperCase()}`, 15, 45);
-    doc.setLineWidth(0.5);
-    doc.line(15, 48, pageWidth - 15, 48);
+    const opTitle = `OP #${formattedOpNumber}`;
+    const orderTitle = `Pedido #${formattedOrderNumber}`;
+    const itemIndex = parentOrder.order_items.findIndex(oi => oi.id === item.id) + 1;
+    const totalItems = parentOrder.order_items.length;
+    const itemSubtitle = `Item ${itemIndex} de ${totalItems}`;
+
+    doc.setFontSize(18); doc.setTextColor(0); doc.text(opTitle, 15, 45);
+    doc.setFontSize(12); doc.setTextColor(0); doc.text(orderTitle, pageWidth - 15, 45, { align: 'right' });
+    doc.setFontSize(10); doc.setTextColor(100); doc.text(itemSubtitle, pageWidth - 15, 51, { align: 'right' });
+    doc.setLineWidth(0.5); doc.line(15, 55, pageWidth - 15, 55);
 
     autoTable(doc, {
-        startY: 55,
-        head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']],
+        startY: 60,
+        head: [['CLIENTE', 'VENDEDOR', 'EMISSÃO', 'PREVISÃO DE ENTREGA']],
         body: [[
             parentOrder.customer_name,
             parentOrder.created_by?.full_name || 'N/A',
-            format(new Date(), 'dd/MM/yyyy')
+            format(new Date(), 'dd/MM/yyyy'),
+            formattedForecastDate
         ]],
         theme: 'striped',
         headStyles: { fillColor: [41, 128, 185] }
     });
 
+    const currentStockInfo = stockInfo.value.find(s => s.fabric_type === item.fabric_type);
+    let quantityDisplay = `${item.quantity_meters.toLocaleString('pt-BR')}m`;
+    if (currentStockInfo?.unit_of_measure === 'kg') {
+        const yieldInMeters = (item.quantity_meters * (currentStockInfo.rendimento || 0)).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+        quantityDisplay = `${item.quantity_meters.toLocaleString('pt-BR')}kg (Rendimento: ~${yieldInMeters}m)`;
+    }
+
     autoTable(doc, {
         startY: (doc as any).lastAutoTable.finalY + 10,
-        head: [['PRODUTO (BASE)', 'SERVIÇO (ESTAMPA)', 'QUANTIDADE (MT)']],
-        body: [[
-            item.fabric_type,
-            item.stamp_ref,
-            item.quantity_meters.toLocaleString('pt-BR') + 'm'
-        ]],
+        head: [['PRODUTO (BASE)', 'SERVIÇO (ESTAMPA)', 'QUANTIDADE']],
+        body: [[ item.fabric_type, item.stamp_ref, quantityDisplay ]],
         theme: 'grid',
         headStyles: { fillColor: [41, 128, 185] }
     });
 
     let lastY = (doc as any).lastAutoTable.finalY;
 
-    if (parentOrder.is_launch && parentOrder.order_items.length > 0) {
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.text('ITENS DO LANÇAMENTO', 15, lastY + 12);
-
-        autoTable(doc, {
-            startY: lastY + 15,
-            head: [['#', 'Ref. Estampa', 'Produto', 'Qtd (m)', 'Status']],
-            body: parentOrder.order_items.map((it, index) => [
-                index + 1,
-                it.stamp_ref,
-                it.fabric_type,
-                it.quantity_meters,
-                statusDisplayMap[it.status] || it.status
-            ]),
-            theme: 'grid',
-            headStyles: { fillColor: [80, 80, 80], textColor: 255 },
-            styles: { fontSize: 9, cellPadding: 2 },
-            columnStyles: { 0: { cellWidth: 10 }, 3: { halign: 'right' }, 4: { halign: 'center' } },
-            didDrawCell: (data) => {
-                if (data.row.raw && data.row.raw[1] === item.stamp_ref) {
-                    doc.setFillColor(230, 230, 230);
-                    doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
-                    doc.setTextColor(0);
-                }
-            }
-        });
-        lastY = (doc as any).lastAutoTable.finalY;
-    }
-
-    const artStartY = lastY + 12;
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
+    const artStartY = lastY + 15;
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
     doc.text('ARTE APROVADA', 15, artStartY);
 
+    const artX = 15;
+    const artY = artStartY + 5;
+    const maxImgWidth = pageWidth - (artX * 2);
+    const maxImgHeight = pageHeight - artStartY - 45;
     const imgProps = doc.getImageProperties(artBase64);
-    const maxImgWidth = pageWidth - 120;
-    const maxImgHeight = pageHeight - artStartY - 30;
     const ratio = Math.min(maxImgWidth / imgProps.width, maxImgHeight / imgProps.height);
     const imgWidth = imgProps.width * ratio;
     const imgHeight = imgProps.height * ratio;
-    const imgX = (pageWidth - imgWidth) / 2;
+    const imgXCentered = (pageWidth - imgWidth) / 2;
 
-    doc.addImage(artBase64, 'PNG', imgX, artStartY + 5, imgWidth, imgHeight);
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.5);
+    doc.rect(imgXCentered - 1, artY - 1, imgWidth + 2, imgHeight + 2, 'S');
+    doc.addImage(artBase64, 'PNG', imgXCentered, artY, imgWidth, imgHeight);
 
     const footerY = pageHeight - 15;
     doc.setFontSize(9);
     doc.setTextColor(150);
     doc.text('OP gerada com MJProcess', pageWidth / 2, footerY, { align: 'center' });
-
-    doc.save(`OP-${parentOrder.customer_name}-${item.stamp_ref}.pdf`);
+    doc.save(`OP-${formattedOpNumber}-${parentOrder.customer_name}-${item.stamp_ref}.pdf`);
 
   } catch (error) {
     console.error("Erro ao gerar PDF:", error);

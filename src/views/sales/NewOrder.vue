@@ -107,7 +107,7 @@
                                 {{ item.design_tag }}
                             </v-chip>
                         </v-list-item-title>
-                        <v-list-item-subtitle>{{ item.fabric_type || 'Sem tecido' }} - {{ item.quantity_meters || 0 }}m</v-list-item-subtitle>
+                        <v-list-item-subtitle>{{ item.fabric_type || 'Sem tecido' }} - {{ item.quantity_meters || 0 }}{{ getStockForItem(item)?.unit_of_measure === 'kg' ? 'kg' : 'm' }}</v-list-item-subtitle>
                         <template v-slot:append>
                           <v-btn icon="mdi-delete-outline" variant="text" size="small" color="error" @click.stop="removeItem(index)"></v-btn>
                         </template>
@@ -157,7 +157,7 @@
                           <v-col cols="12" sm="6">
                             <v-text-field
                               v-model.number="editedItem.quantity_meters"
-                              label="Metragem (metros)"
+                              :label="quantityLabel"
                               type="number"
                               variant="outlined"
                               density="compact"
@@ -166,14 +166,14 @@
                             ></v-text-field>
                             <div v-if="getStockForItem(editedItem)" class="mt-n2 mb-4 px-2">
                               <div class="d-flex justify-space-between text-caption text-grey">
-                                <span v-if="editedItem.quantity_meters > getStockForItem(editedItem).available_meters" class="text-error">
+                                <span v-if="quantityInMeters > getStockForItem(editedItem).available_meters" class="text-error">
                                   Atenção: Estoque ficará negativo!
                                 </span>
                                 <span v-else>Uso do estoque disponível:</span>
                                 <span>{{ getStockForItem(editedItem).available_meters }}m</span>
                               </div>
                               <v-progress-linear
-                                :model-value="(editedItem.quantity_meters / getStockForItem(editedItem).available_meters) * 100"
+                                :model-value="(quantityInMeters / getStockForItem(editedItem).available_meters) * 100"
                                 :color="getStockUsageColor(editedItem)"
                                 height="6"
                                 rounded
@@ -296,6 +296,7 @@ type StockItem = {
     available_meters: number;
     unit_of_measure?: 'metro' | 'kg';
     base_price?: number;
+    rendimento?: number | null;
 };
 
 type OrderHeader = { customer_name: string; has_down_payment: boolean; down_payment_proof_file: File | null; };
@@ -362,6 +363,21 @@ const rules = {
   requiredFile: (v: File | null) => !!v || 'Arquivo é obrigatório.',
 };
 
+const quantityLabel = computed(() => {
+    const stockItem = getStockForItem(editedItem.value);
+    return stockItem?.unit_of_measure === 'kg' ? 'Quantidade (kg)' : 'Metragem (metros)';
+});
+
+const quantityInMeters = computed(() => {
+    const stockItem = getStockForItem(editedItem.value);
+    const quantity = editedItem.value.quantity_meters || 0;
+    if (stockItem?.unit_of_measure === 'kg') {
+        return quantity * (stockItem.rendimento || 0);
+    }
+    return quantity;
+});
+
+
 const isStep1Valid = computed(() => {
   if (!orderHeader.customer_name?.trim()) return false;
   if (orderHeader.has_down_payment && !orderHeader.down_payment_proof_file) {
@@ -389,8 +405,8 @@ const getStockForItem = (item: OrderItem) => stockItems.value.find(s => s.fabric
 const getStockUsageColor = (item: OrderItem) => {
   const stockItem = getStockForItem(item);
   if (!stockItem || !item.quantity_meters) return 'primary';
-  if (item.quantity_meters > stockItem.available_meters) return 'error';
-  if (item.quantity_meters > stockItem.available_meters * 0.8) return 'warning';
+  if (quantityInMeters.value > stockItem.available_meters) return 'error';
+  if (quantityInMeters.value > stockItem.available_meters * 0.8) return 'warning';
   return 'success';
 }
 
@@ -508,10 +524,17 @@ const submitLaunch = async () => {
       const filePath = `arts/${Date.now()}-item${index}-${baseName}`;
       const publicUrl = await uploadFile(file, 'arts', filePath);
 
+      // CORREÇÃO: CALCULA A METRAGEM FINAL AQUI
+      const stockItem = getStockForItem(item);
+      let finalMeters = item.quantity_meters || 0;
+      if (stockItem?.unit_of_measure === 'kg') {
+          finalMeters = finalMeters * (stockItem.rendimento || 0);
+      }
+
       return {
         fabric_type: item.fabric_type,
         stamp_ref: item.stamp_ref,
-        quantity_meters: item.quantity_meters,
+        quantity_meters: finalMeters, // Envia a metragem calculada
         stamp_image_url: publicUrl,
         design_tag: item.design_tag,
         notes: item.notes,
@@ -566,9 +589,6 @@ const imageToBase64 = (url: string): Promise<string> => {
     });
 };
 
-// ==========================================================
-// ===== INÍCIO DA CORREÇÃO =================================
-// ==========================================================
 const generateAndUploadQuotePdf = async () => {
     isGeneratingPdf.value = true;
     try {
@@ -576,12 +596,13 @@ const generateAndUploadQuotePdf = async () => {
             orderItems.value.map(async (item) => {
                 const stockInfo = stockItems.value.find(s => s.fabric_type === item.fabric_type);
                 const price = stockInfo?.base_price || 0;
+                const unit = stockInfo?.unit_of_measure === 'kg' ? 'kg' : 'm';
                 const total = (item.quantity_meters || 0) * price;
                 return {
                     base: item.fabric_type,
                     estampa: item.stamp_ref,
-                    metragem: `${item.quantity_meters}m`,
-                    valorUnit: formatCurrency(price),
+                    quantidade: `${item.quantity_meters}${unit}`,
+                    valorUnit: `${formatCurrency(price)} /${unit}`,
                     valorTotal: formatCurrency(total),
                 };
             })
@@ -593,8 +614,8 @@ const generateAndUploadQuotePdf = async () => {
         }, 0);
 
         const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
+        const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
 
         const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
         const logoBase64 = await imageToBase64(logoUrl);
@@ -604,27 +625,13 @@ const generateAndUploadQuotePdf = async () => {
         const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
         doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
 
-        doc.setFontSize(9);
-        doc.setTextColor(100);
-        const companyInfo = [
-            "MR JACKY - 20.631.721/0001-07",
-            "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
-            "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
-        ];
-        doc.text(companyInfo, pageWidth - 15, 15, { align: 'right' });
-
-        const orderTitle = `Pedido #${String(createdOrderNumber.value).padStart(4, '0')}`;
         doc.setFontSize(18);
-        doc.setTextColor(0);
         doc.setFont('helvetica', 'bold');
-        doc.text(orderTitle, pageWidth - 15, 45, { align: 'right' });
-
-        doc.setLineWidth(0.5);
-        doc.line(15, 55, pageWidth - 15, 55);
+        doc.text(`Pedido #${String(createdOrderNumber.value).padStart(4, '0')}`, pageWidth - 15, 25, { align: 'right' });
 
 
         autoTable(doc, {
-            startY: 60,
+            startY: 40,
             head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']],
             body: [[
                 orderHeader.customer_name,
@@ -636,8 +643,8 @@ const generateAndUploadQuotePdf = async () => {
 
         autoTable(doc, {
             startY: (doc as any).lastAutoTable.finalY + 10,
-            head: [['Base', 'Estampa', 'Metragem', 'Valor Unit.', 'Valor Total']],
-            body: itemDetailsWithPrice.map(i => [i.base, i.estampa, i.metragem, i.valorUnit, i.valorTotal]),
+            head: [['Base', 'Estampa', 'Quantidade', 'Valor Unit.', 'Valor Total']],
+            body: itemDetailsWithPrice.map(i => [i.base, i.estampa, i.quantidade, i.valorUnit, i.valorTotal]),
             theme: 'grid',
             foot: [['', '', '', 'Total do Pedido:', formatCurrency(grandTotal)]],
             footStyles: { fontStyle: 'bold', fontSize: 11, halign: 'right' },
@@ -649,11 +656,6 @@ const generateAndUploadQuotePdf = async () => {
                 doc.setFontSize(10);
                 doc.setTextColor(100);
                 doc.text(`Assinatura do Cliente: ${orderHeader.customer_name}`, pageWidth / 2, signatureY + 5, { align: 'center' });
-
-                const footerY = pageHeight - 15;
-                doc.setFontSize(9);
-                doc.setTextColor(150);
-                doc.text('Orçamento gerado com MJProcess', pageWidth / 2, footerY, { align: 'center' });
             }
         });
 
@@ -687,10 +689,6 @@ const generateAndUploadQuotePdf = async () => {
         isGeneratingPdf.value = false;
     }
 }
-// ==========================================================
-// ===== FIM DA CORREÇÃO ====================================
-// ==========================================================
-
 
 const resetForm = () => {
   orderHeader.customer_name = '';
