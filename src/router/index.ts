@@ -3,6 +3,12 @@ import { useUserStore } from '@/stores/user';
 
 const routes: Array<RouteRecordRaw> = [
   {
+    path: '/hub', // Rota para a nova tela central
+    name: 'Hub',
+    component: () => import('@/views/Hub.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/',
     component: () => import('@/layouts/default.vue'),
     meta: { requiresAuth: true },
@@ -30,13 +36,6 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/production/InProduction.vue'),
         meta: { roles: ['producao', 'admin'] }
       },
-      // ROTA REMOVIDA
-      // {
-      //   path: 'acompanhamento',
-      //   name: 'OrderStatus',
-      //   component: () => import('@/views/OrderStatus.vue'),
-      //   meta: { requiresAuth: true }
-      // },
       {
         path: 'tabela-precos',
         name: 'PriceList',
@@ -134,13 +133,19 @@ router.beforeEach(async (to, from, next) => {
     return next({ name: 'Login' });
   }
 
+  // Redireciona para o Hub após o login, em vez de Home
   if (to.name === 'Login' && userStore.isLoggedIn) {
-    return next({ name: 'Home' });
+    return next({ name: 'Hub' });
+  }
+
+  // Redireciona para o Hub se tentar acessar a raiz e já estiver logado
+  if(to.path === '/' && from.name !== 'Hub' && userStore.isLoggedIn) {
+    return next({name: 'Hub'})
   }
 
   if (requiredRoles && !requiredRoles.includes(userStore.profile?.role ?? '')) {
      console.warn(`Acesso negado. Rota ${to.path} exige as roles: ${requiredRoles}. Usuário tem a role: ${userStore.profile?.role}`);
-     return next({ name: 'Home' });
+     return next({ name: 'Hub' }); // Se o acesso for negado, volta para o Hub
   }
 
   next();

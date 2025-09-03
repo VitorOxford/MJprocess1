@@ -42,10 +42,24 @@
                     </v-tab>
                 </v-tabs>
                  <v-spacer></v-spacer>
-                 <v-btn :to="{ name: 'NewOrder' }" color="primary" variant="tonal" prepend-icon="mdi-plus-box-outline" class="mr-4">
+                 <v-btn
+                    color="secondary"
+                    variant="tonal"
+                    prepend-icon="mdi-image-edit-outline"
+                    class="mr-4"
+                    @click="openEditor"
+                    :loading="loadingEditorToken"
+                  >
+                    Editor de Imagens
+                  </v-btn>
+                 <v-btn :to="{ name: 'NewOrder' }" color="primary" variant="tonal" prepend-icon="mdi-plus-box-outline">
                     Lançar Pedido
                 </v-btn>
             </v-toolbar>
+
+            <v-alert v-if="editorError" type="error" closable @click:close="editorError = null" class="ma-4">
+              {{ editorError }}
+            </v-alert>
 
             <v-window v-model="tab">
                 <v-window-item value="new">
@@ -118,12 +132,15 @@ import { computed, ref } from 'vue';
 import { useDashboardStore, type Order } from '@/stores/dashboard';
 import { useUserStore } from '@/stores/user';
 import { storeToRefs } from 'pinia';
+import { supabase } from '@/api/supabase'; // Importe o Supabase
 
 const dashboardStore = useDashboardStore();
 const userStore = useUserStore();
 const { itemsPendingSellerApprovalCount } = storeToRefs(dashboardStore);
 
 const tab = ref('new');
+const loadingEditorToken = ref(false);
+const editorError = ref<string | null>(null);
 
 // Cabeçalhos para a tabela do NOVO dashboard (Lançamentos)
 const headers = [
@@ -186,6 +203,28 @@ const salesFunnel = computed(() => {
         { name: 'Em Produção', count: productionCount, percentage: (productionCount / total) * 100, color: 'purple' },
     ];
 });
+
+const openEditor = async () => {
+  loadingEditorToken.value = true;
+  editorError.value = null;
+  try {
+    const { data, error } = await supabase.functions.invoke('generate-editor-token');
+    if (error) throw error;
+
+    if (data.token) {
+      // Substitua pela URL real do seu editor
+      const editorUrl = `https://seu-editor-externo.com?token=${data.token}`;
+      window.open(editorUrl, '_blank');
+    } else {
+      throw new Error('Token de acesso ao editor não foi recebido.');
+    }
+  } catch (error: any) {
+    console.error('Erro ao abrir o editor:', error);
+    editorError.value = `Erro ao acessar o editor: ${error.message}`;
+  } finally {
+    loadingEditorToken.value = false;
+  }
+};
 
 </script>
 

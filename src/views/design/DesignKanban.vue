@@ -55,9 +55,7 @@
       :show="showLaunchModal"
       :order="selectedOrder"
       @close="closeLaunchModal"
-      @approve="handleDesignerApproval"
       @sendToSeller="openUploadModal"
-      @releaseToProduction="releaseToProduction"
       @releaseItem="handleReleaseItem"
       @itemUpdated="fetchDesignOrders"
     />
@@ -141,8 +139,6 @@ const developmentItems = computed(() => allItems.value.filter(item => item.statu
 const alterationItems = computed(() => allItems.value.filter(item => item.status === 'design_pending' && item.design_tag === 'Alteração'));
 const finalizationItems = computed(() => allItems.value.filter(item => item.status === 'design_pending' && item.design_tag === 'Finalização'));
 
-// ===== CORREÇÃO APLICADA AQUI =====
-// A lógica foi restaurada para incluir a verificação da `design_tag`.
 const approvedItems = computed(() => allItems.value.filter(item =>
     (item.status === 'design_pending' && item.design_tag === 'Aprovado') ||
     item.status === 'customer_approval' ||
@@ -185,13 +181,18 @@ const openUploadModal = (item: OrderItem) => {
     showUploadModal.value = true;
 };
 
-const handleDesignerApproval = async (item: OrderItem) => {
-    await updateItemStatus(item, 'approved_by_designer');
-};
-
 const handleUploadSuccess = async (fileUrl: string) => {
     if (!selectedItem.value) return;
     await updateItemStatus(selectedItem.value, 'customer_approval', fileUrl);
+
+    // *** NOVA LÓGICA DE NOTIFICAÇÃO ***
+    const { error: notifyError } = await supabase.rpc('notify_seller_for_approval', {
+        p_item_id: selectedItem.value.id,
+        p_sender_id: userStore.profile?.id
+    });
+    if (notifyError) console.error("Erro ao notificar vendedor:", notifyError);
+    // **********************************
+
     showUploadModal.value = false;
 };
 
@@ -245,21 +246,6 @@ const handleReleaseItem = async (item: OrderItem) => {
         alert(`Erro ao liberar item: ${err.message}`);
     }
 };
-
-const releaseToProduction = async (order: Order) => {
-    try {
-        const itemsToRelease = order.order_items.filter(item => item.status === 'approved_by_seller');
-        for (const item of itemsToRelease) {
-            await handleReleaseItem(item);
-        }
-        if(showLaunchModal.value) {
-            closeLaunchModal();
-        }
-    } catch (err: any) {
-        console.error("Erro ao liberar para produção:", err);
-        alert(`Erro ao liberar lançamento: ${err.message}`);
-    }
-}
 
 const onDragEnd = async (event: any) => {
     // Lógica futura para drag-and-drop pode ser adicionada aqui

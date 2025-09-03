@@ -27,7 +27,7 @@
             <v-col cols="12" md="7">
               <div class="pa-4 d-flex flex-column fill-height">
                 <h4 class="text-h6 font-weight-bold">{{ item.stamp_ref }}</h4>
-                <p class="text-body-2">{{ item.fabric_type }} - {{ item.quantity_meters }}m</p>
+                <p class="text-body-2">{{ item.fabric_type }} - {{ Number(item.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) }}m</p>
                 <v-spacer></v-spacer>
                 <div class="mt-4">
                   <div class="d-flex flex-wrap ga-2">
@@ -143,8 +143,7 @@ const fetchOrderForApproval = async () => {
 };
 
 const approveItem = async (item: OrderItem) => {
-    // Ao aprovar, o status muda para 'approved_by_seller'
-    await processDecision(item.id, 'approved_by_seller', `Arte para o item "${item.stamp_ref}" aprovada pelo vendedor.`);
+    await processDecision(item, true);
 };
 
 const openRejectModal = (item: OrderItem) => {
@@ -153,58 +152,54 @@ const openRejectModal = (item: OrderItem) => {
   showRejectModal.value = true;
 };
 
-// ==========================================================
-// ===== INÍCIO DA CORREÇÃO =================================
-// ==========================================================
-
 const rejectItem = async () => {
   if (!itemToReject.value || !rejectionComment.value.trim()) return;
+  await processDecision(itemToReject.value, false, rejectionComment.value.trim());
+};
 
+const processDecision = async (item: OrderItem, isApproved: boolean, comment?: string) => {
   loading.value = true;
   try {
-    const { error: rpcError } = await supabase.rpc('request_item_changes', {
-      p_item_id: itemToReject.value.id,
-      p_comment: rejectionComment.value.trim(),
-      p_profile_id: userStore.profile?.id
-    });
-    if (rpcError) throw rpcError;
+    if (isApproved) {
+        // RPC para aprovação
+        const { error: rpcError } = await supabase.rpc('process_seller_item_decision', {
+            p_item_id: item.id,
+            p_decision: 'approved_by_seller',
+            p_comment: `Arte para "${item.stamp_ref}" aprovada.`,
+            p_profile_id: userStore.profile?.id
+        });
+        if (rpcError) throw rpcError;
+    } else {
+        // RPC para solicitar alteração
+        const { error: rpcError } = await supabase.rpc('request_item_changes', {
+            p_item_id: item.id,
+            p_comment: comment,
+            p_profile_id: userStore.profile?.id
+        });
+        if (rpcError) throw rpcError;
+    }
 
-    // Recarrega os dados para atualizar a UI
+    // *** NOVA LÓGICA DE NOTIFICAÇÃO ***
+    const { error: notifyError } = await supabase.rpc('notify_designers_about_decision', {
+        p_item_id: item.id,
+        p_sender_id: userStore.profile?.id,
+        p_is_approved: isApproved
+    });
+    if (notifyError) console.error("Erro ao notificar designers:", notifyError);
+    // **********************************
+
     await fetchOrderForApproval();
   } catch(e: any) {
-    error.value = `Erro ao solicitar alteração: ${e.message}`;
+    error.value = `Erro ao processar decisão: ${e.message}`;
   } finally {
     showRejectModal.value = false;
     loading.value = false;
   }
 };
 
-const processDecision = async (itemId: string, decision: string, comment: string) => {
-  loading.value = true;
-  try {
-    // Usamos a função RPC antiga, pois ela ainda é válida para aprovações
-    const { error: rpcError } = await supabase.rpc('process_seller_item_decision', {
-      p_item_id: itemId,
-      p_decision: decision,
-      p_comment: comment,
-      p_profile_id: userStore.profile?.id
-    });
-    if (rpcError) throw rpcError;
-
-    await fetchOrderForApproval();
-  } catch(e: any) {
-    error.value = `Erro ao processar decisão: ${e.message}`;
-  } finally {
-    loading.value = false;
-  }
-};
-
-// ==========================================================
-// ===== FIM DA CORREÇÃO ====================================
-// ==========================================================
-
 onMounted(fetchOrderForApproval);
 </script>
+
 
 <style scoped lang="scss">
 .glassmorphism-card-approve {

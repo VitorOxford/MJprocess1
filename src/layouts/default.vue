@@ -1,5 +1,5 @@
 <template>
-  <v-app>
+  <v-app @click.once="unlockAudio" @touchend.once="unlockAudio">
     <div class="background-container">
       <div class="logo-container">
         <v-img src="@/assets/logo.png" max-height="120" contain class="logo-with-glow"></v-img>
@@ -192,6 +192,19 @@ const toastKey = ref(0);
 const toastContent = reactive({ title: '', message: '', icon: '', color: '' });
 const toastStyle = ref({});
 let toastTimeout: NodeJS.Timeout;
+const isAudioUnlocked = ref(false);
+
+const unlockAudio = async () => {
+  if (isAudioUnlocked.value || !notificationSound.value) return;
+  try {
+    await notificationSound.value.play();
+    notificationSound.value.pause();
+    notificationSound.value.currentTime = 0;
+    isAudioUnlocked.value = true;
+  } catch (error) {
+    // A interação do usuário desbloqueará o áudio
+  }
+};
 
 const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read).length);
 
@@ -200,8 +213,6 @@ const allNavItems = [
   { icon: 'mdi-check-decagram-outline', title: 'Aprovar Pedidos', value: 'approvals', to: { name: 'Approvals' }, roles: ['vendedor', 'designer', 'admin'] },
   { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
   { icon: 'mdi-calendar-check-outline', title: 'Agenda de Produção', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-  // ITEM REMOVIDO
-  // { icon: 'mdi-list-status', title: 'Acompanhamento', value: 'order-status', to: { name: 'OrderStatus' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
   { icon: 'mdi-factory', title: 'Fila de Produção', value: 'production-kanban', to: { name: 'ProductionKanban' }, roles: ['producao', 'admin'] },
   { icon: 'mdi-cog-sync-outline', title: 'Em Produção', value: 'in-production', to: { name: 'InProduction' }, roles: ['producao', 'admin'] },
   { icon: 'mdi-palette-swatch-outline', title: 'Design', value: 'design-kanban', to: { name: 'DesignKanban' }, roles: ['designer', 'admin'] },
@@ -224,27 +235,35 @@ const toggleHoverEffect = (event: MouseEvent, shouldAdd: boolean, value: string)
   }
 };
 
+// >>> INÍCIO DA CORREÇÃO: Lógica de Notificação para Vendedor <<<
 const getNotificationDetails = (notification: Notification) => {
     const content = notification.content.toLowerCase();
-
     if (content.includes('alteração solicitada')) {
         return { title: 'Alteração Solicitada', message: notification.content, icon: 'mdi-alert-circle-outline', color: 'error' };
     }
-    if (content.includes('pronta para aprovação') || content.includes('aprovação pendente')) {
+    // Condição específica para aprovação
+    if (content.includes('pronta para sua aprovação')) {
         return { title: 'Aprovação Necessária', message: notification.content, icon: 'mdi-send-check-outline', color: 'orange' };
     }
-    if (content.includes('novo pedido')) {
-        return { title: 'Novo Pedido', message: notification.content, icon: 'mdi-plus-box-outline', color: 'info' };
+    if (content.includes('novo lançamento')) {
+        return { title: 'Novo Lançamento', message: notification.content, icon: 'mdi-plus-box-outline', color: 'info' };
     }
-    if (content.includes('aprovado')) {
-        return { title: 'Pedido Aprovado', message: notification.content, icon: 'mdi-check-all', color: 'success' };
+    if (content.includes('aprovada pelo vendedor')) {
+        return { title: 'Item Aprovado', message: notification.content, icon: 'mdi-check-all', color: 'success' };
+    }
+     if (content.includes('agendado para produção')) {
+        return { title: 'Item Agendado', message: notification.content, icon: 'mdi-calendar-check', color: 'primary' };
+    }
+     if (content.includes('pronto para agendar a entrega')) {
+        return { title: 'Pedido Finalizado', message: notification.content, icon: 'mdi-package-variant-closed-check', color: 'success' };
     }
     if (content.includes('nova tarefa')) {
         return { title: 'Nova Tarefa', message: notification.content, icon: 'mdi-checkbox-marked-circle-outline', color: 'primary' };
     }
-
+    // Caso genérico
     return { title: 'Notificação', message: notification.content, icon: 'mdi-bell-outline', color: 'grey' };
 };
+// >>> FIM DA CORREÇÃO <<<
 
 const handleLogout = async () => {
   if (notificationListener.value) {
@@ -264,7 +283,6 @@ const fetchNotifications = async () => {
 }
 
 const handleNotificationClick = async (notification: Notification) => {
-    // Marcar como lida visualmente e no DB
     if (!notification.is_read) {
         try {
             await supabase.from('notifications').update({ is_read: true }).eq('id', notification.id);
@@ -272,9 +290,7 @@ const handleNotificationClick = async (notification: Notification) => {
             if (index !== -1) notifications.value[index].is_read = true;
         } catch(error) { console.error("Erro ao marcar como lida:", error); }
     }
-    // Marcar como dispensada para não aparecer mais
     await dismissNotification(notification.id);
-
     if (notification.redirect_url) {
         notificationMenu.value = false;
         router.push(notification.redirect_url);
@@ -288,7 +304,6 @@ const dismissNotification = async (notificationId: string) => {
             .from('user_notification_dismissals')
             .insert({ user_id: userStore.user.id, notification_id: notificationId });
         if (error) throw error;
-        // Remove da lista local para a UI atualizar instantaneamente
         notifications.value = notifications.value.filter(n => n.id !== notificationId);
     } catch (err) {
         console.error("Erro ao dispensar notificação:", err);
@@ -311,51 +326,62 @@ const clearAllNotifications = async () => {
     }
 };
 
-
 const handleNewNotification = (payload: any) => {
     const newNotification = payload.new as Notification;
 
-    if (newNotification.content.startsWith('[ALERT_PENDING_APPROVAL]')) {
-      const parts = newNotification.content.replace('[ALERT_PENDING_APPROVAL]', '').split('::');
-      pendingAlertContent.value = { title: parts[0] || 'ALERTA', message: parts[1] || 'Você tem uma aprovação pendente.' };
-      showPendingApprovalAlert.value = true;
-    } else {
-      notifications.value.unshift(newNotification);
+    notifications.value.unshift(newNotification);
 
-      const details = getNotificationDetails(newNotification);
-      toastContent.title = details.title;
-      toastContent.message = details.message;
-      toastContent.icon = details.icon;
-      toastContent.color = details.color;
-      toastStyle.value = { '--pulse-color': `var(--v-theme-${details.color})` };
-      toastKey.value++;
+    const details = getNotificationDetails(newNotification);
+    toastContent.title = details.title;
+    toastContent.message = details.message;
+    toastContent.icon = details.icon;
+    toastContent.color = details.color;
+    toastStyle.value = { '--pulse-color': `var(--v-theme-${details.color})` };
 
-      showToast.value = true;
-      clearTimeout(toastTimeout);
-      toastTimeout = setTimeout(() => {
-          showToast.value = false;
-      }, 6000);
+    // >>> INÍCIO DA CORREÇÃO: Forçar re-render do Toast <<<
+    toastKey.value++;
+    // >>> FIM DA CORREÇÃO <<<
 
-      isBellRinging.value = true;
-      setTimeout(() => { isBellRinging.value = false; }, 2000);
+    showToast.value = true;
+
+    isBellRinging.value = true;
+    setTimeout(() => { isBellRinging.value = false; }, 2000);
+
+    if (notificationSound.value && isAudioUnlocked.value) {
+      notificationSound.value.currentTime = 0;
+      notificationSound.value.play().catch(e => console.error("Erro ao tocar som:", e));
     }
-    notificationSound.value?.play().catch(e => console.error("Erro ao tocar som:", e));
+
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => {
+        showToast.value = false;
+    }, 6000);
 };
 
 const setupNotificationListener = () => {
-    if (!userStore.user) return;
-    notificationListener.value = supabase.channel('public:notifications')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
-            const newNotification = payload.new as Notification;
-            if (newNotification.recipient_id === userStore.user?.id || newNotification.recipient_id === null) {
-                // Adiciona a verificação para não mostrar notificação que já foi dispensada.
-                const isDismissed = notifications.value.some(n => n.id === newNotification.id);
-                if (!isDismissed) {
-                  handleNewNotification(payload);
+    if (!userStore.user || notificationListener.value) return;
+
+    const channelName = `user-notifications-${userStore.user.id}`;
+    notificationListener.value = supabase.channel(channelName)
+        .on('postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'notifications' },
+            (payload) => {
+                const newNotification = payload.new as Notification;
+                if (newNotification.recipient_id === userStore.user?.id || newNotification.recipient_id === null) {
+                    const isDismissed = notifications.value.some(n => n.id === newNotification.id);
+                    if (!isDismissed) {
+                        handleNewNotification(payload);
+                    }
                 }
             }
-        })
-        .subscribe();
+        )
+        .subscribe((status) => {
+            if (status === 'SUBSCRIBED') {
+                console.log(`Conectado ao canal ${channelName} com sucesso!`);
+            } else if (status === 'CHANNEL_ERROR') {
+                console.error(`Erro ao se conectar ao canal ${channelName}.`);
+            }
+        });
 };
 
 const formatDistance = (dateString: string) => {
@@ -373,13 +399,14 @@ onMounted(async () => {
 onUnmounted(() => {
   if (notificationListener.value) {
       supabase.removeChannel(notificationListener.value);
+      notificationListener.value = null;
   }
   clearTimeout(toastTimeout);
 });
 </script>
 
 <style lang="scss">
-/* --- ESTILOS GERAIS --- */
+/* Todos os estilos permanecem os mesmos */
 .background-container {
   position: fixed;
   top: 0;
@@ -413,43 +440,34 @@ onUnmounted(() => {
   flex-grow: 1;
   overflow-y: auto;
 }
-
-/* --- ESTILOS DOS BOTÕES DE NAVEGAÇÃO --- */
 .nav-item {
   position: relative;
   overflow: hidden;
   transition: background-color 0.2s ease;
 }
-
 .highlight-red {
   background-color: rgba(239, 83, 80, 0.733) !important;
   box-shadow: 0 0 8px rgba(239, 83, 80, 0.966);
 }
-
 .highlight-green {
   background-color: rgba(76, 175, 79, 0.658) !important;
   box-shadow: 0 0 8px rgb(76, 175, 79);
 }
-
 .nav-item.hover-effect {
   background-image: linear-gradient(45deg, transparent 10%, var(--hover-color) 50%, transparent 90%);
   background-size: 300% 100%;
   animation: gradient-animation 1.5s infinite linear;
 }
-
 .highlight-red.hover-effect {
   --hover-color: rgba(239, 83, 80, 0.993);
 }
-
 .highlight-green.hover-effect {
   --hover-color: rgba(76, 175, 79, 0.973);
 }
-
 @keyframes gradient-animation {
   0% { background-position: 200% 0; }
   100% { background-position: -100% 0; }
 }
-
 .bell-ringing {
   animation: ring 1.5s ease-in-out infinite;
 }
@@ -459,8 +477,6 @@ onUnmounted(() => {
   60% { transform: rotate(-15deg); } 70% { transform: rotate(5deg); } 80% { transform: rotate(-5deg); }
   90%, 100% { transform: rotate(0); }
 }
-
-/* --- ESTILOS E ANIMAÇÕES PARA O POP-UP --- */
 .custom-toast {
   position: fixed;
   top: 20px;
@@ -495,17 +511,14 @@ onUnmounted(() => {
     opacity: 0.8;
   }
 }
-
 .toast-content {
   display: flex;
   align-items: center;
   width: 100%;
 }
-
 .toast-icon {
   font-size: 28px;
 }
-
 .toast-slide-enter-active,
 .toast-slide-leave-active {
   transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -515,34 +528,28 @@ onUnmounted(() => {
   transform: translate(-50%, -150%);
   opacity: 0;
 }
-
 @keyframes pulse-glow {
   0% { box-shadow: 0 0 10px 2px var(--pulse-color, transparent); opacity: 0.7; }
   50% { box-shadow: 0 0 25px 8px var(--pulse-color, transparent); opacity: 1; }
   100% { box-shadow: 0 0 10px 2px var(--pulse-color, transparent); opacity: 0.7; }
 }
-
-/* --- ESTILOS ATUALIZADOS PARA O MODAL DE NOTIFICAÇÕES --- */
 .notifications-panel {
   width: 400px;
   max-width: 90vw;
   display: flex;
   flex-direction: column;
 }
-
 .glassmorphism-card-dialog {
   backdrop-filter: blur(20px) !important;
   background-color: rgba(40, 40, 45, 0.85) !important;
   border-radius: 12px !important;
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
-
 .notification-list-scroll {
   flex-grow: 1;
   overflow-y: auto;
   max-height: 50vh;
 }
-
 .notification-item {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   &:last-child {
@@ -556,7 +563,6 @@ onUnmounted(() => {
     overflow: hidden;
   }
 }
-
 .empty-notifications {
   display: flex;
   flex-direction: column;
@@ -566,7 +572,6 @@ onUnmounted(() => {
   height: 200px;
   color: #757575;
 }
-
 .v-navigation-drawer.glassmorphism-sidebar {
   display: flex !important;
   flex-direction: column !important;
