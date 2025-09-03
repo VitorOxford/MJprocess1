@@ -60,7 +60,7 @@ const goToFinance = async () => {
     if (error) throw error;
 
     if (data.token) {
-      const financeUrl = `https://mj-financeiro.render.com?token=${data.token}`;
+      const financeUrl = `https://mj-financeiro.onrender.com?token=${data.token}`;
       window.open(financeUrl, '_blank');
     } else {
         throw new Error('Token não recebido da função.');
