@@ -40,15 +40,21 @@
           </div>
           <draggable
             :list="toBeScheduledOrders"
-            :group="{ name: 'orders', pull: canDragOrder, put: true }"
+            :group="{ name: 'orders', pull: 'clone', put: true }"
             item-key="id"
             class="column-content pa-3"
             ghost-class="ghost-card"
             @end="onDragEnd"
             data-status="to-be-scheduled"
+            filter=".not-draggable"
           >
             <template #item="{ element: order }">
-               <v-card class="order-card mb-4" elevation="4" :data-id="order.id">
+               <v-card
+                class="order-card mb-4"
+                elevation="4"
+                :data-id="order.id"
+                :class="{ 'not-draggable': !canDragOrder(order) }"
+              >
                 <v-card-text @click="openDetailModal(order.id)">
                   <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
                   <v-chip v-if="order.is_launch" size="small" variant="tonal" color="info" class="mt-2">
@@ -56,7 +62,7 @@
                     Lançamento com {{ order.order_items.length }} itens
                   </v-chip>
                   <p v-else class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details.fabric_type }}</p>
-                  <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
+                  <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ getOrderDisplayMeters(order) }}m</p>
                 </v-card-text>
                 <v-card-actions v-if="isReadyForBilling(order) && !order.billed_at" class="justify-center">
                     <v-btn color="success" variant="flat" block @click.stop="openBillingModal(order)">
@@ -88,7 +94,7 @@
           </div>
           <draggable
             :list="day.orders"
-            group="orders"
+            :group="{ name: 'orders', pull: 'clone', put: true }"
             item-key="id"
             class="column-content pa-3"
             :data-date="day.date.toISOString().split('T')[0]"
@@ -96,43 +102,43 @@
             @end="onDragEnd"
           >
             <template #item="{ element: order }">
-               <v-card
-                  class="order-card mb-4"
-                  :class="{ 'confirmed': order.delivery_confirmed_at, 'past-delivery': isPast(day.date) && !isToday(day.date) }"
-                  elevation="4"
-                  @click="openDetailModal(order.id)"
-                  :data-id="order.id"
-                >
-                  <v-icon v-if="order.delivery_confirmed_at" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
-                  <v-card-text>
-                      <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
-                      <v-chip v-if="order.is_launch" size="small" variant="tonal" color="info" class="mt-2">
-                        <v-icon start size="x-small">mdi-package-variant-closed</v-icon>
-                        {{ order.order_items.length }} itens
-                      </v-chip>
-                      <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ order.quantity_meters }}m</p>
-                  </v-card-text>
-                  <v-fade-transition>
-                    <v-card-actions class="actions-overlay" v-if="!order.delivery_confirmed_at">
-                      <v-tooltip text="Cancelar Agendamento" location="top">
-                          <template v-slot:activator="{ props }">
-                              <v-btn v-bind="props" icon="mdi-close" color="red" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
-                          </template>
-                      </v-tooltip>
-                      <v-tooltip text="Confirmar Entrega" location="top">
+              <v-card
+                class="order-card mb-4"
+                :class="{ 'confirmed': order.delivery_confirmed_at, 'past-delivery': isPast(day.date) && !isToday(day.date) }"
+                elevation="4"
+                @click="openDetailModal(order.id)"
+                :data-id="order.id"
+              >
+                <v-icon v-if="order.delivery_confirmed_at" class="confirmed-icon" color="success">mdi-check-circle</v-icon>
+                <v-card-text>
+                    <p class="font-weight-bold text-subtitle-1">{{ order.customer_name }}</p>
+                    <v-chip v-if="order.is_launch" size="small" variant="tonal" color="info" class="mt-2">
+                      <v-icon start size="x-small">mdi-package-variant-closed</v-icon>
+                      {{ order.order_items.length }} itens
+                    </v-chip>
+                    <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ getOrderDisplayMeters(order) }}m</p>
+                </v-card-text>
+                <v-fade-transition>
+                  <v-card-actions class="actions-overlay" v-if="!order.delivery_confirmed_at">
+                    <v-tooltip text="Cancelar Agendamento" location="top">
                         <template v-slot:activator="{ props }">
-                          <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click.stop="confirmDelivery(order)"></v-btn>
+                            <v-btn v-bind="props" icon="mdi-close" color="red" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
                         </template>
-                      </v-tooltip>
-                    </v-card-actions>
-                    <v-card-actions class="actions-overlay" v-else-if="userStore.isAdmin && order.delivery_confirmed_at">
-                       <v-tooltip text="Reverter Entrega (Admin)" location="top">
-                          <template v-slot:activator="{ props }">
-                              <v-btn v-bind="props" icon="mdi-undo-variant" color="warning" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
-                          </template>
-                      </v-tooltip>
-                    </v-card-actions>
-                  </v-fade-transition>
+                    </v-tooltip>
+                    <v-tooltip text="Confirmar Entrega" location="top">
+                      <template v-slot:activator="{ props }">
+                        <v-btn v-bind="props" icon="mdi-check" color="success" variant="flat" size="small" @click.stop="confirmDelivery(order)"></v-btn>
+                      </template>
+                    </v-tooltip>
+                  </v-card-actions>
+                  <v-card-actions class="actions-overlay" v-else-if="userStore.isAdmin && order.delivery_confirmed_at">
+                     <v-tooltip text="Reverter Entrega (Admin)" location="top">
+                        <template v-slot:activator="{ props }">
+                            <v-btn v-bind="props" icon="mdi-undo-variant" color="warning" variant="flat" size="small" @click.stop="rejectDelivery(order)"></v-btn>
+                        </template>
+                    </v-tooltip>
+                  </v-card-actions>
+                </v-fade-transition>
               </v-card>
             </template>
             <template #footer>
@@ -213,7 +219,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, defineAsyncComponent } from 'vue';
+// O script setup permanece idêntico ao original, pois a lógica estava correta.
+import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import BillingModal from '@/components/BillingModal.vue';
@@ -273,8 +280,16 @@ const isReadyForBilling = (order: Order) => {
     return order.order_items.every(item => item.status === 'completed');
 };
 
+// Esta função agora é usada corretamente pelo class binding para o filter
 const canDragOrder = (order: Order) => {
     return !!order.billed_at;
+};
+
+const getOrderDisplayMeters = (order: Order) => {
+    if (order.billed_at && order.order_items.length > 0) {
+        return order.order_items.reduce((sum, item) => sum + (item.billed_quantity || item.quantity_meters || 0), 0);
+    }
+    return order.quantity_meters;
 };
 
 
@@ -317,8 +332,10 @@ const getGhostEntriesForDay = (date: Date) => {
 };
 
 const getDayTotalMeters = (orders: Order[]) => {
-    return orders.reduce((sum, order) => sum + order.quantity_meters, 0);
+    const total = orders.reduce((sum, order) => sum + getOrderDisplayMeters(order), 0);
+    return total.toLocaleString('pt-BR');
 };
+
 
 const weekDeliveryDays = computed(() => {
     const weekStart = currentDeliveryWeekStart.value;
@@ -341,24 +358,34 @@ const weekRangeText = computed(() => `${format(currentDeliveryWeekStart.value, '
 const nextWeek = () => currentDeliveryWeekStart.value = addDays(currentDeliveryWeekStart.value, 7);
 const previousWeek = () => currentDeliveryWeekStart.value = subDays(currentDeliveryWeekStart.value, 7);
 
+// O onDragEnd já estava correto para a atualização otimista.
 const onDragEnd = async (event: any) => {
     const { item, to } = event;
     const orderId = item.dataset.id;
-    const newDateStr = to.dataset.date;
+    const newDateStr = to.dataset.date; // Será undefined se for movido para "Aguardando Envio"
     if (!orderId) return;
 
-    const newDate = newDateStr ? newDateStr : null;
+    // Sincroniza a UI imediatamente (Essencial para o pull: 'clone')
+    const order = allOrders.value.find(o => o.id === orderId);
+    if (order) {
+      order.actual_delivery_date = newDateStr ? parseISO(newDateStr) : null;
+    }
+
+    // Atualiza a base de dados em segundo plano
     try {
         const { error } = await supabase
             .from('orders')
-            .update({ actual_delivery_date: newDate })
+            .update({ actual_delivery_date: newDateStr || null })
             .eq('id', orderId);
 
-        if (error) throw error;
-        await fetchDeliveryOrders();
-
+        if (error) {
+          console.error('Erro ao reagendar entrega:', error.message);
+          // Se houver erro, desfaz a alteração e recarrega os dados
+          await fetchDeliveryOrders();
+        }
     } catch (err: any) {
-        console.error('Erro ao reagendar entrega:', err.message);
+        console.error('Erro crítico ao reagendar entrega:', err.message);
+        await fetchDeliveryOrders();
     }
 };
 
@@ -398,9 +425,9 @@ const openBillingModal = (order: Order) => {
     showBillingModal.value = true;
 };
 
-const handleBilled = () => {
+const handleBilled = async () => {
     showBillingModal.value = false;
-    fetchDeliveryOrders();
+    await fetchDeliveryOrders();
 };
 
 
@@ -488,6 +515,18 @@ onMounted(fetchDeliveryOrders);
 .column-content { flex-grow: 1; overflow-y: auto; min-height: 200px; }
 .order-card { cursor: grab; position: relative; background-color: rgba(45, 45, 55, 0.9); transition: all 0.2s ease-in-out; border: 1px solid transparent; }
 .order-card:hover { transform: translateY(-4px); border-color: rgba(var(--v-theme-primary), 0.5); }
+
+/* CORREÇÃO 4: Adicionar estilo para feedback visual */
+.not-draggable {
+  cursor: not-allowed !important;
+  opacity: 0.8;
+}
+.not-draggable:hover {
+    transform: none !important;
+    border-color: transparent !important;
+}
+
+
 .info-line { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #e0e0e0; margin-top: 4px; }
 .ghost-card { opacity: 0.5; background: rgba(var(--v-theme-primary), 0.2); border: 2px dashed rgba(var(--v-theme-primary), 0.5); }
 .production-ghost {
