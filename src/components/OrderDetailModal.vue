@@ -34,7 +34,7 @@
                       <v-chip size="small">{{ order.is_launch ? `Lançamento (${order.order_items.length} itens)` : 'Pedido Único' }}</v-chip>
                     </template>
                   </v-list-item>
-                  <v-list-item title="Metragem Total" :subtitle="`${order.quantity_meters}m`"></v-list-item>
+                  <v-list-item title="Metragem Total" :subtitle="`${Number(order.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}m`"></v-list-item>
               </v-list>
           </v-col>
         </v-row>
@@ -47,7 +47,7 @@
                  <v-img :key="focusedItem.id" :src="focusedItem.stamp_image_url" class="item-thumbnail mr-4" cover></v-img>
                  <div>
                   <span class="font-weight-bold">{{ focusedItem.stamp_ref }}</span>
-                  <span class="text-caption d-block">{{ focusedItem.fabric_type }} - {{ focusedItem.quantity_meters }}m</span>
+                  <span class="text-caption d-block">{{ focusedItem.fabric_type }} - {{ Number(focusedItem.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) }}m</span>
                 </div>
                 <v-spacer></v-spacer>
                 <v-btn
@@ -80,7 +80,7 @@
                 <v-img :src="item.stamp_image_url" class="item-thumbnail mr-4" cover></v-img>
                 <div>
                   <span class="font-weight-bold">{{ item.stamp_ref }}</span>
-                  <span class="text-caption d-block">{{ item.fabric_type }} - {{ item.quantity_meters }}m</span>
+                  <span class="text-caption d-block">{{ item.fabric_type }} - {{ Number(item.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) }}m</span>
                 </div>
               </div>
               <div class="d-flex align-center">

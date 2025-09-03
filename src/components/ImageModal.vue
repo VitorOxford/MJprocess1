@@ -1,53 +1,67 @@
 <template>
-  <v-dialog v-model="props.show" max-width="95vw" persistent @update:modelValue="emit('close')">
+  <v-dialog v-model="props.show" max-width="900px" max-height="90vh" persistent @update:modelValue="emit('close')">
     <v-card class="image-modal-card glassmorphism-card">
-      <v-toolbar dense floating class="glassmorphism-toolbar">
+      <v-toolbar color="transparent" density="compact">
         <v-spacer></v-spacer>
         <v-btn icon @click="emit('close')" variant="text">
           <v-icon>mdi-close</v-icon>
         </v-btn>
       </v-toolbar>
-      <v-card-text class="pa-0">
-        <v-img :src="props.imageUrl" :alt="props.fileName" contain class="modal-image-display"></v-img>
+
+      <v-card-text class="image-content-wrapper py-0 px-4">
+        <div class="image-display-container">
+          <img :src="props.imageUrl" :alt="props.fileName" class="responsive-modal-image" />
+        </div>
       </v-card-text>
-      <v-card-actions class="justify-center glassmorphism-toolbar">
-        <v-btn color="primary" variant="flat" :href="props.imageUrl" target="_blank" download :disabled="!props.imageUrl">
+
+      <v-card-actions class="justify-center py-4">
+        <v-btn
+          color="primary"
+          variant="flat"
+          :href="props.imageUrl"
+          target="_blank"
+          download
+          :disabled="!props.imageUrl"
+        >
           <v-icon start icon="mdi-download"></v-icon> Download
         </v-btn>
-        <v-btn v-if="props.fileType === 'image'" color="primary" variant="flat" @click="shareImage" :disabled="!props.imageUrl">
-          <v-icon start icon="mdi-share-variant"></v-icon> Compartilhar
+        <v-btn
+          color="info"
+          variant="outlined"
+          @click="copyImageUrl"
+          :disabled="!props.imageUrl"
+        >
+          <v-icon start icon="mdi-content-copy"></v-icon> Copiar Link
         </v-btn>
       </v-card-actions>
+      <v-snackbar v-model="showSnackbar" :timeout="2000" color="success">
+        Link da imagem copiado!
+      </v-snackbar>
     </v-card>
   </v-dialog>
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits } from 'vue';
+import { defineProps, defineEmits, ref } from 'vue';
 
 const props = defineProps({
   show: Boolean,
   imageUrl: String,
   fileName: String,
-  fileType: String, // 'image' or 'file'
 });
 
 const emit = defineEmits(['close']);
+const showSnackbar = ref(false);
 
-const shareImage = async () => {
-  if (navigator.share && props.imageUrl) {
+const copyImageUrl = async () => {
+  if (props.imageUrl) {
     try {
-      await navigator.share({
-        title: props.fileName || 'Imagem do Chat',
-        url: props.imageUrl,
-      });
-      console.log('Conteúdo compartilhado com sucesso!');
-    } catch (error) {
-      console.error('Erro ao compartilhar:', error);
-      alert('Não foi possível compartilhar a imagem.');
+      await navigator.clipboard.writeText(props.imageUrl);
+      showSnackbar.value = true;
+    } catch (err) {
+      console.error('Falha ao copiar o link:', err);
+      // Opcional: mostrar um snackbar de erro
     }
-  } else {
-    alert('A API de compartilhamento não é suportada neste navegador.');
   }
 };
 </script>
@@ -56,26 +70,47 @@ const shareImage = async () => {
 .image-modal-card {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  background-color: rgba(30, 30, 30, 0.7); /* Fundo um pouco mais escuro */
+  background-color: rgba(30, 30, 30, 0.75); /* Mais opaco para a imagem */
   border-radius: 12px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.modal-image-display {
-  max-height: 80vh; /* Limita a altura da imagem no modal */
-  width: auto; /* Permite que a largura se ajuste */
-  display: block; /* Garante que margens automáticas funcionem */
-  margin: 0 auto; /* Centraliza a imagem */
+.image-content-wrapper {
+  flex-grow: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: auto; /* Permite scroll se a imagem for maior */
+  padding: 16px;
 }
 
-.glassmorphism-toolbar {
-  background-color: rgba(40, 40, 40, 0.6) !important;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+.image-display-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.2); /* Fundo sutil para a imagem */
+  border-radius: 8px;
+  padding: 10px; /* Padding interno para o "contorno" */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  max-width: 100%; /* Garante que o container não exceda o modal */
+  max-height: 100%;
+}
+
+.responsive-modal-image {
+  max-width: 100%; /* Ajusta a imagem à largura do container */
+  max-height: 70vh; /* Limita a altura da imagem para não ser muito grande */
+  height: auto;
+  display: block;
+  object-fit: contain; /* Garante que a imagem se ajuste sem cortar */
+  border-radius: 4px; /* Leve arredondamento na imagem */
 }
 
 .v-card-actions {
-  padding: 8px 16px;
+  background-color: rgba(40, 40, 40, 0.6) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 </style>

@@ -37,7 +37,7 @@
                        <p class="font-weight-bold text-body-1">{{ item.order.customer_name }}</p>
                        <p class="text-caption text-medium-emphasis mt-1">Ref: {{ item.stamp_ref }}</p>
                        <v-divider class="my-2"></v-divider>
-                       <v-chip size="small">{{ item.fabric_type }} - {{ item.quantity_meters }}m</v-chip>
+                       <v-chip size="small">{{ item.fabric_type }} - {{ Number(item.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) }}m</v-chip>
                      </v-card-text>
                   </v-card>
                </div>
