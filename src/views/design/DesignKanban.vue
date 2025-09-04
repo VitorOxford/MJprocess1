@@ -185,13 +185,11 @@ const handleUploadSuccess = async (fileUrl: string) => {
     if (!selectedItem.value) return;
     await updateItemStatus(selectedItem.value, 'customer_approval', fileUrl);
 
-    // *** NOVA LÓGICA DE NOTIFICAÇÃO ***
     const { error: notifyError } = await supabase.rpc('notify_seller_for_approval', {
         p_item_id: selectedItem.value.id,
         p_sender_id: userStore.profile?.id
     });
     if (notifyError) console.error("Erro ao notificar vendedor:", notifyError);
-    // **********************************
 
     showUploadModal.value = false;
 };
@@ -257,16 +255,106 @@ onMounted(fetchDesignOrders);
 
 <style scoped lang="scss">
 @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } }
-.design-kanban-page { position: relative; z-index: 1; display: flex; flex-direction: column; }
-.kanban-board-container { width: 100%; overflow-x: auto; padding-bottom: 2rem; flex-grow: 1; }
-.kanban-board { display: flex; gap: 2rem; min-width: fit-content; padding: 1rem; height: 100%; }
-.kanban-column { width: 340px; flex-shrink: 0; background-color: rgba(25, 25, 30, 0.6); border-radius: 16px; display: flex; flex-direction: column; max-height: 100%; animation: float 8s ease-in-out infinite; transition: all 0.4s ease; border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(5px); }
-.kanban-column:hover { transform: scale(1.03) translateY(-7px) !important; box-shadow: 0 25px 50px rgba(0,0,0,0.4); }
-.column-header { padding: 1rem 1.25rem; display: flex; align-items: center; flex-shrink: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.1); .column-title { font-size: 1.1rem; font-weight: bold; } }
-.column-content { padding: 0.5rem 1rem 1rem 1rem; flex-grow: 1; min-height: 200px; overflow-y: auto; }
-.order-card { cursor: pointer; background-color: rgba(35, 35, 45, 0.8); border-radius: 12px; position: relative; overflow: hidden; border: 1px solid transparent; transition: transform 0.2s ease-out; .card-content { z-index: 2; } .card-border { position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(400px circle at var(--mouse-x) var(--mouse-y), rgba(255, 255, 255, 0.2), transparent 40%); opacity: 0; transition: opacity 0.4s; } &:hover .card-border { opacity: 1; } }
-.empty-column { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; padding: 2rem; color: #616161; }
+
+/* CORREÇÃO PRINCIPAL: Estrutura da Página e do Board */
+.design-kanban-page {
+  height: calc(100vh - 64px); // Altura total da viewport menos o app-bar
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; // Impede a página inteira de rolar
+}
+
+.kanban-board-container {
+  flex-grow: 1; // Faz o container do board ocupar todo o espaço vertical disponível
+  overflow-x: auto; // Permite o scroll horizontal do board
+  padding-bottom: 2rem;
+}
+
+.kanban-board {
+  display: flex;
+  gap: 2rem;
+  min-width: fit-content;
+  padding: 1rem;
+  height: 100%; // O board ocupa toda a altura do seu container
+}
+
+.kanban-column {
+  width: 340px;
+  flex-shrink: 0;
+  background-color: rgba(25, 25, 30, 0.6);
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  max-height: 100%; // A coluna se limita à altura do board
+  animation: float 8s ease-in-out infinite;
+  transition: all 0.4s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(5px);
+
+  &:hover {
+    transform: scale(1.03) translateY(-7px) !important;
+    box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+  }
+}
+/* FIM DA CORREÇÃO PRINCIPAL */
+
+.column-header {
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  .column-title {
+    font-size: 1.1rem;
+    font-weight: bold;
+  }
+}
+
+/* CORREÇÃO DO SCROLL DA COLUNA */
+.column-content {
+  flex-grow: 1; // Faz a área de conteúdo crescer
+  min-height: 0; // Necessário para o flexbox calcular o overflow corretamente
+  overflow-y: auto; // Cria o scroll vertical APENAS QUANDO NECESSÁRIO
+  padding: 0.5rem 1rem 1rem 1rem;
+}
+/* FIM DA CORREÇÃO DO SCROLL */
+
+.order-card {
+  cursor: pointer;
+  background-color: rgba(35, 35, 45, 0.8);
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid transparent;
+  transition: transform 0.2s ease-out;
+
+  .card-content { z-index: 2; }
+
+  .card-border {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(400px circle at var(--mouse-x) var(--mouse-y), rgba(255, 255, 255, 0.2), transparent 40%);
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  &:hover .card-border { opacity: 1; }
+}
+
+.empty-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 2rem;
+  color: #616161;
+}
+
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.custom-scrollbar::-webkit-scrollbar-thumb { background-color: rgba(255, 255, 255, 0.2); border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
 </style>
