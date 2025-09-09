@@ -140,7 +140,12 @@ type KanbanItem = {
   quantity_meters: number;
   status: string;
   created_at: string; // Data de criação do item/pedido
-  scheduled_date?: string; // Data agendada, se houver
+  // --- INÍCIO DA CORREÇÃO LÓGICA ---
+  // A data de agendamento que pode ser alterada. Não será mais usada para posicionar o card aqui.
+  scheduled_date?: string;
+  // A data IMUTÁVEL de quando o item entrou na fila pela primeira vez.
+  production_entry_date?: string;
+  // --- FIM DA CORREÇÃO LÓGICA ---
   is_ghost: boolean;
   is_delayed: boolean;
 };
@@ -190,7 +195,10 @@ const formatMeters = (meters: number) => Number(meters || 0).toLocaleString('pt-
 
 const getItemsForDay = (date: Date): KanbanItem[] => {
     return allItems.value.filter(item => {
-        const displayDate = item.is_ghost ? parseISO(item.created_at) : (item.scheduled_date ? parseISO(item.scheduled_date) : null);
+        // --- CORREÇÃO LÓGICA ---
+        // Se for "fantasma", usa a data de criação do item.
+        // Se for "sólido", usa a data de entrada na produção (imutável).
+        const displayDate = item.is_ghost ? parseISO(item.created_at) : (item.production_entry_date ? parseISO(item.production_entry_date) : null);
         return displayDate && isSameDay(displayDate, date);
     });
 };
@@ -234,7 +242,7 @@ const fetchAllData = async () => {
         order_items(
           id, status, quantity_meters, fabric_type, stamp_ref, created_at
         ),
-        production_schedule(scheduled_date, order_item_id)
+        production_schedule(scheduled_date, order_item_id, created_at)
       `);
 
     if (error) throw error;
@@ -269,6 +277,7 @@ const fetchAllData = async () => {
                 status: item.status,
                 created_at: item.created_at,
                 scheduled_date: schedule?.scheduled_date,
+                production_entry_date: schedule?.created_at, // <-- A DATA IMUTÁVEL
                 is_ghost: isGhost,
                 is_delayed: isDelayed,
             });
@@ -326,10 +335,9 @@ onMounted(fetchAllData);
   overflow: hidden;
   padding-bottom: 8px;
 }
-/* INÍCIO DA CORREÇÃO DE LAYOUT */
 .kanban-board {
   display: grid;
-  grid-template-columns: repeat(6, 1fr); /* 6 colunas flexíveis */
+  grid-template-columns: repeat(6, 1fr);
   gap: 1rem;
   height: 100%;
 }
@@ -340,9 +348,8 @@ onMounted(fetchAllData);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   max-height: 100%;
-  min-width: 0; /* Permite que a coluna encolha */
+  min-width: 0;
 }
-/* FIM DA CORREÇÃO DE LAYOUT */
 .column-header {
   text-align: center;
   padding: 12px;
