@@ -27,7 +27,22 @@
                     </div>
                 </v-card-text>
             </v-card>
-            <v-card class="queue-card" variant="tonal" color="error" @click="openQueueModal('stock')">
+             <v-card
+              class="queue-card"
+              :class="{ 'highlight-active': isHighlightingDelayed }"
+              variant="tonal"
+              color="error"
+              @click="toggleDelayedHighlight"
+            >
+              <v-card-text class="d-flex align-center">
+                <v-icon size="40" class="mr-4">mdi-alarm-light-outline</v-icon>
+                <div>
+                  <div class="text-h6 font-weight-bold">{{ formatMeters(totalMetersDelayed) }}m</div>
+                  <div class="text-subtitle-1">{{ delayedGhostItems.length }} Item(s) Atrasado(s)</div>
+                </div>
+              </v-card-text>
+            </v-card>
+            <v-card class="queue-card" variant="tonal" color="warning" @click="openQueueModal('stock')">
                 <v-card-text class="d-flex align-center">
                     <v-icon size="40" class="mr-4">mdi-package-variant-closed-remove</v-icon>
                     <div>
@@ -38,7 +53,20 @@
             </v-card>
         </div>
 
-        <div class="kanban-board-container">
+        <div class="px-2 mb-4">
+            <v-text-field
+                v-model="searchQuery"
+                variant="solo-filled"
+                flat
+                density="compact"
+                label="Buscar por Cliente, Vendedor ou Ref. da Estampa..."
+                prepend-inner-icon="mdi-magnify"
+                hide-details
+                clearable
+            ></v-text-field>
+        </div>
+
+        <div class="kanban-board-container" :class="{ 'highlight-delayed-mode': isHighlightingDelayed }">
             <div class="kanban-board">
                 <div v-for="day in weekDays" :key="day.date.toISOString()" class="kanban-column">
                     <div class="column-header">
@@ -130,7 +158,7 @@ import { ptBR } from 'date-fns/locale';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 
 type KanbanItem = {
-  id: string; // item id
+  id: string;
   order_id: string;
   order_number: number;
   customer_name: string;
@@ -165,6 +193,9 @@ const modalHeaders = [
     { title: 'Criado em', key: 'created_at' },
 ];
 
+const searchQuery = ref('');
+const isHighlightingDelayed = ref(false);
+
 const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
   'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA',
   'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA'
@@ -172,6 +203,26 @@ const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
 const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => fabricMachineMap[fabric] || 'CORRIDA';
 
 const ghostItems = computed(() => allItems.value.filter(item => item.is_ghost));
+const delayedGhostItems = computed(() => ghostItems.value.filter(item => item.is_delayed));
+
+const totalMetersDelayed = computed(() => {
+    return delayedGhostItems.value.reduce((sum, item) => sum + item.quantity_meters, 0);
+});
+
+const toggleDelayedHighlight = () => {
+  isHighlightingDelayed.value = !isHighlightingDelayed.value;
+};
+
+const filteredItems = computed(() => {
+    if (!searchQuery.value) return allItems.value;
+    const query = searchQuery.value.toLowerCase();
+    return allItems.value.filter(item =>
+        item.customer_name.toLowerCase().includes(query) ||
+        item.creator_name.toLowerCase().includes(query) ||
+        item.stamp_ref.toLowerCase().includes(query)
+    );
+});
+
 const totalMetersInDesign = computed(() => ghostItems.value.reduce((sum, item) => sum + item.quantity_meters, 0));
 const ordersPendingStock = computed(() => {
     const orderIds = new Set(allItems.value.filter(item => item.status === 'pending_stock').map(item => item.order_id));
@@ -190,7 +241,7 @@ const formatDate = (dateString: string) => format(parseISO(dateString), "dd/MM/y
 const formatMeters = (meters: number) => Number(meters || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 
 const getItemsForDay = (date: Date): KanbanItem[] => {
-    return allItems.value.filter(item => {
+    return filteredItems.value.filter(item => {
         const displayDate = item.is_ghost ? parseISO(item.created_at) : (item.production_entry_date ? parseISO(item.production_entry_date) : null);
         return displayDate && isSameDay(displayDate, date);
     });
@@ -249,17 +300,13 @@ const fetchAllData = async () => {
             const isGhost = designStatuses.includes(item.status);
             const schedule = order.production_schedule.find(s => s.order_item_id === item.id);
 
-            // ***** INÍCIO DA CORREÇÃO *****
-            // Lógica de atraso aprimorada
             let isDelayed = false;
             if (isGhost) {
                 const createdAt = parseISO(item.created_at);
-                // É considerado atrasado se a data de criação for anterior a hoje.
                 if (isBefore(createdAt, today)) {
                     isDelayed = true;
                 }
             }
-            // ***** FIM DA CORREÇÃO *****
 
             processedItems.push({
                 id: item.id,
@@ -293,20 +340,17 @@ onMounted(fetchAllData);
 </script>
 
 <style scoped lang="scss">
-/* ***** INÍCIO DA CORREÇÃO ***** */
-/* Nova animação de pulso */
-@keyframes pulse-red {
+@keyframes pulse-red-glow {
   0% {
     box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.7);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(239, 83, 80, 0);
+    box-shadow: 0 0 10px 15px rgba(239, 83, 80, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(239, 83, 80, 0);
   }
 }
-/* ***** FIM DA CORREÇÃO ***** */
 
 .kanban-page-container {
   height: calc(100vh - 64px);
@@ -332,6 +376,10 @@ onMounted(fetchAllData);
   flex: 1;
   cursor: pointer;
   transition: all 0.2s ease-in-out;
+  &.highlight-active {
+      border: 1px solid #ef5350;
+      box-shadow: 0 0 15px rgba(239, 83, 80, 0.5);
+  }
   &:hover {
     transform: translateY(-4px);
     box-shadow: 0 8px 20px rgba(0,0,0,0.3);
@@ -343,6 +391,11 @@ onMounted(fetchAllData);
   padding-bottom: 8px;
   min-height: 0;
   display: flex;
+
+  &.highlight-delayed-mode .order-card:not(.delayed-ghost) {
+    opacity: 0.3;
+    filter: grayscale(80%);
+  }
 }
 .kanban-board {
   display: grid;
@@ -382,26 +435,25 @@ onMounted(fetchAllData);
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.1);
-  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, opacity 0.3s ease, filter 0.3s ease;
 
   &.ghost-card {
     background-color: rgba(40, 50, 60, 0.9);
     border-style: dashed;
   }
 
-  /* ***** INÍCIO DA CORREÇÃO ***** */
-  /* Aplica a animação ao card atrasado */
   &.delayed-ghost {
-    border: 1px solid rgba(239, 83, 80, 0.8);
-    animation: pulse-red 2.5s infinite;
+    border-color: rgba(239, 83, 80, 0.8);
+    .highlight-delayed-mode & {
+        animation: pulse-red-glow 2.5s infinite;
+    }
   }
-  /* ***** FIM DA CORREÇÃO ***** */
 }
 .delayed-indicator {
     position: absolute;
     top: 6px;
     right: 6px;
-    background-color: #E53935; // red darken-1
+    background-color: #E53935;
     color: white;
     font-size: 0.6rem;
     font-weight: bold;
