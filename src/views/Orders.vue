@@ -307,6 +307,7 @@ onMounted(fetchAllData);
   height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 .glassmorphism-card, .glassmorphism-card-dialog {
   backdrop-filter: blur(15px);
@@ -319,6 +320,7 @@ onMounted(fetchAllData);
   max-height: 95vh;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 .week-indicator { min-width: 150px; }
 .queue-card {
@@ -334,12 +336,15 @@ onMounted(fetchAllData);
   flex-grow: 1;
   overflow: hidden;
   padding-bottom: 8px;
+  min-height: 0;
+  display: flex;
 }
 .kanban-board {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 1rem;
   height: 100%;
+  min-height: 0;
 }
 .kanban-column {
   display: flex;
@@ -347,8 +352,9 @@ onMounted(fetchAllData);
   background-color: rgba(30,30,35,0.7);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  max-height: 100%;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
 }
 .column-header {
   text-align: center;
@@ -360,8 +366,9 @@ onMounted(fetchAllData);
 .column-content {
   padding: 8px;
   overflow-y: auto;
-  flex-grow: 1;
+  flex: 1 1 0%;
   min-height: 0;
+  max-height: unset;
 }
 .order-card {
   background-color: rgba(45, 45, 55, 0.9);
