@@ -53,7 +53,7 @@
 
     <LaunchDetailModal
       :show="showLaunchModal"
-      :order="selectedOrder"
+      :order-id="selectedOrderId"
       @close="closeLaunchModal"
       @sendToSeller="openUploadModal"
       @releaseItem="handleReleaseItem"
@@ -94,6 +94,7 @@ const allOrders = ref<Order[]>([]);
 const userStore = useUserStore();
 const showLaunchModal = ref(false);
 const selectedOrder = ref<Order | null>(null);
+const selectedOrderId = ref<string | null>(null); // **NOVO**
 const showUploadModal = ref(false);
 const selectedItem = ref<OrderItem | null>(null);
 const uploadModalTitle = ref('');
@@ -164,14 +165,16 @@ const onCardMouseMove = (e: MouseEvent) => {
   card.style.setProperty('--mouse-y', `${y}px`);
 };
 
+// **ALTERADO**
 const openModalForItem = (item: OrderItem) => {
-  selectedOrder.value = item.order;
+  selectedOrderId.value = item.order_id; // Passa apenas o ID
   showLaunchModal.value = true;
 };
 
+// **ALTERADO**
 const closeLaunchModal = () => {
   showLaunchModal.value = false;
-  selectedOrder.value = null;
+  selectedOrderId.value = null; // Limpa o ID
 };
 
 const openUploadModal = (item: OrderItem) => {
@@ -199,10 +202,7 @@ const updateItemStatus = async (item: OrderItem, newStatus: string, fileUrl?: st
         const { error } = await supabase.rpc('update_order_item_status', { p_item_id: item.id, p_new_status: newStatus, p_final_art_url: fileUrl || null, p_profile_id: userStore.profile?.id });
         if (error) throw error;
         await fetchDesignOrders();
-        if (selectedOrder.value) {
-          const { data } = await supabase.from('orders').select(`*, created_by:profiles!created_by(full_name), order_items(*)`).eq('id', selectedOrder.value.id).single();
-          selectedOrder.value = data;
-        }
+        // Não precisamos mais atualizar selectedOrder aqui, pois o modal busca seus próprios dados
     } catch (err: any) { console.error("Erro ao atualizar status do item:", err); }
 };
 
@@ -230,14 +230,8 @@ const handleReleaseItem = async (item: OrderItem) => {
         });
         if (error) throw error;
         removeItemFromLocalState(item.id);
-        if (selectedOrder.value) {
-            const itemIndex = selectedOrder.value.order_items.findIndex(i => i.id === item.id);
-            if (itemIndex > -1) {
-                selectedOrder.value.order_items.splice(itemIndex, 1);
-                if (selectedOrder.value.order_items.length === 0) {
-                    closeLaunchModal();
-                }
-            }
+        if (selectedOrderId.value) {
+            closeLaunchModal(); // Fecha o modal, pois o item foi removido
         }
     } catch(err: any) {
         console.error("Erro ao liberar item para produção:", err);
@@ -256,17 +250,16 @@ onMounted(fetchDesignOrders);
 <style scoped lang="scss">
 @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-8px); } 100% { transform: translateY(0px); } }
 
-/* CORREÇÃO PRINCIPAL: Estrutura da Página e do Board */
 .design-kanban-page {
-  height: calc(100vh - 64px); // Altura total da viewport menos o app-bar
+  height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
-  overflow: hidden; // Impede a página inteira de rolar
+  overflow: hidden;
 }
 
 .kanban-board-container {
-  flex-grow: 1; // Faz o container do board ocupar todo o espaço vertical disponível
-  overflow-x: auto; // Permite o scroll horizontal do board
+  flex-grow: 1;
+  overflow-x: auto;
   padding-bottom: 2rem;
 }
 
@@ -275,7 +268,7 @@ onMounted(fetchDesignOrders);
   gap: 2rem;
   min-width: fit-content;
   padding: 1rem;
-  height: 100%; // O board ocupa toda a altura do seu container
+  height: 100%;
 }
 
 .kanban-column {
@@ -285,7 +278,7 @@ onMounted(fetchDesignOrders);
   border-radius: 16px;
   display: flex;
   flex-direction: column;
-  max-height: 100%; // A coluna se limita à altura do board
+  max-height: 100%;
   animation: float 8s ease-in-out infinite;
   transition: all 0.4s ease;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -296,7 +289,6 @@ onMounted(fetchDesignOrders);
     box-shadow: 0 25px 50px rgba(0,0,0,0.4);
   }
 }
-/* FIM DA CORREÇÃO PRINCIPAL */
 
 .column-header {
   padding: 1rem 1.25rem;
@@ -310,14 +302,12 @@ onMounted(fetchDesignOrders);
   }
 }
 
-/* CORREÇÃO DO SCROLL DA COLUNA */
 .column-content {
-  flex-grow: 1; // Faz a área de conteúdo crescer
-  min-height: 0; // Necessário para o flexbox calcular o overflow corretamente
-  overflow-y: auto; // Cria o scroll vertical APENAS QUANDO NECESSÁRIO
+  flex-grow: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 0.5rem 1rem 1rem 1rem;
 }
-/* FIM DA CORREÇÃO DO SCROLL */
 
 .order-card {
   cursor: pointer;
