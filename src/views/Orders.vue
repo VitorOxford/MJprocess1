@@ -125,7 +125,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
-import { format, startOfWeek, addDays, subDays, isSameDay, parseISO, endOfWeek, getDay, isBefore } from 'date-fns';
+import { format, startOfWeek, addDays, subDays, isSameDay, parseISO, endOfWeek, isBefore, startOfToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 
@@ -139,13 +139,9 @@ type KanbanItem = {
   stamp_ref: string;
   quantity_meters: number;
   status: string;
-  created_at: string; // Data de criação do item/pedido
-  // --- INÍCIO DA CORREÇÃO LÓGICA ---
-  // A data de agendamento que pode ser alterada. Não será mais usada para posicionar o card aqui.
+  created_at: string;
   scheduled_date?: string;
-  // A data IMUTÁVEL de quando o item entrou na fila pela primeira vez.
   production_entry_date?: string;
-  // --- FIM DA CORREÇÃO LÓGICA ---
   is_ghost: boolean;
   is_delayed: boolean;
 };
@@ -195,9 +191,6 @@ const formatMeters = (meters: number) => Number(meters || 0).toLocaleString('pt-
 
 const getItemsForDay = (date: Date): KanbanItem[] => {
     return allItems.value.filter(item => {
-        // --- CORREÇÃO LÓGICA ---
-        // Se for "fantasma", usa a data de criação do item.
-        // Se for "sólido", usa a data de entrada na produção (imutável).
         const displayDate = item.is_ghost ? parseISO(item.created_at) : (item.production_entry_date ? parseISO(item.production_entry_date) : null);
         return displayDate && isSameDay(displayDate, date);
     });
@@ -248,6 +241,7 @@ const fetchAllData = async () => {
     if (error) throw error;
 
     const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
+    const today = startOfToday();
 
     const processedItems: KanbanItem[] = [];
     (data || []).forEach(order => {
@@ -255,15 +249,17 @@ const fetchAllData = async () => {
             const isGhost = designStatuses.includes(item.status);
             const schedule = order.production_schedule.find(s => s.order_item_id === item.id);
 
+            // ***** INÍCIO DA CORREÇÃO *****
+            // Lógica de atraso aprimorada
             let isDelayed = false;
             if (isGhost) {
                 const createdAt = parseISO(item.created_at);
-                let deadline = addDays(createdAt, 1);
-                if (getDay(deadline) === 0) deadline = addDays(deadline, 1);
-                if (isBefore(deadline, new Date())) {
+                // É considerado atrasado se a data de criação for anterior a hoje.
+                if (isBefore(createdAt, today)) {
                     isDelayed = true;
                 }
             }
+            // ***** FIM DA CORREÇÃO *****
 
             processedItems.push({
                 id: item.id,
@@ -277,7 +273,7 @@ const fetchAllData = async () => {
                 status: item.status,
                 created_at: item.created_at,
                 scheduled_date: schedule?.scheduled_date,
-                production_entry_date: schedule?.created_at, // <-- A DATA IMUTÁVEL
+                production_entry_date: schedule?.created_at,
                 is_ghost: isGhost,
                 is_delayed: isDelayed,
             });
@@ -297,11 +293,20 @@ onMounted(fetchAllData);
 </script>
 
 <style scoped lang="scss">
+/* ***** INÍCIO DA CORREÇÃO ***** */
+/* Nova animação de pulso */
 @keyframes pulse-red {
-  0% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(255, 82, 82, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(255, 82, 82, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 83, 80, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(239, 83, 80, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 83, 80, 0);
+  }
 }
+/* ***** FIM DA CORREÇÃO ***** */
 
 .kanban-page-container {
   height: calc(100vh - 64px);
@@ -383,9 +388,14 @@ onMounted(fetchAllData);
     background-color: rgba(40, 50, 60, 0.9);
     border-style: dashed;
   }
+
+  /* ***** INÍCIO DA CORREÇÃO ***** */
+  /* Aplica a animação ao card atrasado */
   &.delayed-ghost {
-    animation: pulse-red 2s infinite;
+    border: 1px solid rgba(239, 83, 80, 0.8);
+    animation: pulse-red 2.5s infinite;
   }
+  /* ***** FIM DA CORREÇÃO ***** */
 }
 .delayed-indicator {
     position: absolute;
