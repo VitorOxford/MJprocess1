@@ -165,9 +165,10 @@ type ProductionItem = {
   scheduled_date: string;
   stamp_image_url?: string;
   production_start_date?: Date;
-  // Adicionado para PDF
   unit_of_measure: 'metro' | 'kg' | null;
   quantity_unit: number | null;
+  created_at: string;
+  order_items: any[]; // Adicionado para ter o total de itens do pedido pai
 };
 
 const userStore = useUserStore();
@@ -196,6 +197,34 @@ const statusDisplayMap: Record<string, string> = {
 const statusColorMap: Record<string, string> = {
     production_queue: 'grey', in_printing: 'info', in_cutting: 'warning', completed: 'success'
 };
+
+// **INÍCIO DA CORREÇÃO**
+// Funções helper para cálculo de data, replicadas do Delivery.vue para garantir consistência
+const addBusinessDays = (startDate: Date, days: number): Date => {
+  const newDate = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < days) {
+    newDate.setDate(newDate.getDate() + 1);
+    if (newDate.getDay() !== 0) { // Não conta domingos
+      addedDays++;
+    }
+  }
+  return newDate;
+};
+
+const getNextDeliveryDay = (date: Date): Date => {
+    const newDate = new Date(date);
+    newDate.setDate(newDate.getDate() + 1);
+    while (true) {
+        const dayOfWeek = newDate.getDay();
+        if ([2, 4, 6].includes(dayOfWeek)) { // Terça, Quinta, Sábado
+            return newDate;
+        }
+        newDate.setDate(newDate.getDate() + 1);
+    }
+};
+// **FIM DA CORREÇÃO**
+
 
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
 const nextWeek = () => { currentWeekStart.value = addDays(currentWeekStart.value, 7); };
@@ -324,16 +353,13 @@ const confirmFastTrack = async () => {
 const fetchInProductionItems = async () => {
   loading.value = true;
   try {
-    // ***** INÍCIO DA CORREÇÃO *****
-    // Adicionado 'completed' à lista de status para manter os itens no histórico da semana
     const productionStatuses = ['production_queue', 'in_printing', 'in_cutting', 'completed'];
-    // ***** FIM DA CORREÇÃO *****
 
     const { data, error } = await supabase
       .from('production_schedule')
       .select(`
         scheduled_date,
-        order:orders!inner(id, customer_name, order_number, is_launch, details, status, quantity_meters, creator:created_by(full_name)),
+        order:orders!inner(id, customer_name, order_number, is_launch, details, status, quantity_meters, created_at, creator:created_by(full_name), order_items(id)),
         item:order_items!inner(id, status, quantity_meters, fabric_type, stamp_ref, stamp_image_url, unit_of_measure, quantity_unit)
       `)
       .in('item.status', productionStatuses);
@@ -351,17 +377,8 @@ const fetchInProductionItems = async () => {
                     quantity_meters: entry.item.quantity_meters, status: entry.item.status,
                     scheduled_date: entry.scheduled_date, stamp_image_url: entry.item.stamp_image_url,
                     unit_of_measure: entry.item.unit_of_measure, quantity_unit: entry.item.quantity_unit,
-                });
-            }
-        } else {
-             if (productionStatuses.includes(entry.order.status)) {
-                formattedItems.push({
-                    id: entry.order.id, order_id: entry.order.id, order_number: entry.order.order_number,
-                    customer_name: entry.order.customer_name, creator_name: entry.order.creator.full_name,
-                    fabric_type: entry.order.details.fabric_type, stamp_ref: 'Item Único',
-                    quantity_meters: entry.order.quantity_meters, status: entry.order.status,
-                    scheduled_date: entry.scheduled_date, stamp_image_url: (entry.order.details as any)?.final_art_url,
-                    unit_of_measure: 'metro', quantity_unit: entry.order.quantity_meters,
+                    created_at: entry.order.created_at,
+                    order_items: entry.order.order_items,
                 });
             }
         }
@@ -384,8 +401,12 @@ const imageToBase64 = (url: string): Promise<string> => {
             canvas.width = img.width;
             canvas.height = img.height;
             const ctx = canvas.getContext('2d');
-            ctx?.drawImage(img, 0, 0);
-            resolve(canvas.toDataURL('image/png'));
+            if(ctx) {
+              ctx.drawImage(img, 0, 0);
+              resolve(canvas.toDataURL('image/png'));
+            } else {
+              reject(new Error('Could not get canvas context'));
+            }
         };
         img.onerror = reject;
         img.src = url;
@@ -394,24 +415,110 @@ const imageToBase64 = (url: string): Promise<string> => {
 
 const generatePdf = async (item: ProductionItem) => {
   try {
+    // 1. Gera o número da OP
     const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
     if (rpcError) throw rpcError;
 
-    const { data: forecastDate, error: forecastError } = await supabase.rpc('calculate_delivery_forecast', { p_op_date: item.scheduled_date });
-    if (forecastError) throw forecastError;
+    // 2. Busca a data de agendamento definitiva do banco
+    const { data: schedule, error: scheduleError } = await supabase
+      .from('production_schedule')
+      .select('scheduled_date')
+      .eq('order_item_id', item.id)
+      .single();
+    if (scheduleError) throw scheduleError;
+    if (!schedule) throw new Error('Agendamento do item não encontrado.');
+
+    // 3. Calcula a previsão de entrega USANDO A MESMA LÓGICA DO DELIVERY.VUE
+    const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3);
+    const forecastDate = getNextDeliveryDay(completionDate);
+
+    // 4. Prepara dados para o PDF
+    const formattedOpNumber = String(opNumber).padStart(4, '0');
+    const formattedForecastDate = format(forecastDate, 'dd/MM/yyyy', { locale: ptBR });
+    const formattedOrderNumber = String(item.order_number).padStart(4, '0');
 
     const doc = new jsPDF();
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
+
     const [logoBase64, artBase64] = await Promise.all([
       imageToBase64('https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713'),
       imageToBase64(item.stamp_image_url || '')
     ]);
 
-    // ... (O resto da lógica de geração de PDF permanece o mesmo) ...
+    // 5. Constrói o PDF (estrutura completa restaurada)
+    const logoProps = doc.getImageProperties(logoBase64);
+    const logoWidth = 50;
+    const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
+    doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
 
-    doc.save(`OP-${String(opNumber).padStart(4, '0')}-${item.customer_name}-${item.stamp_ref}.pdf`);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text([
+      "MR JACKY - 20.631.721/0001-07",
+      "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
+      "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
+    ], pageWidth - 15, 15, { align: 'right' });
+
+    const itemIndex = item.order_items.findIndex(oi => oi.id === item.id) + 1;
+    const totalItems = item.order_items.length;
+    const itemSubtitle = `Item ${itemIndex} de ${totalItems}`;
+
+    doc.setFontSize(18); doc.setTextColor(0); doc.text(`OP #${formattedOpNumber}`, 15, 45);
+    doc.setFontSize(12); doc.text(`Pedido #${formattedOrderNumber}`, pageWidth - 15, 45, { align: 'right' });
+    doc.setFontSize(10); doc.setTextColor(100); doc.text(itemSubtitle, pageWidth - 15, 51, { align: 'right' });
+    doc.setLineWidth(0.5); doc.line(15, 55, pageWidth - 15, 55);
+
+    autoTable(doc, {
+        startY: 60,
+        head: [['CLIENTE', 'VENDEDOR', 'EMISSÃO', 'PREVISÃO DE ENTREGA']],
+        body: [[
+            item.customer_name,
+            item.creator_name || 'N/A',
+            format(new Date(item.created_at), 'dd/MM/yyyy'),
+            formattedForecastDate
+        ]],
+        theme: 'striped',
+        headStyles: { fillColor: [41, 128, 185] }
+    });
+
+    let quantityDisplay = `${item.quantity_meters.toLocaleString('pt-BR')}m`;
+    if (item.unit_of_measure === 'kg') {
+      const originalKg = item.quantity_unit?.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) || 'N/A';
+      quantityDisplay = `${originalKg}kg (Rendimento: ~${item.quantity_meters.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}m)`;
+    }
+
+    autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 10,
+        head: [['PRODUTO (BASE)', 'SERVIÇO (ESTAMPA)', 'QUANTIDADE']],
+        body: [[ item.fabric_type, item.stamp_ref, quantityDisplay ]],
+        theme: 'grid',
+        headStyles: { fillColor: [41, 128, 185] }
+    });
+
+    const artStartY = (doc as any).lastAutoTable.finalY + 15;
+    doc.setFontSize(12); doc.setFont('helvetica', 'bold');
+    doc.text('ARTE APROVADA', 15, artStartY);
+
+    const artY = artStartY + 5;
+    const maxImgWidth = pageWidth - 30;
+    const maxImgHeight = pageHeight - artY - 25;
+    const imgProps = doc.getImageProperties(artBase64);
+    const ratio = Math.min(maxImgWidth / imgProps.width, maxImgHeight / imgProps.height);
+    const imgWidth = imgProps.width * ratio;
+    const imgHeight = imgProps.height * ratio;
+    const imgXCentered = (pageWidth - imgWidth) / 2;
+
+    doc.setDrawColor(180, 180, 180).setLineWidth(0.5).rect(imgXCentered - 1, artY - 1, imgWidth + 2, imgHeight + 2, 'S');
+    doc.addImage(artBase64, 'PNG', imgXCentered, artY, imgWidth, imgHeight);
+
+    const footerY = pageHeight - 15;
+    doc.setFontSize(9).setTextColor(150).text('OP gerada com MJProcess', pageWidth / 2, footerY, { align: 'center' });
+
+    doc.save(`OP-${formattedOpNumber}-${item.customer_name}-${item.stamp_ref}.pdf`);
   } catch (error) {
     console.error("Erro ao gerar PDF:", error);
-    alert("Não foi possível gerar o PDF.");
+    alert("Não foi possível gerar o PDF. Verifique se as imagens estão acessíveis e tente novamente.");
   }
 };
 
@@ -467,7 +574,7 @@ onMounted(fetchInProductionItems);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    color: #B0BEC5; // grey lighten-1
+    color: #B0BEC5;
 }
 .column-content {
   padding: 8px;
@@ -498,12 +605,6 @@ onMounted(fetchInProductionItems);
     left: 0;
     width: 4px;
     height: 100%;
-}
-.empty-column-text {
-  font-size: 0.8rem;
-  color: #616161;
-  text-align: center;
-  margin-top: 2rem;
 }
 .custom-scrollbar::-webkit-scrollbar { width: 6px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
