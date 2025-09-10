@@ -191,10 +191,10 @@ const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
 const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => fabricMachineMap[fabric] || 'CORRIDA';
 
 const statusDisplayMap: Record<string, string> = {
-    production_queue: 'Na Fila', in_printing: 'Impressão', in_cutting: 'Corte',
+    production_queue: 'Na Fila', in_printing: 'Impressão', in_cutting: 'Corte', completed: 'Concluído'
 };
 const statusColorMap: Record<string, string> = {
-    production_queue: 'grey', in_printing: 'info', in_cutting: 'warning',
+    production_queue: 'grey', in_printing: 'info', in_cutting: 'warning', completed: 'success'
 };
 
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
@@ -324,7 +324,10 @@ const confirmFastTrack = async () => {
 const fetchInProductionItems = async () => {
   loading.value = true;
   try {
-    const productionStatuses = ['production_queue', 'in_printing', 'in_cutting'];
+    // ***** INÍCIO DA CORREÇÃO *****
+    // Adicionado 'completed' à lista de status para manter os itens no histórico da semana
+    const productionStatuses = ['production_queue', 'in_printing', 'in_cutting', 'completed'];
+    // ***** FIM DA CORREÇÃO *****
 
     const { data, error } = await supabase
       .from('production_schedule')
