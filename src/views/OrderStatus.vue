@@ -98,19 +98,16 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { supabase } from '@/api/supabase';
-import { format } from 'date-fns';
+import { format, addDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-type StockItem = {
-    fabric_type: string;
-    unit_of_measure: 'metro' | 'kg';
-    rendimento: number | null;
-}
 type OrderItem = {
   id: string; fabric_type: string; stamp_ref: string; quantity_meters: number;
   stamp_image_url: string; status: string; is_op_generated: boolean;
+  unit_of_measure: 'metro' | 'kg' | null;
+  quantity_unit: number | null;
 };
 type Order = {
   id: string; customer_name: string; created_at: string; status: string;
@@ -122,7 +119,6 @@ type Order = {
 
 const loading = ref(true);
 const activeOrders = ref<Order[]>([]);
-const stockInfo = ref<StockItem[]>([]);
 const expanded = ref([]);
 
 const headers = [
@@ -156,6 +152,30 @@ const statusColorMap: Record<string, string> = {
     pending_stock: 'error'
 };
 
+const addBusinessDays = (startDate: Date, days: number): Date => {
+  const newDate = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < days) {
+    newDate.setDate(newDate.getDate() + 1);
+    if (newDate.getDay() !== 0) {
+      addedDays++;
+    }
+  }
+  return newDate;
+};
+
+const getNextDeliveryDay = (date: Date): Date => {
+    const newDate = new Date(date);
+    newDate.setDate(newDate.getDate() + 1);
+    while (true) {
+        const dayOfWeek = newDate.getDay();
+        if ([2, 4, 6].includes(dayOfWeek)) {
+            return newDate;
+        }
+        newDate.setDate(newDate.getDate() + 1);
+    }
+};
+
 const fetchActiveOrders = async () => {
   loading.value = true;
   try {
@@ -171,10 +191,6 @@ const fetchActiveOrders = async () => {
 
     if (error) throw error;
     activeOrders.value = data || [];
-
-    const { data: stockData, error: stockError } = await supabase.from('stock').select('fabric_type, unit_of_measure, rendimento');
-    if (stockError) throw stockError;
-    stockInfo.value = stockData || [];
 
   } catch (err) {
     console.error("Erro ao buscar pedidos:", err);
@@ -192,9 +208,12 @@ const imageToBase64 = (url: string): Promise<string> => {
             canvas.width = img.width;
             canvas.height = img.height;
             const ctx = canvas.getContext('2d');
-            ctx?.drawImage(img, 0, 0);
-            const dataURL = canvas.toDataURL('image/png');
-            resolve(dataURL);
+            if(ctx) {
+              ctx.drawImage(img, 0, 0);
+              resolve(canvas.toDataURL('image/png'));
+            } else {
+              reject(new Error('Could not get canvas context'));
+            }
         };
         img.onerror = reject;
         img.src = url;
@@ -208,28 +227,31 @@ const generatePdf = async (item: OrderItem, parentOrder: Order) => {
   }
 
   try {
-    const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', {
-        p_item_id: item.id
-    });
+    const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
     if (rpcError) throw rpcError;
 
-    const today = new Date().toISOString().split('T')[0];
-    const { data: forecastDate, error: forecastError } = await supabase.rpc('calculate_delivery_forecast', {
-        p_op_date: today
-    });
-    if (forecastError) throw forecastError;
+    const { data: schedule, error: scheduleError } = await supabase
+      .from('production_schedule')
+      .select('scheduled_date')
+      .eq('order_item_id', item.id)
+      .single();
+
+    if (scheduleError) throw scheduleError;
+    if (!schedule) throw new Error('Agendamento do item não encontrado para gerar o PDF.');
+
+    const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3);
+    const forecastDate = getNextDeliveryDay(completionDate);
 
     const formattedOpNumber = String(opNumber).padStart(4, '0');
-    const formattedForecastDate = format(new Date(forecastDate), 'dd/MM/yyyy', { locale: ptBR });
+    const formattedForecastDate = format(forecastDate, 'dd/MM/yyyy', { locale: ptBR });
     const formattedOrderNumber = String(parentOrder.order_number).padStart(4, '0');
 
     const doc = new jsPDF();
-    const pageHeight = doc.internal.pageSize.height || doc.internal.pageSize.getHeight();
-    const pageWidth = doc.internal.pageSize.width || doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.height;
+    const pageWidth = doc.internal.pageSize.width;
 
-    const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
     const [logoBase64, artBase64] = await Promise.all([
-      imageToBase64(logoUrl),
+      imageToBase64('https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713'),
       imageToBase64(item.stamp_image_url)
     ]);
 
@@ -240,21 +262,18 @@ const generatePdf = async (item: OrderItem, parentOrder: Order) => {
 
     doc.setFontSize(9);
     doc.setTextColor(100);
-    const companyInfo = [
+    doc.text([
       "MR JACKY - 20.631.721/0001-07",
       "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
       "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
-    ];
-    doc.text(companyInfo, pageWidth - 15, 15, { align: 'right' });
+    ], pageWidth - 15, 15, { align: 'right' });
 
-    const opTitle = `OP #${formattedOpNumber}`;
-    const orderTitle = `Pedido #${formattedOrderNumber}`;
     const itemIndex = parentOrder.order_items.findIndex(oi => oi.id === item.id) + 1;
     const totalItems = parentOrder.order_items.length;
     const itemSubtitle = `Item ${itemIndex} de ${totalItems}`;
 
-    doc.setFontSize(18); doc.setTextColor(0); doc.text(opTitle, 15, 45);
-    doc.setFontSize(12); doc.setTextColor(0); doc.text(orderTitle, pageWidth - 15, 45, { align: 'right' });
+    doc.setFontSize(18); doc.setTextColor(0); doc.text(`OP #${formattedOpNumber}`, 15, 45);
+    doc.setFontSize(12); doc.text(`Pedido #${formattedOrderNumber}`, pageWidth - 15, 45, { align: 'right' });
     doc.setFontSize(10); doc.setTextColor(100); doc.text(itemSubtitle, pageWidth - 15, 51, { align: 'right' });
     doc.setLineWidth(0.5); doc.line(15, 55, pageWidth - 15, 55);
 
@@ -264,18 +283,17 @@ const generatePdf = async (item: OrderItem, parentOrder: Order) => {
         body: [[
             parentOrder.customer_name,
             parentOrder.created_by?.full_name || 'N/A',
-            format(new Date(), 'dd/MM/yyyy'),
+            format(new Date(parentOrder.created_at), 'dd/MM/yyyy'),
             formattedForecastDate
         ]],
         theme: 'striped',
         headStyles: { fillColor: [41, 128, 185] }
     });
 
-    const currentStockInfo = stockInfo.value.find(s => s.fabric_type === item.fabric_type);
     let quantityDisplay = `${item.quantity_meters.toLocaleString('pt-BR')}m`;
-    if (currentStockInfo?.unit_of_measure === 'kg') {
-        const yieldInMeters = (item.quantity_meters * (currentStockInfo.rendimento || 0)).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-        quantityDisplay = `${item.quantity_meters.toLocaleString('pt-BR')}kg (Rendimento: ~${yieldInMeters}m)`;
+    if (item.unit_of_measure === 'kg') {
+      const originalKg = item.quantity_unit?.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) || 'N/A';
+      quantityDisplay = `${originalKg}kg (Rendimento: ~${item.quantity_meters.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}m)`;
     }
 
     autoTable(doc, {
@@ -286,36 +304,30 @@ const generatePdf = async (item: OrderItem, parentOrder: Order) => {
         headStyles: { fillColor: [41, 128, 185] }
     });
 
-    let lastY = (doc as any).lastAutoTable.finalY;
-
-    const artStartY = lastY + 15;
+    const artStartY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(12); doc.setFont('helvetica', 'bold');
     doc.text('ARTE APROVADA', 15, artStartY);
 
-    const artX = 15;
     const artY = artStartY + 5;
-    const maxImgWidth = pageWidth - (artX * 2);
-    const maxImgHeight = pageHeight - artStartY - 45;
+    const maxImgWidth = pageWidth - 30;
+    const maxImgHeight = pageHeight - artY - 25;
     const imgProps = doc.getImageProperties(artBase64);
     const ratio = Math.min(maxImgWidth / imgProps.width, maxImgHeight / imgProps.height);
     const imgWidth = imgProps.width * ratio;
     const imgHeight = imgProps.height * ratio;
     const imgXCentered = (pageWidth - imgWidth) / 2;
 
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.5);
-    doc.rect(imgXCentered - 1, artY - 1, imgWidth + 2, imgHeight + 2, 'S');
+    doc.setDrawColor(180, 180, 180).setLineWidth(0.5).rect(imgXCentered - 1, artY - 1, imgWidth + 2, imgHeight + 2, 'S');
     doc.addImage(artBase64, 'PNG', imgXCentered, artY, imgWidth, imgHeight);
 
     const footerY = pageHeight - 15;
-    doc.setFontSize(9);
-    doc.setTextColor(150);
-    doc.text('OP gerada com MJProcess', pageWidth / 2, footerY, { align: 'center' });
+    doc.setFontSize(9).setTextColor(150).text('OP gerada com MJProcess', pageWidth / 2, footerY, { align: 'center' });
+
     doc.save(`OP-${formattedOpNumber}-${parentOrder.customer_name}-${item.stamp_ref}.pdf`);
 
   } catch (error) {
     console.error("Erro ao gerar PDF:", error);
-    alert("Não foi possível gerar o PDF. Verifique se as imagens estão acessíveis e tente novamente.");
+    alert("Não foi possível gerar o PDF. Verifique se o item já foi agendado para produção e se as imagens estão acessíveis.");
   }
 };
 
