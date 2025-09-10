@@ -305,11 +305,9 @@ const addBusinessDays = (startDate: Date, days: number): Date => {
   return newDate;
 };
 
-// **** INÍCIO DA CORREÇÃO PRINCIPAL ****
 // Encontra o próximo dia de entrega válido (terça, quinta, sábado)
 const getNextDeliveryDay = (date: Date): Date => {
     const newDate = new Date(date);
-    // A CORREÇÃO: Começa a procurar a partir do DIA SEGUINTE ao término da produção.
     newDate.setDate(newDate.getDate() + 1);
     while (true) {
         const dayOfWeek = newDate.getDay();
@@ -319,7 +317,6 @@ const getNextDeliveryDay = (date: Date): Date => {
         newDate.setDate(newDate.getDate() + 1);
     }
 };
-// **** FIM DA CORREÇÃO PRINCIPAL ****
 
 const productionGhosts = computed(() => {
     return inProductionOrders.value.map(order => {
@@ -477,8 +474,7 @@ const fetchDeliveryOrders = async () => {
         }
     });
 
-    // Busca pedidos 'completed' e 'delivered' que podem não estar na production_schedule (casos legados)
-     const { data: completedData, error: completedError } = await supabase
+    const { data: completedData, error: completedError } = await supabase
       .from('orders')
       .select(`
         id, customer_name, quantity_meters, status, is_launch, details, production_date, billed_at, order_number,
@@ -570,8 +566,7 @@ onMounted(fetchDeliveryOrders);
     border-color: transparent !important;
 }
 .info-line { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #e0e0e0; margin-top: 4px; }
-.ghost-card { opacity: 0.5; background: rgba(var(--v-theme-primary), 0.2); border: 2px dashed rgba(var(--v-theme-primary), 0.5); }
-.production-ghost {
+.ghost-card {
     opacity: 0.7;
     border: 2px dashed rgba(171, 71, 188, 0.5); /* Roxo */
     background-color: rgba(171, 71, 188, 0.1);
