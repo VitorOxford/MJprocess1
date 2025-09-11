@@ -1,6 +1,6 @@
 <template>
   <v-container fluid class="pa-md-6 pa-4">
-    <v-toolbar color="transparent" class="mb-2">
+    <v-toolbar color="transparent" class="mb-4">
       <v-toolbar-title class="font-weight-bold text-h5">
         <v-icon start size="32">mdi-currency-usd</v-icon>
         Tabela de Preços
@@ -19,23 +19,6 @@
       ></v-text-field>
     </v-toolbar>
 
-    <v-row class="mb-4 px-md-0 px-2" align="center">
-      <v-col cols="12" md="auto" class="flex-grow-1 py-0">
-        </v-col>
-      <v-col cols="12" md="auto" class="flex-grow-0 py-0 mt-2 mt-md-0">
-        <div class="d-flex align-center justify-end ga-4">
-          <div class="d-flex align-center">
-            <v-chip color="#4DB6AC" size="small" label variant="flat" class="mr-2"></v-chip>
-            <span class="text-caption font-weight-medium">/ metro</span>
-          </div>
-          <div class="d-flex align-center">
-            <v-chip color="#7E57C2" size="small" label variant="flat" class="mr-2"></v-chip>
-            <span class="text-caption font-weight-medium">/ kg</span>
-          </div>
-        </div>
-      </v-col>
-    </v-row>
-
     <div v-if="loading" class="text-center py-16">
         <v-progress-circular indeterminate color="primary"></v-progress-circular>
     </div>
@@ -49,74 +32,69 @@
         :key="item.id"
         cols="12"
         sm="6"
-        lg="4"
+        md="4"
+        lg="3"
       >
         <v-card
-            class="mb-3 mobile-price-card"
+            class="price-card"
             :class="`unit--${item.unit}`"
             variant="flat"
         >
-            <v-card-title class="d-flex align-center pb-1">
-                <h3 class="text-h6 font-weight-bold mr-3">{{ item.name }}</h3>
+          <v-card-text class="d-flex flex-column">
+            <div class="mb-3">
+              <h3 class="text-h6 font-weight-bold">{{ item.name }}</h3>
+              <p class="text-caption text-medium-emphasis">{{ item.composition }}</p>
+            </div>
+
+            <div class="info-grid mb-4">
+              <div class="info-item">
+                <span class="info-label">Gramatura</span>
+                <span class="info-value">{{ item.grammage || 'N/A' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Largura</span>
+                <span class="info-value">{{ item.width_length || 'N/A' }}</span>
+              </div>
+               <div class="info-item">
+                <span class="info-label">Rolo</span>
+                <span class="info-value">{{ item.rolo || 'N/A' }}</span>
+              </div>
+              <div class="info-item" v-if="item.unit === 'kg'">
+                <span class="info-label">Rendimento</span>
+                <span class="info-value">{{ item.rendimento || 'N/A' }}</span>
+              </div>
+               <div class="info-item">
+                <span class="info-label">Unidade</span>
                 <v-chip
-                  :color="getUnitChipColor(item.unit)"
-                  size="small"
+                  :color="item.unit === 'kg' ? 'purple-lighten-2' : 'teal-lighten-1'"
+                  size="x-small"
                   variant="flat"
                   label
+                  class="mt-1"
                 >
                   {{ item.unit }}
                 </v-chip>
-            </v-card-title>
-            <v-card-text class="pt-2">
-                <div class="info-row">
-                    <span class="info-label">Composição:</span>
-                    <span class="info-value">{{ item.composition || 'N/A' }}</span>
-                </div>
-                <div class="info-row">
-                    <span class="info-label">Gramatura:</span>
-                    <span class="info-value">{{ item.grammage || 'N/A' }}</span>
-                </div>
-                <div v-if="item.unit === 'kg' && item.rendimento" class="info-row">
-                    <span class="info-label">Rendimento:</span>
-                    <span class="info-value">{{ item.rendimento }}</span>
-                </div>
+              </div>
+            </div>
 
-                <v-divider class="my-3"></v-divider>
-                <div v-if="canViewSE" class="price-section">
-                    <h4 class="region-title">SUDESTE</h4>
-                    <v-row no-gutters>
-                        <v-col>
-                            <div class="price-item-mobile">
-                                <span class="price-label-mobile">À VISTA</span>
-                                <span class="price-value-mobile cash">{{ formatCurrency(item.price_se_cash) }}</span>
-                            </div>
-                        </v-col>
-                        <v-col>
-                            <div class="price-item-mobile">
-                                <span class="price-label-mobile">A PRAZO</span>
-                                <span class="price-value-mobile term">{{ formatCurrency(item.price_se_term) }}</span>
-                            </div>
-                        </v-col>
-                    </v-row>
-                </div>
-                 <div v-if="canViewNE" class="price-section mt-3">
-                    <h4 class="region-title">NORDESTE</h4>
-                     <v-row no-gutters>
-                        <v-col>
-                            <div class="price-item-mobile">
-                                <span class="price-label-mobile">À VISTA</span>
-                                <span class="price-value-mobile cash">{{ formatCurrency(item.price_ne_cash) }}</span>
-                            </div>
-                        </v-col>
-                        <v-col>
-                            <div class="price-item-mobile">
-                                <span class="price-label-mobile">A PRAZO</span>
-                                <span class="price-value-mobile term">{{ formatCurrency(item.price_ne_term) }}</span>
-                            </div>
-                        </v-col>
-                    </v-row>
-                </div>
-            </v-card-text>
+            <v-spacer></v-spacer>
+
+            <div v-if="canViewSE" class="price-region">
+              <h4 class="region-title">SUDESTE</h4>
+              <div class="price-values">
+                <div class="price-type"><span>À Vista</span> {{ formatCurrency(item.price_se_cash) }}</div>
+                <div class="price-type"><span>A Prazo</span> {{ formatCurrency(item.price_se_term) }}</div>
+              </div>
+            </div>
+
+            <div v-if="canViewNE" class="price-region mt-2">
+              <h4 class="region-title">NORDESTE</h4>
+              <div class="price-values">
+                <div class="price-type"><span>À Vista</span> {{ formatCurrency(item.price_ne_cash) }}</div>
+                <div class="price-type"><span>A Prazo</span> {{ formatCurrency(item.price_ne_term) }}</div>
+              </div>
+            </div>
+          </v-card-text>
         </v-card>
       </v-col>
     </v-row>
@@ -127,7 +105,6 @@
 import { ref, onMounted, computed } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
-import { useDisplay } from 'vuetify';
 
 type Product = {
   id: string;
@@ -136,6 +113,8 @@ type Product = {
   grammage: string;
   unit: 'metro' | 'kg';
   rendimento?: string | null;
+  width_length?: string | null;
+  rolo?: string | null; // <-- Nova propriedade
   price_se_cash: number;
   price_se_term: number;
   price_ne_cash: number;
@@ -143,7 +122,6 @@ type Product = {
 };
 
 const userStore = useUserStore();
-const { mobile: isMobile } = useDisplay();
 const loading = ref(true);
 const search = ref('');
 const products = ref<Product[]>([]);
@@ -159,10 +137,6 @@ const filteredProducts = computed(() => {
     p.composition?.toLowerCase().includes(query)
   );
 });
-
-const getUnitChipColor = (unit: 'metro' | 'kg') => {
-  return unit === 'kg' ? '#7E57C2' : '#4DB6AC';
-};
 
 const fetchPrices = async () => {
   loading.value = true;
@@ -185,83 +159,86 @@ onMounted(fetchPrices);
 </script>
 
 <style scoped lang="scss">
-.mobile-price-card {
+.price-card {
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-left: 4px solid;
-  border-radius: 8px;
+  border-left: 5px solid;
+  border-radius: 12px;
+  background-color: rgba(30, 30, 35, 0.8);
   transition: all 0.2s ease-in-out;
-  height: 100%; /* Garante que os cards na mesma linha tenham a mesma altura */
-
-  &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-  }
-}
-
-.mobile-price-card .v-card-title h3 {
-    font-size: 1.15rem !important;
-}
-
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  font-size: 0.9rem;
-  color: #a0a0a0;
-  .info-value {
-    color: white;
-    font-weight: 500;
-  }
-}
-
-.price-section {
-  .region-title {
-    font-size: 0.7rem;
-    font-weight: bold;
-    color: #a0a0a0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 8px;
-    background-color: rgba(255, 255, 255, 0.05);
-    padding: 4px 8px;
-    border-radius: 4px;
-    display: inline-block;
-  }
-}
-
-.price-item-mobile {
+  height: 100%;
   display: flex;
   flex-direction: column;
-  padding: 8px;
+
+  &:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.25);
+    border-color: rgba(var(--v-theme-primary), 0.6);
+  }
+
+  &.unit--kg {
+    border-left-color: #7E57C2; // Roxo
+  }
+  &.unit--metro {
+    border-left-color: #4DB6AC; // Verde-água
+  }
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.info-label {
+  font-size: 0.75rem;
+  color: #a0a0a0;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.info-value {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: white;
+}
+
+.price-region {
   background-color: rgba(0,0,0,0.2);
-  border-radius: 6px;
-  text-align: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+}
 
-  .price-label-mobile {
+.region-title {
+  font-size: 0.7rem;
+  font-weight: bold;
+  color: #bdbdbd;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.price-values {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.price-type {
+  font-size: 1rem;
+  font-weight: bold;
+  color: white;
+
+  span {
     font-size: 0.7rem;
-    color: #a0a0a0;
     font-weight: 500;
-    margin-bottom: 2px;
+    color: #a0a0a0;
+    display: block;
   }
-
-  .price-value-mobile {
-    font-size: 1.2rem;
-    font-weight: bold;
-    &.cash {
-      color: #4DB6AC; // teal-lighten-2
-    }
-    &.term {
-      color: #7986CB; // indigo-lighten-2
-    }
-  }
-}
-
-.mobile-price-card.unit--kg {
-  background-color: rgba(103, 58, 183, 0.1);
-  border-left-color: #7E57C2;
-}
-.mobile-price-card.unit--metro {
-  background-color: rgba(0, 150, 136, 0.1);
-  border-left-color: #4DB6AC;
 }
 </style>
