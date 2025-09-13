@@ -143,8 +143,8 @@
             </template>
             <template #footer>
                 <div v-for="ghost in getGhostEntriesForDay(day.date)" :key="ghost.id">
-                    <v-card class="order-card ghost-card production-ghost mb-4" elevation="4" @click="openDetailModal(ghost.id)">
-                        <v-card-text>
+                    <v-card class="order-card ghost-card production-ghost mb-4" elevation="4">
+                        <v-card-text @click="openDetailModal(ghost.id)">
                             <p class="font-weight-bold text-subtitle-1">{{ ghost.customer_name }}</p>
                             <v-chip size="small" variant="tonal" color="purple" class="mt-2">
                                 <v-icon start size="x-small">mdi-progress-wrench</v-icon>
@@ -153,6 +153,12 @@
                              <p class="info-line"><v-icon size="small">mdi-information-outline</v-icon> Prev. Conclusão: {{ formatDate(ghost.forecast_completion_date, 'dd/MM') }}</p>
                              <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ getOrderDisplayMeters(ghost) }}m</p>
                         </v-card-text>
+                         <v-card-actions v-if="userStore.isAdmin" class="justify-center pa-1">
+                            <v-btn color="success" variant="text" size="small" @click.stop="openForceCompleteModal(ghost)">
+                                <v-icon start>mdi-rocket-launch</v-icon>
+                                Forçar Conclusão
+                            </v-btn>
+                        </v-card-actions>
                     </v-card>
                 </div>
             </template>
@@ -216,6 +222,30 @@
             </v-card-text>
         </v-card>
     </v-dialog>
+
+    <v-dialog v-model="showForceCompleteModal" max-width="500px" persistent>
+        <v-card class="glassmorphism-card-dialog">
+            <v-card-title class="dialog-header">
+                <span class="text-h5">Forçar Conclusão?</span>
+            </v-card-title>
+            <v-card-text class="py-4">
+                <p>
+                    Tem certeza que deseja forçar a conclusão do pedido de <strong>{{ selectedOrderForForceComplete?.customer_name }}</strong>?
+                </p>
+                <p class="mt-2 text-medium-emphasis">
+                    Esta ação irá mover <strong>todos os itens</strong> deste pedido diretamente para o status 'Concluído' e o tornará um card sólido, pronto para agendamento.
+                </p>
+            </v-card-text>
+            <v-card-actions class="dialog-footer">
+                <v-spacer></v-spacer>
+                <v-btn text @click="closeForceCompleteModal">Cancelar</v-btn>
+                <v-btn color="success" variant="flat" @click="confirmForceComplete" :loading="isForcingComplete">
+                    Confirmar
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -255,6 +285,10 @@ const historySearch = ref('');
 const selectedFabrics = ref<string[]>([]);
 const showBillingModal = ref(false);
 const selectedOrderForBilling = ref<Order | null>(null);
+
+const showForceCompleteModal = ref(false);
+const isForcingComplete = ref(false);
+const selectedOrderForForceComplete = ref<Order | null>(null);
 
 const historyHeaders = [
   { title: 'Cliente', key: 'customer_name' },
@@ -322,11 +356,14 @@ const productionGhosts = computed(() => {
     return inProductionOrders.value.map(order => {
         const productionStartDate = parseISO(order.production_date!);
         const completionDate = addBusinessDays(productionStartDate, 3);
-        let forecastDeliveryDate = getNextDeliveryDay(completionDate);
+        const forecastDeliveryDate = getNextDeliveryDay(completionDate);
 
-        if (isBefore(forecastDeliveryDate, startOfToday()) && order.status !== 'completed') {
-            forecastDeliveryDate = getNextDeliveryDay(startOfToday());
-        }
+        // ** CORREÇÃO DA LÓGICA **
+        // A lógica de recalcular a data foi removida.
+        // A função daily-status-update no backend é responsável por mudar o status para 'completed'.
+        // O frontend simplesmente exibirá a data de entrega prevista original.
+        // Se o pedido estiver atrasado (data de conclusão passou), ele ainda aparecerá como fantasma
+        // na data prevista, até que o status seja atualizado para 'completed' e ele vire um card sólido.
 
         return {
             ...order,
@@ -504,6 +541,33 @@ const fetchDeliveryOrders = async () => {
   }
 };
 
+const openForceCompleteModal = (order: Order) => {
+    selectedOrderForForceComplete.value = order;
+    showForceCompleteModal.value = true;
+};
+
+const closeForceCompleteModal = () => {
+    showForceCompleteModal.value = false;
+    selectedOrderForForceComplete.value = null;
+};
+
+const confirmForceComplete = async () => {
+    if (!selectedOrderForForceComplete.value || !userStore.profile?.id) return;
+    isForcingComplete.value = true;
+    try {
+        const { error } = await supabase.rpc('forcar_conclusao_pedido', {
+            p_order_id: selectedOrderForForceComplete.value.id,
+            p_admin_id: userStore.profile.id
+        });
+        if (error) throw error;
+        await fetchDeliveryOrders();
+        closeForceCompleteModal();
+    } catch (err: any) {
+        console.error("Erro ao forçar conclusão do pedido:", err);
+    } finally {
+        isForcingComplete.value = false;
+    }
+};
 
 const fabricTypesForFilter = computed(() => {
     const fabrics = new Set<string>();
@@ -585,5 +649,11 @@ onMounted(fetchDeliveryOrders);
 }
 :deep(.v-data-table__wrapper tbody tr) {
   cursor: pointer;
+}
+.dialog-header, .dialog-footer {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dialog-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 </style>

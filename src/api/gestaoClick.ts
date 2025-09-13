@@ -10,21 +10,22 @@ const getAuthHeaders = () => ({
 type Endereco = { cep?: string; logradouro?: string; numero?: string; complemento?: string; bairro?: string; cidade_id?: string; nome_cidade?: string; estado?: string; }
 type ClientPayload = { nome: string; tipo_pessoa: 'PF' | 'PJ' | 'ES'; cpf_cnpj?: string; email?: string; telefone?: string; celular?: string; enderecos?: { endereco: Endereco }[]; cpf?: string; cnpj?: string; vendedor_id?: number; };
 type ClientResponse = { id: number; nome: string; }
-// --- CORREÇÃO DO ERRO DE DIGITAÇÃO AQUI ---
-type Product = { id: string; nome: string; estoque: number; unidade: 'M' | 'KG' | string; [key: string]: any; };
+type Product = { id: string; nome: string; estoque: number | string; unidade: 'M' | 'KG' | string; movimenta_estoque: '0' | '1'; [key: string]: any; };
 type Service = { id: string; nome: string; imagem_url?: string; [key: string]: any; };
 type SaleStatus = { id: number; nome: string; };
+type PaymentMethod = { id: string; nome: string; };
+
+// <<< --- CORREÇÃO APLICADA AQUI NA TIPAGEM --- >>>
 type SalePayload = {
   cliente_id: number;
   situacao_id: number;
   produtos: { produto: { produto_id: string; quantidade: number; valor_venda: string; } }[];
   servicos: { servico: { servico_id: string; quantidade: number; valor_venda: string; } }[];
+  pagamentos?: { pagamento: { data_vencimento: string; valor: string; forma_pagamento_id: number | null } }[];
   vendedor_id?: number;
 };
 
 const gestaoApi = {
-  // O restante do seu código da API...
-  // (Não precisa ser alterado)
   async cadastrarCliente(clienteData: ClientPayload): Promise<ClientResponse> {
     const payload: Partial<ClientPayload> = {};
     for (const key in clienteData) {
@@ -74,6 +75,16 @@ const gestaoApi = {
         if (responseData.status !== 'success') { throw new Error(responseData?.msg || 'Erro ao buscar serviços da API externa.'); }
         return responseData.data || [];
     } catch (error) { console.error('Erro em buscarServicos:', error); throw error; }
+  },
+
+  async buscarFormasDePagamento(): Promise<PaymentMethod[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/formas_pagamentos`, { headers: getAuthHeaders() });
+      if (!response.ok) { throw new Error(`Falha na requisição: ${response.status} ${response.statusText}`); }
+      const responseData = await response.json();
+      if (responseData.status !== 'success') { throw new Error(responseData?.msg || 'Erro ao buscar formas de pagamento.'); }
+      return (responseData.data || []).map((item: any) => item.FormasPagamento);
+    } catch (error) { console.error('Erro em buscarFormasDePagamento:', error); throw error; }
   },
 
   async buscarCidades(estadoId: number): Promise<{id: string, nome: string}[]> {

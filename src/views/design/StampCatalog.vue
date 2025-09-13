@@ -32,6 +32,18 @@
           <v-icon start>mdi-folder-plus-outline</v-icon>
           Nova Pasta
         </v-btn>
+        <v-slide-x-transition>
+          <v-btn
+            v-if="pendingStamps.length > 0 && filterStatus === 'pending'"
+            @click="approveAllPending"
+            color="success"
+            variant="flat"
+            :loading="isBulkApproving"
+          >
+            <v-icon start>mdi-check-all</v-icon>
+            Aprovar Pendentes em Massa ({{ pendingStamps.length }})
+          </v-btn>
+        </v-slide-x-transition>
       </div>
     </div>
 
@@ -114,6 +126,7 @@ const showFolderModal = ref(false);
 const selectedFolder = ref<Folder | null>(null);
 const showStampModal = ref(false);
 const selectedStamp = ref<Stamp | null>(null);
+const isBulkApproving = ref(false);
 
 const filteredStampsByStatus = computed(() => {
   if (filterStatus.value === 'all') return allStamps.value;
@@ -131,6 +144,10 @@ const filteredFolders = computed(() => {
   if (!search.value) return folders.value;
   const q = search.value.toLowerCase();
   return folders.value.filter(f => f.name.toLowerCase().includes(q));
+});
+
+const pendingStamps = computed(() => {
+  return finalFilteredStamps.value.filter(s => !s.is_approved_for_sale);
 });
 
 const getStampsInFolder = (folderId: number) => allStamps.value.filter(s => s.folder_id === folderId);
@@ -151,13 +168,13 @@ const handleStampDrop = async ({ folderId, stampId }: { folderId: number, stampI
 
 const removeStampFromFolder = async (stamp: Stamp) => {
   const originalFolderId = stamp.folder_id;
-  stamp.folder_id = null; // Otimização da UI
+  stamp.folder_id = null;
   try {
     const { error } = await supabase.from('stamp_library').update({ folder_id: null }).eq('id', stamp.id);
     if (error) throw error;
   } catch (err) {
     console.error("Erro ao remover estampa da pasta:", err);
-    stamp.folder_id = originalFolderId; // Reverte em caso de erro
+    stamp.folder_id = originalFolderId;
   }
 };
 
@@ -171,6 +188,34 @@ const toggleApprovalStatus = async (stamp: Stamp) => {
   } catch (err) {
     console.error("Erro ao atualizar status:", err);
     stamp.is_approved_for_sale = originalStatus;
+  }
+};
+
+const approveAllPending = async () => {
+  if (confirm(`Tem certeza que deseja aprovar ${pendingStamps.value.length} estampas pendentes?`)) {
+    isBulkApproving.value = true;
+    try {
+      const idsToApprove = pendingStamps.value.map(s => s.id);
+      const { error } = await supabase
+        .from('stamp_library')
+        .update({ is_approved_for_sale: true })
+        .in('id', idsToApprove);
+
+      if (error) throw error;
+
+      allStamps.value.forEach(stamp => {
+        if (idsToApprove.includes(stamp.id)) {
+          stamp.is_approved_for_sale = true;
+        }
+      });
+
+      filterStatus.value = 'approved';
+
+    } catch (err) {
+      console.error("Erro ao aprovar estampas em massa:", err);
+    } finally {
+      isBulkApproving.value = false;
+    }
   }
 };
 
@@ -230,7 +275,13 @@ onMounted(fetchData);
 .stamp-catalog-container { display: flex; flex-direction: column; }
 .catalog-header { text-align: center; margin-bottom: 2rem; }
 .search-bar { max-width: 600px; }
-.actions-bar { display: flex; justify-content: center; gap: 1rem; margin-top: 2rem; }
+.actions-bar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+}
 .folder-header {
   display: flex;
   align-items: center;

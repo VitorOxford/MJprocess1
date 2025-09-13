@@ -33,17 +33,36 @@
         <v-card-title class="dialog-header"><span class="text-h5">{{ formTitle }}</span></v-card-title>
         <v-card-text class="py-4">
           <v-text-field v-model="editedItem.name" label="Nome do Produto" variant="outlined"></v-text-field>
-          <v-text-field v-model="editedItem.composition" label="Composição" variant="outlined"></v-text-field>
-          <v-text-field v-model="editedItem.grammage" label="Gramatura" variant="outlined"></v-text-field>
-          <v-select v-model="editedItem.unit" :items="['metro', 'kg']" label="Unidade de Medida" variant="outlined"></v-select>
+           <v-row>
+            <v-col cols="12" sm="8">
+              <v-text-field v-model="editedItem.composition" label="Composição" variant="outlined"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-text-field v-model="editedItem.grammage" label="Gramatura" variant="outlined" hint="Ex: 180g/m²"></v-text-field>
+            </v-col>
+          </v-row>
+          <v-row>
+             <v-col cols="12" sm="4">
+                <v-text-field v-model="editedItem.width_length" label="Largura e Comprimento" variant="outlined" hint="Ex: 1,60m"></v-text-field>
+            </v-col>
+             <v-col cols="12" sm="4">
+                <v-text-field v-model="editedItem.rolo" label="Rolo" variant="outlined" hint="Ex: Aprox. 50m"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="4">
+                <v-select v-model="editedItem.unit" :items="['metro', 'kg']" label="Unidade" variant="outlined"></v-select>
+            </v-col>
+            <v-col cols="12" sm="4" v-if="editedItem.unit === 'kg'">
+                <v-text-field
+                    v-model="editedItem.rendimento"
+                    label="Rendimento (m/kg)"
+                    variant="outlined"
+                    hint="Ex: 3.5"
+                ></v-text-field>
+            </v-col>
+          </v-row>
 
-          <v-text-field
-            v-if="editedItem.unit === 'kg'"
-            v-model="editedItem.rendimento"
-            label="Rendimento (metros por kg)"
-            variant="outlined"
-            hint="Ex: 3.5m"
-          ></v-text-field>
+          <v-divider class="my-4"></v-divider>
+          <p class="text-subtitle-1 font-weight-bold mb-2">Preços</p>
 
           <v-row>
             <v-col cols="12" sm="6">
@@ -80,7 +99,9 @@ type Product = {
   composition: string;
   grammage: string;
   unit: 'metro' | 'kg';
-  rendimento?: string | null; // NOVO CAMPO
+  rendimento?: string | null;
+  width_length?: string | null;
+  rolo?: string | null; // <-- Nova propriedade
   price_se_cash: number;
   price_se_term: number;
   price_ne_cash: number;
@@ -97,6 +118,8 @@ const defaultItem: Partial<Product> = {
     name: '',
     composition: '',
     grammage: '',
+    width_length: '',
+    rolo: '',
     unit: 'metro',
     rendimento: null,
     price_se_cash: 0,
@@ -140,7 +163,6 @@ const saveItem = async () => {
     isSaving.value = true;
     try {
         const payload = { ...editedItem.value };
-        // Garante que o rendimento seja nulo se a unidade não for kg
         if (payload.unit !== 'kg') {
             payload.rendimento = null;
         }

@@ -91,9 +91,18 @@
                     </div>
                 </v-card-text>
 
-                <v-card-actions v-if="userStore.isAdmin" class="pa-1 justify-center">
+                <v-card-actions v-if="userStore.isAdmin" class="pa-1 justify-center d-flex align-center">
+                    <v-checkbox-btn
+                      v-model="item.is_op_generated"
+                      @update:model-value="() => toggleOpGenerated(item)"
+                      color="info"
+                      class="mr-n2"
+                    >
+                       <v-tooltip activator="parent" location="top">
+                          {{ item.is_op_generated ? 'OP Gerada' : 'Marcar OP como Gerada' }}
+                       </v-tooltip>
+                    </v-checkbox-btn>
                     <v-btn color="info" variant="text" size="small" @click.stop="generatePdf(item)">
-                        <v-icon start>mdi-file-pdf-box</v-icon>
                         Gerar OP
                     </v-btn>
                     <v-btn color="primary" variant="text" size="small" @click.stop="openFastTrackModal(item)">
@@ -168,7 +177,8 @@ type ProductionItem = {
   unit_of_measure: 'metro' | 'kg' | null;
   quantity_unit: number | null;
   created_at: string;
-  order_items: any[]; // Adicionado para ter o total de itens do pedido pai
+  is_op_generated: boolean; // <-- NOVA PROPRIEDADE
+  order_items: any[];
 };
 
 const userStore = useUserStore();
@@ -198,14 +208,12 @@ const statusColorMap: Record<string, string> = {
     production_queue: 'grey', in_printing: 'info', in_cutting: 'warning', completed: 'success'
 };
 
-// **INÍCIO DA CORREÇÃO**
-// Funções helper para cálculo de data, replicadas do Delivery.vue para garantir consistência
 const addBusinessDays = (startDate: Date, days: number): Date => {
   const newDate = new Date(startDate);
   let addedDays = 0;
   while (addedDays < days) {
     newDate.setDate(newDate.getDate() + 1);
-    if (newDate.getDay() !== 0) { // Não conta domingos
+    if (newDate.getDay() !== 0) {
       addedDays++;
     }
   }
@@ -217,13 +225,12 @@ const getNextDeliveryDay = (date: Date): Date => {
     newDate.setDate(newDate.getDate() + 1);
     while (true) {
         const dayOfWeek = newDate.getDay();
-        if ([2, 4, 6].includes(dayOfWeek)) { // Terça, Quinta, Sábado
+        if ([2, 4, 6].includes(dayOfWeek)) {
             return newDate;
         }
         newDate.setDate(newDate.getDate() + 1);
     }
 };
-// **FIM DA CORREÇÃO**
 
 
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
@@ -360,7 +367,7 @@ const fetchInProductionItems = async () => {
       .select(`
         scheduled_date,
         order:orders!inner(id, customer_name, order_number, is_launch, details, status, quantity_meters, created_at, creator:created_by(full_name), order_items(id)),
-        item:order_items!inner(id, status, quantity_meters, fabric_type, stamp_ref, stamp_image_url, unit_of_measure, quantity_unit)
+        item:order_items!inner(id, status, quantity_meters, fabric_type, stamp_ref, stamp_image_url, unit_of_measure, quantity_unit, is_op_generated)
       `)
       .in('item.status', productionStatuses);
 
@@ -378,6 +385,7 @@ const fetchInProductionItems = async () => {
                     scheduled_date: entry.scheduled_date, stamp_image_url: entry.item.stamp_image_url,
                     unit_of_measure: entry.item.unit_of_measure, quantity_unit: entry.item.quantity_unit,
                     created_at: entry.order.created_at,
+                    is_op_generated: entry.item.is_op_generated, // <-- BUSCANDO O NOVO CAMPO
                     order_items: entry.order.order_items,
                 });
             }
@@ -415,11 +423,9 @@ const imageToBase64 = (url: string): Promise<string> => {
 
 const generatePdf = async (item: ProductionItem) => {
   try {
-    // 1. Gera o número da OP
     const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
     if (rpcError) throw rpcError;
 
-    // 2. Busca a data de agendamento definitiva do banco
     const { data: schedule, error: scheduleError } = await supabase
       .from('production_schedule')
       .select('scheduled_date')
@@ -428,11 +434,9 @@ const generatePdf = async (item: ProductionItem) => {
     if (scheduleError) throw scheduleError;
     if (!schedule) throw new Error('Agendamento do item não encontrado.');
 
-    // 3. Calcula a previsão de entrega USANDO A MESMA LÓGICA DO DELIVERY.VUE
     const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3);
     const forecastDate = getNextDeliveryDay(completionDate);
 
-    // 4. Prepara dados para o PDF
     const formattedOpNumber = String(opNumber).padStart(4, '0');
     const formattedForecastDate = format(forecastDate, 'dd/MM/yyyy', { locale: ptBR });
     const formattedOrderNumber = String(item.order_number).padStart(4, '0');
@@ -446,7 +450,6 @@ const generatePdf = async (item: ProductionItem) => {
       imageToBase64(item.stamp_image_url || '')
     ]);
 
-    // 5. Constrói o PDF (estrutura completa restaurada)
     const logoProps = doc.getImageProperties(logoBase64);
     const logoWidth = 50;
     const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
@@ -522,6 +525,29 @@ const generatePdf = async (item: ProductionItem) => {
   }
 };
 
+const toggleOpGenerated = async (item: ProductionItem) => {
+    const newValue = !item.is_op_generated;
+    try {
+        const { error } = await supabase
+            .from('order_items')
+            .update({ is_op_generated: newValue })
+            .eq('id', item.id);
+
+        if (error) throw error;
+        // Atualiza o estado local para refletir a mudança imediatamente
+        const itemInState = allProductionItems.value.find(i => i.id === item.id);
+        if(itemInState) {
+            itemInState.is_op_generated = newValue;
+        }
+    } catch (err) {
+        console.error("Erro ao atualizar a flag is_op_generated:", err);
+        // Reverte a mudança na UI em caso de erro
+        const itemInState = allProductionItems.value.find(i => i.id === item.id);
+        if(itemInState) {
+            itemInState.is_op_generated = !newValue;
+        }
+    }
+};
 
 onMounted(fetchInProductionItems);
 </script>

@@ -63,6 +63,13 @@
                     </div>
                   </div>
                   <div class="item-status-and-actions">
+                    <v-checkbox-btn
+                        :model-value="order_item.is_op_generated"
+                        @update:model-value="() => toggleOpGenerated(order_item)"
+                        :disabled="!userStore.isAdmin"
+                        color="info"
+                        class="mr-2"
+                        />
                     <v-chip
                         size="small"
                         :color="statusColorMap[order_item.status] || 'grey'"
@@ -102,6 +109,9 @@ import { format, addDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useUserStore } from '@/stores/user';
+
+const userStore = useUserStore();
 
 type OrderItem = {
   id: string; fabric_type: string; stamp_ref: string; quantity_meters: number;
@@ -220,6 +230,20 @@ const imageToBase64 = (url: string): Promise<string> => {
     });
 };
 
+const toggleOpGenerated = async (item: OrderItem) => {
+    const newValue = !item.is_op_generated;
+    try {
+        const { error } = await supabase.from('order_items').update({ is_op_generated: newValue }).eq('id', item.id);
+        if (error) throw error;
+        item.is_op_generated = newValue; // Update local state
+    } catch (err) {
+        console.error("Erro ao atualizar a flag is_op_generated:", err);
+        // Revert local state on error
+        item.is_op_generated = !newValue;
+        alert("Ocorreu um erro ao tentar salvar a liberação da OP.");
+    }
+};
+
 const generatePdf = async (item: OrderItem, parentOrder: Order) => {
   if (!parentOrder) {
       alert("Erro: não foi possível encontrar os dados do pedido principal.");
@@ -324,7 +348,9 @@ const generatePdf = async (item: OrderItem, parentOrder: Order) => {
     doc.setFontSize(9).setTextColor(150).text('OP gerada com MJProcess', pageWidth / 2, footerY, { align: 'center' });
 
     doc.save(`OP-${formattedOpNumber}-${parentOrder.customer_name}-${item.stamp_ref}.pdf`);
-
+    if (!item.is_op_generated) {
+        await toggleOpGenerated(item);
+    }
   } catch (error) {
     console.error("Erro ao gerar PDF:", error);
     alert("Não foi possível gerar o PDF. Verifique se o item já foi agendado para produção e se as imagens estão acessíveis.");
