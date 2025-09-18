@@ -58,7 +58,7 @@
                 </v-tooltip>
             </div>
             <v-chip size="small" variant="tonal" color="primary" class="mb-2">
-              {{ formatMeters(getDayProduction(day.date).total) }}m
+              {{ formatMeters(getDayProduction(day.date).total) }}m / {{ formatMeters(getDailyLimit(day.date)) }}m
             </v-chip>
             <div class="limits-breakdown">
               <div class="limit-row">
@@ -75,35 +75,46 @@
               </div>
             </div>
           </div>
-          <div class="kanban-content pa-2">
-            <v-card
-              v-for="item in day.items"
-              :key="item.id"
-              class="order-card-kanban my-2"
-              variant="flat"
-              @click="openDetailModal(item.order_id, item.id)"
-              @mousemove="onCardMouseMove"
-            >
-              <div class="card-border-machine" :style="{'background-color': getMachineTypeForFabric(item.fabric_type) === 'MESA' ? 'var(--v-theme-cyan)' : 'var(--v-theme-amber)'}"></div>
-              <v-card-text class="pa-3 d-flex flex-column">
-                <div>
-                  <p class="customer-title text-truncate mb-1">{{ item.customer_name }}</p>
-                </div>
-                <div class="d-flex justify-space-between align-center mb-1">
-                  <p class="text-caption text-medium-emphasis">#{{ String(item.order_number).padStart(4, '0') }} / {{ item.stamp_ref }}</p>
-                  <v-chip size="x-small" :color="statusColorMap[item.status]" label variant="tonal" class="font-weight-bold status-chip">{{ statusDisplayMap[item.status] }}</v-chip>
-                </div>
-                <v-divider class="my-2"></v-divider>
-                <div class="d-flex justify-space-between align-center">
-                  <span class="text-caption font-weight-bold text-truncate">{{ item.creator_name }}</span>
-                  <v-chip size="x-small" color="white" variant="flat" class="font-weight-bold meters-chip">
-                    {{ formatMeters(item.quantity_meters) }}m
-                  </v-chip>
-                </div>
-              </v-card-text>
-            </v-card>
-            <p v-if="day.items.length === 0" class="text-caption text-grey text-center mt-4">Nenhum item para este dia.</p>
-          </div>
+
+          <draggable
+            :list="day.items"
+            group="items"
+            item-key="id"
+            class="kanban-content pa-2"
+            :data-date="day.date.toISOString().split('T')[0]"
+            @end="onDragEnd"
+          >
+            <template #item="{ element: item }">
+              <v-card
+                :data-id="item.id"
+                class="order-card-kanban my-2"
+                variant="flat"
+                @click="openDetailModal(item.order_id, item.id)"
+                @mousemove="onCardMouseMove"
+              >
+                <div class="card-border-machine" :style="{'background-color': getMachineTypeForFabric(item.fabric_type) === 'MESA' ? 'var(--v-theme-cyan)' : 'var(--v-theme-amber)'}"></div>
+                <v-card-text class="pa-3 d-flex flex-column">
+                  <div>
+                    <p class="customer-title text-truncate mb-1">{{ item.customer_name }}</p>
+                  </div>
+                  <div class="d-flex justify-space-between align-center mb-1">
+                    <p class="text-caption text-medium-emphasis">#{{ String(item.order_number).padStart(4, '0') }} / {{ item.stamp_ref }}</p>
+                    <v-chip size="x-small" :color="statusColorMap[item.status]" label variant="tonal" class="font-weight-bold status-chip">{{ statusDisplayMap[item.status] }}</v-chip>
+                  </div>
+                  <v-divider class="my-2"></v-divider>
+                  <div class="d-flex justify-space-between align-center">
+                    <span class="text-caption font-weight-bold text-truncate">{{ item.creator_name }}</span>
+                    <v-chip size="x-small" color="white" variant="flat" class="font-weight-bold meters-chip">
+                      {{ formatMeters(item.quantity_meters) }}m
+                    </v-chip>
+                  </div>
+                </v-card-text>
+              </v-card>
+            </template>
+            <template #footer>
+                <p v-if="day.items.length === 0" class="text-caption text-grey text-center mt-4">Nenhum item para este dia.</p>
+            </template>
+          </draggable>
         </div>
       </div>
 
@@ -126,6 +137,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useUserStore } from '@/stores/user';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
+import draggable from 'vuedraggable';
 
 type ProductionItem = {
   id: string; order_id: string; order_number: number; customer_name: string;
@@ -194,7 +206,7 @@ const fetchInProductionItems = async () => {
         order:orders!inner(id, customer_name, order_number, creator:created_by(full_name)),
         item:order_items!inner(id, status, quantity_meters, fabric_type, stamp_ref, created_at)
       `)
-      .in('item.status', ['in_printing', 'in_cutting']); // <<-- KANBAN LIMPO
+      .in('item.status', ['in_printing', 'in_cutting']);
 
     if (error) throw error;
 
@@ -222,6 +234,37 @@ const getItemsForDay = (date: Date) => {
     return filteredItems.value.filter(item =>
         item.production_start_date && isSameDay(item.production_start_date, date)
     );
+};
+
+const onDragEnd = async (event: any) => {
+    const { item, to } = event;
+    const itemId = item.dataset.id;
+    const newDate = to.dataset.date;
+
+    if (!itemId || !newDate) return;
+
+    const movedItem = allProductionItems.value.find(i => i.id === itemId);
+    if (movedItem) {
+        movedItem.scheduled_date = newDate;
+    }
+
+    try {
+        // --- INÍCIO DA ALTERAÇÃO: Chamando a nova função RPC ---
+        const { error } = await supabase.rpc('reschedule_production_item', {
+            p_item_id: itemId,
+            p_new_date: newDate
+        });
+        // --- FIM DA ALTERAÇÃO ---
+
+        if (error) {
+            console.error('Falha ao reagendar item:', error);
+            await fetchInProductionItems();
+            alert('Falha ao reagendar o item. A lista será atualizada.');
+        }
+    } catch (err) {
+        console.error('Erro crítico ao reagendar:', err);
+        await fetchInProductionItems();
+    }
 };
 
 const onCardMouseMove = (e: MouseEvent) => {
@@ -255,64 +298,48 @@ const imageToBase64 = (url: string): Promise<string> => new Promise((resolve, re
     img.src = url;
 });
 
-// --- NOVA FUNÇÃO DE PDF ---
 const generateDailyPdf = async (day: { date: Date; items: ProductionItem[] }) => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.width;
-    const pageHeight = doc.internal.pageSize.height;
-    const formattedDate = format(day.date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.width;
+  const formattedDate = format(day.date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR });
 
-    try {
-        // Cabeçalho
-        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
-        const logoBase64 = await imageToBase64(logoUrl);
-        const logoProps = doc.getImageProperties(logoBase64);
-        const logoWidth = 50;
-        const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
-        doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
+  try {
+    const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+    const logoBase64 = await imageToBase64(logoUrl);
+    const logoProps = doc.getImageProperties(logoBase64);
+    const logoWidth = 40;
+    const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
+    doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
+  } catch (e) {
+    console.error("Não foi possível carregar o logo para o PDF", e);
+  }
 
-        doc.setFontSize(9);
-        doc.setTextColor(100);
-        doc.text([
-            "MR JACKY - 20.631.721/0001-07",
-            "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
-            "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
-        ], pageWidth - 15, 15, { align: 'right' });
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Relatório Diário de Produção', doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formattedDate, doc.internal.pageSize.getWidth() / 2, 28, { align: 'center' });
 
-        doc.setFontSize(18); doc.setTextColor(0); doc.text(`Relatório de Produção`, 15, 45);
-        doc.setFontSize(12); doc.text(formattedDate, pageWidth - 15, 45, { align: 'right' });
-        doc.setLineWidth(0.5); doc.line(15, 50, pageWidth - 15, 50);
+  const head = [['Pedido #', 'Cliente', 'Vendedor', 'Estampa (Ref.)', 'Tecido', 'Metragem']];
+  const body = day.items.map(item => [
+    String(item.order_number).padStart(4, '0'),
+    item.customer_name,
+    item.creator_name,
+    item.stamp_ref,
+    item.fabric_type,
+    `${formatMeters(item.quantity_meters)}m`
+  ]);
 
-        // Tabela de Itens
-        const head = [['Pedido #', 'Cliente', 'Vendedor', 'Estampa (Ref.)', 'Tecido', 'Metragem']];
-        const body = day.items.map(item => [
-            String(item.order_number).padStart(4, '0'),
-            item.customer_name,
-            item.creator_name,
-            item.stamp_ref,
-            item.fabric_type,
-            `${formatMeters(item.quantity_meters)}m`
-        ]);
+  autoTable(doc, {
+    startY: 45,
+    head: head,
+    body: body,
+    theme: 'striped',
+    headStyles: { fillColor: [41, 128, 185] }
+  });
 
-        autoTable(doc, {
-            startY: 55,
-            head: head,
-            body: body,
-            theme: 'striped',
-            headStyles: { fillColor: [41, 128, 185] },
-            didDrawPage: (data) => {
-                // Rodapé
-                const footerY = pageHeight - 15;
-                doc.setFontSize(9).setTextColor(150).text(`Página ${data.pageNumber} | Gerado com MJProcess`, pageWidth / 2, footerY, { align: 'center' });
-            }
-        });
-
-        doc.save(`Producao_${format(day.date, 'yyyy-MM-dd')}.pdf`);
-
-    } catch (e) {
-        console.error("Não foi possível gerar o PDF diário:", e);
-        alert("Ocorreu um erro ao gerar o relatório em PDF.");
-    }
+  doc.save(`Producao_${format(day.date, 'yyyy-MM-dd')}.pdf`);
 };
 
 const closeDetailModal = () => { showDetailModal.value = false; };
@@ -323,7 +350,6 @@ const previousWeek = () => { currentWeekStart.value = subDays(currentWeekStart.v
 const getShortDate = (date: Date) => format(date, 'dd/MM');
 const formatMeters = (meters: number) => Number(meters || 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
 const getDailyLimit = (date: Date) => getDay(date) === 6 ? dailyLimits.saturday : dailyLimits.overall;
-
 const getDayProduction = (date: Date) => {
     const items = getItemsForDay(date);
     const mesa = items.filter(i => getMachineTypeForFabric(i.fabric_type) === 'MESA').reduce((sum, i) => sum + i.quantity_meters, 0);
@@ -370,10 +396,11 @@ onMounted(fetchInProductionItems);
 .kanban-content {
   overflow-y: auto;
   flex-grow: 1;
+  min-height: 200px;
 }
 .order-card-kanban {
   background-color: rgba(50, 50, 60, 0.9);
-  cursor: pointer;
+  cursor: grab;
   display: flex;
   flex-direction: column;
   min-height: 120px;
@@ -383,6 +410,9 @@ onMounted(fetchInProductionItems);
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
+  }
+  &:active {
+    cursor: grabbing;
   }
 }
 .customer-title {
