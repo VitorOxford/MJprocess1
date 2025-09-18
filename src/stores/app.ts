@@ -48,16 +48,19 @@ export const useAppStore = defineStore('app', {
     // ===== INÍCIO DA CORREÇÃO =====
     async checkInitialLowStock() {
       try {
-        // Usando uma função RPC para fazer a comparação de colunas no banco de dados
-        const { data, error } = await supabase.rpc('check_low_stock');
+        // Agora, chamamos a função RPC que criamos no banco de dados.
+        // Ela lida com a lógica de comparação de colunas de forma segura.
+        const { data, error } = await supabase.rpc('get_low_stock_items');
 
         if (error) throw error;
 
         const oneHourAgo = new Date(Date.now() - ALERT_COOLDOWN);
 
         for (const item of data) {
-          // Se não houver data de último alerta OU se o último alerta foi há mais de uma hora
+          // A lógica de cooldown para evitar alertas repetitivos permanece a mesma.
+          // Se não houver data de último alerta OU se o último alerta foi há mais de uma hora...
           if (!item.last_alerted_at || new Date(item.last_alerted_at) < oneHourAgo) {
+            // ...dispara o alerta.
             this.triggerLowStockAlert(item.fabric_type, item.available_meters);
           }
         }

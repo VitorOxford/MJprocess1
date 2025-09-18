@@ -48,6 +48,8 @@
                     <v-btn
                         v-bind="props"
                         v-if="day.items.length > 0"
+                        :disabled="getDayProgress(day.date)?.generating"
+                        :loading="getDayProgress(day.date)?.generating"
                         icon="mdi-file-pdf-box"
                         variant="text"
                         color="red-lighten-2"
@@ -57,6 +59,19 @@
                     </template>
                 </v-tooltip>
             </div>
+             <div v-if="getDayProgress(day.date)?.generating" class="progress-container px-2">
+                <span class="text-caption">
+                    Gerando {{ getDayProgress(day.date)?.current }} / {{ getDayProgress(day.date)?.total }}
+                </span>
+                <v-progress-linear
+                    :model-value="((getDayProgress(day.date)?.current || 0) / (getDayProgress(day.date)?.total || 1)) * 100"
+                    color="primary"
+                    height="6"
+                    rounded
+                    class="mt-1"
+                ></v-progress-linear>
+            </div>
+
             <v-chip size="small" variant="tonal" color="primary" class="mb-2">
               {{ formatMeters(getDayProduction(day.date).total) }}m / {{ formatMeters(getDailyLimit(day.date)) }}m
             </v-chip>
@@ -89,11 +104,27 @@
                 :data-id="item.id"
                 class="order-card-kanban my-2"
                 variant="flat"
-                @click="openDetailModal(item.order_id, item.id)"
                 @mousemove="onCardMouseMove"
+                @contextmenu.prevent
               >
-                <div class="card-border-machine" :style="{'background-color': getMachineTypeForFabric(item.fabric_type) === 'MESA' ? 'var(--v-theme-cyan)' : 'var(--v-theme-amber)'}"></div>
-                <v-card-text class="pa-3 d-flex flex-column">
+                <div class="card-actions-menu">
+                    <v-menu location="start" transition="slide-x-transition">
+                        <template v-slot:activator="{ props }">
+                            <v-btn icon="mdi-dots-vertical" v-bind="props" variant="text" size="small" @click.stop></v-btn>
+                        </template>
+                        <v-list density="compact" class="menu-list-styling" elevation="10">
+                            <v-list-item prepend-icon="mdi-arrow-left-bold" @click="moveItem(item, -7)">
+                                <v-list-item-title>Semana Anterior</v-list-item-title>
+                            </v-list-item>
+                            <v-list-item prepend-icon="mdi-arrow-right-bold" @click="moveItem(item, 7)">
+                                <v-list-item-title>Próxima Semana</v-list-item-title>
+                            </v-list-item>
+                        </v-list>
+                    </v-menu>
+                </div>
+
+                <v-card-text class="pa-3 d-flex flex-column" @click="openDetailModal(item.order_id, item.id)">
+                  <div class="card-border-machine" :style="{'background-color': getMachineTypeForFabric(item.fabric_type) === 'MESA' ? 'var(--v-theme-cyan)' : 'var(--v-theme-amber)'}"></div>
                   <div>
                     <p class="customer-title text-truncate mb-1">{{ item.customer_name }}</p>
                   </div>
@@ -146,6 +177,7 @@ type ProductionItem = {
   creator_name: string; fabric_type: string; stamp_ref: string; quantity_meters: number;
   status: string; scheduled_date: string; created_at: string;
   production_start_date?: Date;
+  stamp_image_url?: string;
 };
 
 const userStore = useUserStore();
@@ -159,11 +191,28 @@ const showDetailModal = ref(false);
 const selectedOrderId = ref<string | null>(null);
 const selectedItemId = ref<string | null>(null);
 
+const pdfProgress = ref<Record<string, {
+  generating: boolean;
+  current: number;
+  total: number;
+}>>({});
+
 const dailyLimits = { mesa: 4000, corrida: 10000, overall: 14000, saturday: 5000 };
+
+// --- INÍCIO DA CORREÇÃO 1 (KANBAN) ---
+// Chaves convertidas para minúsculas para comparação insensível
 const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
-  'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA',
-  'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA'
+  'tecido creponado': 'MESA', 'malha tulle': 'MESA', 'malha fluity': 'MESA', 'malha canelada': 'MESA', 'malha suplex': 'MESA', 'tecido chiffon': 'MESA', 'malha liganet': 'MESA',
+  'tecido crepinho': 'CORRIDA', 'tecido twill fly': 'CORRIDA', 'tecido toque de seda': 'CORRIDA', 'tecido corta-vento': 'CORRIDA', 'tecido tactel': 'CORRIDA', 'tecido alfaiataria': 'CORRIDA'
 };
+
+const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => {
+  // Normaliza o nome do tecido (remove espaços e converte para minúsculas)
+  const normalizedFabric = fabric?.trim().toLowerCase() || '';
+  return fabricMachineMap[normalizedFabric] || 'CORRIDA';
+};
+// --- FIM DA CORREÇÃO 1 (KANBAN) ---
+
 const statusDisplayMap: Record<string, string> = {
     in_printing: 'Impressão', in_cutting: 'Corte'
 };
@@ -171,9 +220,31 @@ const statusColorMap: Record<string, string> = {
     in_printing: 'info', in_cutting: 'warning'
 };
 
+const addBusinessDays = (startDate: Date, days: number): Date => {
+  const newDate = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < days) {
+    newDate.setDate(newDate.getDate() + 1);
+    if (newDate.getDay() !== 0) {
+      addedDays++;
+    }
+  }
+  return newDate;
+};
+
+const getNextDeliveryDay = (date: Date): Date => {
+    const newDate = new Date(date);
+    newDate.setDate(newDate.getDate() + 1);
+    while (true) {
+        const dayOfWeek = newDate.getDay();
+        if ([2, 4, 6].includes(dayOfWeek)) {
+            return newDate;
+        }
+        newDate.setDate(newDate.getDate() + 1);
+    }
+};
+
 const itemsWithStartDate = computed(() => {
-    // --- INÍCIO DA CORREÇÃO ---
-    // Filtra os itens para incluir apenas aqueles que estão ativamente em produção.
     const activeProductionStatuses = ['in_printing', 'in_cutting'];
     return productionScheduleItems.value
         .filter(p => activeProductionStatuses.includes(p.item.status))
@@ -185,11 +256,10 @@ const itemsWithStartDate = computed(() => {
             creator_name: p.order.creator?.full_name || 'N/A',
             id: p.item.id,
             scheduled_date: p.scheduled_date,
-            production_start_date: parseISO(p.scheduled_date)
+            production_start_date: parseISO(p.scheduled_date),
+            stamp_image_url: p.item.stamp_image_url
         }));
-    // --- FIM DA CORREÇÃO ---
 });
-
 
 const filteredItems = computed(() => {
     if (!search.value) return itemsWithStartDate.value;
@@ -218,28 +288,17 @@ const getItemsForDay = (date: Date) => {
     );
 };
 
+const getDayProgress = (date: Date) => {
+  const dateKey = format(date, 'yyyy-MM-dd');
+  return pdfProgress.value[dateKey];
+};
+
 const onDragEnd = async (event: any) => {
     const { item, to } = event;
     const itemId = item.dataset.id;
     const newDate = to.dataset.date;
-
     if (!itemId || !newDate) return;
-
-    try {
-        const { error } = await supabase.rpc('reschedule_production_item', {
-            p_item_id: itemId,
-            p_new_date: newDate
-        });
-
-        if (error) throw error;
-
-        await dashboardStore.fetchProductionSchedule();
-
-    } catch (err) {
-        console.error('Erro crítico ao reagendar:', err);
-        await dashboardStore.fetchProductionSchedule();
-        alert('Falha ao reagendar o item. A lista será atualizada para o estado anterior.');
-    }
+    await rescheduleItem(itemId, newDate);
 };
 
 const onCardMouseMove = (e: MouseEvent) => {
@@ -267,58 +326,133 @@ const imageToBase64 = (url: string): Promise<string> => new Promise((resolve, re
         if (ctx) {
             ctx.drawImage(img, 0, 0);
             resolve(canvas.toDataURL('image/png'));
-        } else { reject(new Error('Contexto do canvas não obtido')); }
+        } else {
+            reject(new Error('Contexto do canvas não obtido'));
+        }
     };
     img.onerror = reject;
     img.src = url;
 });
 
 const generateDailyPdf = async (day: { date: Date; items: ProductionItem[] }) => {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.width;
-  const formattedDate = format(day.date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+  const dateKey = format(day.date, 'yyyy-MM-dd');
+  pdfProgress.value[dateKey] = { generating: true, current: 0, total: day.items.length };
 
   try {
-    const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
-    const logoBase64 = await imageToBase64(logoUrl);
-    const logoProps = doc.getImageProperties(logoBase64);
-    const logoWidth = 40;
-    const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
-    doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
-  } catch (e) {
-    console.error("Não foi possível carregar o logo para o PDF", e);
+    const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+
+    // Cabeçalho Padrão
+    try {
+        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+        const logoBase64 = await imageToBase64(logoUrl);
+        const logoProps = doc.getImageProperties(logoBase64);
+        const logoWidth = 50;
+        const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
+        doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
+    } catch (e) {
+        console.error("ERRO: Não foi possível carregar o logo para o PDF", e);
+    }
+
+    // Informações da Empresa
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text([
+      "MR JACKY - 20.631.721/0001-07",
+      "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
+      "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
+    ], pageWidth - 15, 15, { align: 'right' });
+
+    const formattedDate = format(day.date, "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    doc.setFontSize(16).setFont('helvetica', 'bold').setTextColor(0);
+    doc.text('Relatório Diário de Produção', pageWidth / 2, 40, { align: 'center' });
+    doc.setFontSize(11).setFont('helvetica', 'normal');
+    doc.text(formattedDate, pageWidth / 2, 48, { align: 'center' });
+
+    const tableBody = [];
+    for (const [index, item] of day.items.entries()) {
+        pdfProgress.value[dateKey].current = index + 1;
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        const { data: opNumber } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
+        const completionDate = addBusinessDays(parseISO(item.scheduled_date), 3);
+        const forecastDate = getNextDeliveryDay(completionDate);
+        const formattedForecastDate = format(forecastDate, 'dd/MM/yyyy', { locale: ptBR });
+
+        tableBody.push([
+            `#${String(item.order_number).padStart(4, '0')}`,
+            `#${String(opNumber).padStart(4, '0')}`,
+            item.stamp_ref,
+            item.fabric_type,
+            `${formatMeters(item.quantity_meters)}m`,
+            formattedForecastDate,
+            '' // Coluna para o Check
+        ]);
+    }
+
+    autoTable(doc, {
+      startY: 55,
+      head: [['Pedido', 'OP', 'Referência', 'Tecido', 'Metragem', 'Prev. Entrega', 'Check']],
+      body: tableBody,
+      theme: 'grid',
+      columnStyles: {
+        0: { cellWidth: 18 },
+        1: { cellWidth: 15 },
+        2: { cellWidth: 'auto' },
+        3: { cellWidth: 40 },
+        4: { cellWidth: 18, halign: 'right' },
+        5: { cellWidth: 22 },
+        6: { cellWidth: 15, halign: 'center' }
+      },
+      rowPageBreak: 'auto',
+      rowHeight: 9,
+      headStyles: {
+        fillColor: [41, 128, 185],
+        valign: 'middle'
+      },
+      bodyStyles: {
+        valign: 'middle',
+        fontSize: 8
+      },
+    });
+
+    // --- INÍCIO DA CORREÇÃO 2 (RODAPÉ) ---
+    const totalPages = (doc as any).internal.getNumberOfPages();
+
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i); // Muda para a página i
+
+        doc.setFontSize(9);
+        doc.setTextColor(150);
+
+        // Rodapé centralizado
+        const footerText = 'Gerado com MJProcess';
+        doc.text(footerText, pageWidth / 2, pageHeight - 10, {
+            align: 'center'
+        });
+
+        // Rodapé com número da página
+        const pageNumText = `Página ${i} de ${totalPages}`;
+        doc.text(pageNumText, pageWidth - 15, pageHeight - 10, {
+            align: 'right'
+        });
+    }
+    // --- FIM DA CORREÇÃO 2 (RODAPÉ) ---
+
+    doc.save(`Producao_${format(day.date, 'yyyy-MM-dd')}.pdf`);
+
+  } catch(error) {
+      console.error("ERRO GERAL na geração do PDF:", error);
+      alert("Ocorreu um erro inesperado ao gerar o PDF. Verifique o console para mais detalhes.")
+  } finally {
+    pdfProgress.value[dateKey].generating = false;
   }
-
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Relatório Diário de Produção', doc.internal.pageSize.getWidth() / 2, 20, { align: 'center' });
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(formattedDate, doc.internal.pageSize.getWidth() / 2, 28, { align: 'center' });
-
-  const head = [['Pedido #', 'Cliente', 'Vendedor', 'Estampa (Ref.)', 'Tecido', 'Metragem']];
-  const body = day.items.map(item => [
-    String(item.order_number).padStart(4, '0'),
-    item.customer_name,
-    item.creator_name,
-    item.stamp_ref,
-    item.fabric_type,
-    `${formatMeters(item.quantity_meters)}m`
-  ]);
-
-  autoTable(doc, {
-    startY: 45,
-    head: head,
-    body: body,
-    theme: 'striped',
-    headStyles: { fillColor: [41, 128, 185] }
-  });
-
-  doc.save(`Producao_${format(day.date, 'yyyy-MM-dd')}.pdf`);
 };
 
+
 const closeDetailModal = () => { showDetailModal.value = false; };
-const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => fabricMachineMap[fabric] || 'CORRIDA';
+
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
 const nextWeek = () => { currentWeekStart.value = addDays(currentWeekStart.value, 7); };
 const previousWeek = () => { currentWeekStart.value = subDays(currentWeekStart.value, 7); };
@@ -330,6 +464,26 @@ const getDayProduction = (date: Date) => {
     const mesa = items.filter(i => getMachineTypeForFabric(i.fabric_type) === 'MESA').reduce((sum, i) => sum + i.quantity_meters, 0);
     const corrida = items.filter(i => getMachineTypeForFabric(i.fabric_type) === 'CORRIDA').reduce((sum, i) => sum + i.quantity_meters, 0);
     return { mesa, corrida, total: mesa + corrida };
+};
+
+const moveItem = async (item: ProductionItem, days: number) => {
+  const newDate = addDays(parseISO(item.scheduled_date), days);
+  await rescheduleItem(item.id, format(newDate, 'yyyy-MM-dd'));
+};
+
+const rescheduleItem = async (itemId: string, newDate: string) => {
+  try {
+    const { error } = await supabase.rpc('reschedule_production_item', {
+      p_item_id: itemId,
+      p_new_date: newDate,
+    });
+    if (error) throw error;
+    await dashboardStore.fetchProductionSchedule();
+  } catch (err) {
+    console.error('Erro ao mover item:', err);
+    alert('Falha ao mover o item.');
+    await dashboardStore.fetchProductionSchedule();
+  }
 };
 
 onActivated(async () => {
@@ -369,7 +523,7 @@ onMounted(async () => {
 }
 .column-header-kanban {
   text-align: center;
-  padding: 12px;
+  padding: 12px 12px 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
 }
@@ -379,26 +533,29 @@ onMounted(async () => {
   min-height: 200px;
 }
 .order-card-kanban {
+  position: relative;
   background-color: rgba(50, 50, 60, 0.9);
-  cursor: grab;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   min-height: 120px;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.1);
   transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, border-color 0.3s ease;
+
+  &:active {
+    cursor: grabbing;
+  }
+
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
-  }
-  &:active {
-    cursor: grabbing;
   }
 }
 .customer-title {
   font-size: 1rem;
   font-weight: 600;
-  max-width: 100%;
+  max-width: calc(100% - 30px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -437,4 +594,40 @@ onMounted(async () => {
   flex-direction: column;
 }
 .header-toolbar .header-title { font-size: 1.5rem; }
+
+.card-actions-menu {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10;
+}
+
+.menu-list-styling {
+  background-color: rgba(45, 45, 50, 0.9) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px !important;
+
+  :deep(.v-list-item) {
+    .v-list-item-title {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .v-icon {
+      opacity: 0.8;
+    }
+    &:hover {
+      background-color: rgba(var(--v-theme-primary), 0.15) !important;
+    }
+  }
+}
+
+.progress-container {
+    height: 30px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
 </style>

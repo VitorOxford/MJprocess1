@@ -213,9 +213,21 @@ const kpiModalHeaders = [
 // --- CONSTANTS ---
 const dailyLimits = { mesa: 4000, corrida: 10000, overall: 14000, saturday: 5000 };
 const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
-  'Creponado': 'MESA', 'Tule': 'MESA', 'Fluity': 'MESA', 'Canelado': 'MESA', 'Suplex': 'MESA', 'Chiffon': 'MESA', 'Liganet': 'MESA',
-  'Crepinho': 'CORRIDA', 'Twill Fly': 'CORRIDA', 'Toque de seda': 'CORRIDA', 'Corta-Vento': 'CORRIDA', 'Tactel': 'CORRIDA', 'Alfaiataria': 'CORRIDA'
+  'TECIDO CREPONADO': 'MESA',
+  'MALHA TULLE': 'MESA',
+  'MALHA FLUITY': 'MESA',
+  'MALHA CANELADA': 'MESA',
+  'MALHA SUPLEX': 'MESA',
+  'TECIDO CHIFFON': 'MESA',
+  'MALHA LIGANET': 'MESA',
+  'TECIDO CREPINHO': 'CORRIDA',
+  'TECIDO TWILL FLY': 'CORRIDA',
+  'TECIDO TOQUE DE SEDA': 'CORRIDA',
+  'TECIDO CORTA-VENTO': 'CORRIDA',
+  'TECIDO TACTEL': 'CORRIDA',
+  'TECIDO ALFAIATARIA': 'CORRIDA'
 };
+
 
 // --- COMPUTED PROPERTIES ---
 
