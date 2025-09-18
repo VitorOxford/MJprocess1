@@ -89,11 +89,27 @@
                 :data-id="item.id"
                 class="order-card-kanban my-2"
                 variant="flat"
-                @click="openDetailModal(item.order_id, item.id)"
                 @mousemove="onCardMouseMove"
+                @contextmenu.prevent
               >
-                <div class="card-border-machine" :style="{'background-color': getMachineTypeForFabric(item.fabric_type) === 'MESA' ? 'var(--v-theme-cyan)' : 'var(--v-theme-amber)'}"></div>
-                <v-card-text class="pa-3 d-flex flex-column">
+                <div class="card-actions-menu">
+                    <v-menu location="start" transition="slide-x-transition">
+                        <template v-slot:activator="{ props }">
+                            <v-btn icon="mdi-dots-vertical" v-bind="props" variant="text" size="small" @click.stop></v-btn>
+                        </template>
+                        <v-list density="compact" class="menu-list-styling" elevation="10">
+                            <v-list-item prepend-icon="mdi-arrow-left-bold" @click="moveItem(item, -7)">
+                                <v-list-item-title>Semana Anterior</v-list-item-title>
+                            </v-list-item>
+                            <v-list-item prepend-icon="mdi-arrow-right-bold" @click="moveItem(item, 7)">
+                                <v-list-item-title>Próxima Semana</v-list-item-title>
+                            </v-list-item>
+                        </v-list>
+                    </v-menu>
+                </div>
+
+                <v-card-text class="pa-3 d-flex flex-column" @click="openDetailModal(item.order_id, item.id)">
+                  <div class="card-border-machine" :style="{'background-color': getMachineTypeForFabric(item.fabric_type) === 'MESA' ? 'var(--v-theme-cyan)' : 'var(--v-theme-amber)'}"></div>
                   <div>
                     <p class="customer-title text-truncate mb-1">{{ item.customer_name }}</p>
                   </div>
@@ -172,8 +188,6 @@ const statusColorMap: Record<string, string> = {
 };
 
 const itemsWithStartDate = computed(() => {
-    // --- INÍCIO DA CORREÇÃO ---
-    // Filtra os itens para incluir apenas aqueles que estão ativamente em produção.
     const activeProductionStatuses = ['in_printing', 'in_cutting'];
     return productionScheduleItems.value
         .filter(p => activeProductionStatuses.includes(p.item.status))
@@ -187,7 +201,6 @@ const itemsWithStartDate = computed(() => {
             scheduled_date: p.scheduled_date,
             production_start_date: parseISO(p.scheduled_date)
         }));
-    // --- FIM DA CORREÇÃO ---
 });
 
 
@@ -225,21 +238,7 @@ const onDragEnd = async (event: any) => {
 
     if (!itemId || !newDate) return;
 
-    try {
-        const { error } = await supabase.rpc('reschedule_production_item', {
-            p_item_id: itemId,
-            p_new_date: newDate
-        });
-
-        if (error) throw error;
-
-        await dashboardStore.fetchProductionSchedule();
-
-    } catch (err) {
-        console.error('Erro crítico ao reagendar:', err);
-        await dashboardStore.fetchProductionSchedule();
-        alert('Falha ao reagendar o item. A lista será atualizada para o estado anterior.');
-    }
+    await rescheduleItem(itemId, newDate);
 };
 
 const onCardMouseMove = (e: MouseEvent) => {
@@ -332,6 +331,27 @@ const getDayProduction = (date: Date) => {
     return { mesa, corrida, total: mesa + corrida };
 };
 
+const moveItem = async (item: ProductionItem, days: number) => {
+  const newDate = addDays(parseISO(item.scheduled_date), days);
+  await rescheduleItem(item.id, format(newDate, 'yyyy-MM-dd'));
+};
+
+const rescheduleItem = async (itemId: string, newDate: string) => {
+  try {
+    const { error } = await supabase.rpc('reschedule_production_item', {
+      p_item_id: itemId,
+      p_new_date: newDate,
+    });
+    if (error) throw error;
+    await dashboardStore.fetchProductionSchedule();
+  } catch (err) {
+    console.error('Erro ao mover item:', err);
+    alert('Falha ao mover o item.');
+    await dashboardStore.fetchProductionSchedule();
+  }
+};
+
+
 onActivated(async () => {
   await dashboardStore.fetchProductionSchedule();
 });
@@ -379,26 +399,30 @@ onMounted(async () => {
   min-height: 200px;
 }
 .order-card-kanban {
+  position: relative;
   background-color: rgba(50, 50, 60, 0.9);
-  cursor: grab;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   min-height: 120px;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.1);
   transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, border-color 0.3s ease;
+
+  // O cursor de arrastar só aparece ao segurar o clique
+  &:active {
+    cursor: grabbing;
+  }
+
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.3) !important;
-  }
-  &:active {
-    cursor: grabbing;
   }
 }
 .customer-title {
   font-size: 1rem;
   font-weight: 600;
-  max-width: 100%;
+  max-width: calc(100% - 30px); // Deixa espaço para o menu
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -437,4 +461,32 @@ onMounted(async () => {
   flex-direction: column;
 }
 .header-toolbar .header-title { font-size: 1.5rem; }
+
+// --- NOVOS ESTILOS PARA O MENU ---
+.card-actions-menu {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 10; // Garante que o menu fique sobre o conteúdo do card
+}
+
+.menu-list-styling {
+  background-color: rgba(45, 45, 50, 0.9) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px !important;
+
+  :deep(.v-list-item) {
+    .v-list-item-title {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .v-icon {
+      opacity: 0.8;
+    }
+    &:hover {
+      background-color: rgba(var(--v-theme-primary), 0.15) !important;
+    }
+  }
+}
 </style>
