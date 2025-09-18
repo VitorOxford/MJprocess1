@@ -1018,36 +1018,62 @@ const syncOrderWithGestaoClick = async (proofPublicUrl: string | null) => {
 
     let observations = orderHeader.observation || '';
     if (proofPublicUrl) {
-        observations += `\nComprovante de entrada disponível em: ${proofPublicUrl}`;
+        observations += `\n\nComprovante de entrada disponível em: ${proofPublicUrl}`;
     }
 
-    // <<< --- ALTERAÇÃO APLICADA AQUI --- >>>
+    // --- PAYLOAD FINAL E CORRIGIDO ---
     const salePayload: any = {
-        cliente_id: orderHeader.customer_id,
-        situacao_id: situacao.id,
-        condicao_pagamento: paymentDetails.type,
+        tipo: "produto",
+        data: new Date().toISOString().split('T')[0],
+        cliente_id: String(orderHeader.customer_id),
+        vendedor_id: String(userStore.profile?.gestao_click_id),
+        situacao_id: String(situacao.id),
+        condicao_pagamento: paymentDetails.type === 'vista' ? 'a_vista' : paymentDetails.type,
         observacoes: observations.trim(),
         produtos: orderItems.value.map(item => {
             const product = gestaoClickProducts.value.find(p => p.nome === item.fabric_type);
             if (!product) throw new Error(`Produto ${item.fabric_type} não encontrado no Gestão Click.`);
-            return { produto: { produto_id: product.id, quantidade: item.quantity || 0, valor_venda: (item.valor_unitario || 0).toFixed(2) } };
+            return {
+                produto: {
+                    produto_id: product.id,
+                    variacao_id: null,
+                    quantidade: String(item.quantity || 0),
+                    valor_venda: (item.valor_unitario || 0).toFixed(2),
+                    detalhes: item.notes || "",
+                    tipo_desconto: "R$",
+                    desconto_valor: "0.00",
+                    desconto_porcentagem: "0.00"
+                }
+            };
         }),
         servicos: orderItems.value.map(item => ({
-            servico: { servico_id: item.stamp_ref_id!, quantidade: 1, valor_venda: "0.00" }
+            servico: {
+                servico_id: item.stamp_ref_id!,
+                nome_servico: item.stamp_ref,
+                detalhes: `Estampa para o item ${item.fabric_type}`,
+                quantidade: "1.00",
+                valor_venda: (0.00).toFixed(2), // <-- CORREÇÃO CRÍTICA AQUI
+                tipo_desconto: "R$",
+                desconto_valor: "0.00",
+                desconto_porcentagem: "0.00"
+            }
         })),
         pagamentos: paymentDetails.installments.map(inst => ({
             pagamento: {
                 data_vencimento: inst.due_date,
                 valor: inst.value.toFixed(2),
-                forma_pagamento_id: inst.payment_method_id
+                forma_pagamento_id: String(inst.payment_method_id),
+                plano_contas_id: "32651675", // O ID CORRETO QUE DESCOBRIMOS
+                observacao: `Parcela referente ao pedido #${nextOrderNumber.value}`
             }
         }))
     };
-    // <<< --- FIM DA ALTERAÇÃO --- >>>
 
-    if (userStore.profile?.gestao_click_id) {
-        salePayload.vendedor_id = userStore.profile.gestao_click_id;
+    if (!salePayload.vendedor_id) {
+        throw new Error("ID do vendedor no Gestão Click não encontrado no perfil do usuário.");
     }
+
+    console.log("Enviando este payload para a API:", JSON.stringify(salePayload, null, 2));
 
     await gestaoApi.cadastrarVenda(salePayload);
 
@@ -1069,7 +1095,6 @@ const syncOrderWithGestaoClick = async (proofPublicUrl: string | null) => {
         }
     }
 };
-
 
 const submitLaunch = async () => {
   if (orderItems.value.length === 0) {
