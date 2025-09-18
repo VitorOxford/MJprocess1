@@ -1,8 +1,19 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
-import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid } from 'date-fns';
+import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+export type OrderItem = {
+  id: string;
+  status: string;
+  fabric_type: string;
+  quantity_meters: number;
+  created_at: string;
+  design_tag: string;
+  billed_quantity: number | null;
+  [key: string]: any;
+};
 
 export type Order = {
   id: string;
@@ -25,14 +36,7 @@ export type Order = {
   creator?: {
     full_name: string;
   };
-  order_items: {
-    id: string;
-    status: string;
-    fabric_type: string;
-    quantity_meters: number;
-    created_at: string;
-    design_tag: string; // Adicionado para detalhamento
-  }[];
+  order_items: OrderItem[];
   updated_at: string;
   billed_at: string | null;
   delivery_confirmed_at: string | null;
@@ -47,16 +51,96 @@ export type Task = {
   user_id: string;
 };
 
+export type ProductionScheduleItem = {
+  scheduled_date: string;
+  order: Order;
+  item: OrderItem;
+};
+
+// Função para adicionar dias úteis (não conta domingos)
+const addBusinessDays = (startDate: Date, days: number): Date => {
+  const newDate = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < days) {
+    newDate.setDate(newDate.getDate() + 1);
+    if (newDate.getDay() !== 0) { // Domingo = 0
+      addedDays++;
+    }
+  }
+  return newDate;
+};
+
+// Função para encontrar o próximo dia de entrega (Terça, Quinta, Sábado)
+const getNextDeliveryDay = (date: Date): Date => {
+    const newDate = new Date(date);
+    newDate.setDate(newDate.getDate() + 1);
+    while (true) {
+        const dayOfWeek = newDate.getDay();
+        if ([2, 4, 6].includes(dayOfWeek)) {
+            return newDate;
+        }
+        newDate.setDate(newDate.getDate() + 1);
+    }
+};
+
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     orders: [] as Order[],
     tasks: [] as Task[],
+    productionScheduleItems: [] as ProductionScheduleItem[],
     loading: false,
     lastFetched: null as Date | null,
     kpiSelectedDate: new Date(),
   }),
 
   getters: {
+    // CORREÇÃO APLICADA AQUI
+    productionGhosts(state) {
+      if (!state.productionScheduleItems || state.productionScheduleItems.length === 0) {
+        return [];
+      }
+
+      const inProductionItems = state.productionScheduleItems.filter(
+        p => ['in_printing', 'in_cutting', 'production_queue'].includes(p.item.status)
+      );
+
+      const ordersInProduction = new Map<string, ProductionScheduleItem[]>();
+      for (const pItem of inProductionItems) {
+        if (!ordersInProduction.has(pItem.order.id)) {
+          ordersInProduction.set(pItem.order.id, []);
+        }
+        ordersInProduction.get(pItem.order.id)!.push(pItem);
+      }
+
+      const groupedGhosts = [];
+      for (const [orderId, scheduledItems] of ordersInProduction.entries()) {
+        if (scheduledItems.length === 0) continue;
+
+        const latestScheduledDate = scheduledItems.reduce((latest, current) => {
+          const currentDate = parseISO(current.scheduled_date);
+          return currentDate > latest ? currentDate : latest;
+        }, new Date(0));
+
+        const completionDate = addBusinessDays(latestScheduledDate, 3);
+        const forecastDeliveryDate = getNextDeliveryDay(completionDate);
+
+        const parentOrder = scheduledItems[0].order;
+        const allItemsForThisOrder = scheduledItems.map(si => si.item);
+        const totalMeters = allItemsForThisOrder.reduce((sum, current) => sum + current.quantity_meters, 0);
+
+        groupedGhosts.push({
+          ...parentOrder,
+          id: parentOrder.id,
+          order_items: allItemsForThisOrder, // Garante que a lista de itens esteja no objeto
+          quantity_meters: totalMeters,
+          forecast_completion_date: completionDate,
+          forecast_delivery_date: forecastDeliveryDate,
+        });
+      }
+
+      return groupedGhosts;
+    },
+
     monthlyProduction(state) {
       const selectedYear = state.kpiSelectedDate.getFullYear();
       const selectedMonth = state.kpiSelectedDate.getMonth();
@@ -74,7 +158,6 @@ export const useDashboardStore = defineStore('dashboard', {
           displayMonth: format(state.kpiSelectedDate, 'MMMM yyyy', { locale: ptBR })
       };
     },
-
     ordersWithDownPayment(state): Order[] {
       return state.orders.filter(o => o.has_down_payment);
     },
@@ -87,7 +170,6 @@ export const useDashboardStore = defineStore('dashboard', {
             .filter(item => item.status === 'customer_approval')
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
-
     itemsDelayedInDesign(state): { count: number, totalMeters: number } {
         const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'finalizing'];
         const today = startOfToday();
@@ -106,27 +188,23 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return { count, totalMeters };
     },
-    // ===== INÍCIO DA ALTERAÇÃO =====
     delayedDesignItemsDetails(state) {
       const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'finalizing'];
       const today = startOfToday();
       return state.orders
           .flatMap(order =>
-              // Mapeia os itens adicionando uma referência ao pedido pai
               (order.order_items || []).map(item => ({ ...item, orderInfo: order }))
           )
           .filter(item =>
-              // Filtra por status de design e se está atrasado
               designStatuses.includes(item.status) &&
               isBefore(parseISO(item.created_at), today)
           )
           .map(item => ({
-              // Formata o objeto para o modal
               item_id: item.id,
               order_id: item.orderInfo.id,
               customer_name: item.orderInfo.customer_name,
               creator_name: item.orderInfo.creator?.full_name || 'N/A',
-              stamp_ref: item.stamp_ref,
+              stamp_ref: (item as any).stamp_ref,
               quantity_meters: item.quantity_meters,
               status: item.status,
               design_tag: item.design_tag
@@ -144,13 +222,12 @@ export const useDashboardStore = defineStore('dashboard', {
               order_id: item.orderInfo.id,
               customer_name: item.orderInfo.customer_name,
               creator_name: item.orderInfo.creator?.full_name || 'N/A',
-              stamp_ref: item.stamp_ref,
+              stamp_ref: (item as any).stamp_ref,
               quantity_meters: item.quantity_meters,
               status: item.status,
               design_tag: item.design_tag
           }));
     },
-    // ===== FIM DA ALTERAÇÃO =====
     totalMetersInProduction(state): number {
         const cutoffDateString = '2025-08-29';
         return state.orders
@@ -238,6 +315,31 @@ export const useDashboardStore = defineStore('dashboard', {
     previousMonthKpi() {
         this.kpiSelectedDate = subMonths(this.kpiSelectedDate, 1);
     },
+    async fetchProductionSchedule() {
+      this.loading = true;
+      try {
+        const { data, error } = await supabase
+          .from('production_schedule')
+          .select(`
+            scheduled_date,
+            item:order_items!inner(*),
+            order:orders!inner(
+              *,
+              creator:created_by(full_name),
+              order_items(*)
+            )
+          `)
+          .in('item.status', ['in_printing', 'in_cutting', 'production_queue']);
+
+        if (error) throw error;
+        this.productionScheduleItems = (data as any[]) || [];
+      } catch (err) {
+        console.error("Erro ao buscar agendamento de produção:", err);
+      } finally {
+        this.loading = false;
+      }
+    },
+
     async fetchData() {
       if (this.lastFetched && (new Date().getTime() - this.lastFetched.getTime()) < 30000) {
         return;
@@ -251,6 +353,7 @@ export const useDashboardStore = defineStore('dashboard', {
         const [ordersResponse, tasksResponse] = await Promise.all([
           supabase.from('orders').select('*, creator:created_by(full_name), order_items(*)'),
           supabase.from('tasks').select('*'),
+          this.fetchProductionSchedule()
         ]);
 
         if (ordersResponse.error) throw ordersResponse.error;

@@ -250,12 +250,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, onActivated } from 'vue';
 import { supabase } from '@/api/supabase';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import BillingModal from '@/components/BillingModal.vue';
 import draggable from 'vuedraggable';
 import { useUserStore } from '@/stores/user';
+import { useDashboardStore } from '@/stores/dashboard';
+import { storeToRefs } from 'pinia';
 import { format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -274,7 +276,9 @@ type Order = {
 
 // State
 const userStore = useUserStore();
-const loading = ref(true);
+const dashboardStore = useDashboardStore();
+const { productionGhosts, loading } = storeToRefs(dashboardStore);
+
 const showDetailModal = ref(false);
 const selectedOrderId = ref<string | null>(null);
 const allOrders = ref<Order[]>([]);
@@ -303,11 +307,6 @@ const deliveredOrders = computed(() => {
     return scheduledOrders.value.filter(o => o.delivery_confirmed_at)
         .sort((a,b) => (b.actual_delivery_date?.getTime() || 0) - (a.actual_delivery_date?.getTime() || 0));
 });
-const inProductionOrders = computed(() => {
-    return allOrders.value.filter(o =>
-        ['production_queue', 'in_printing', 'in_cutting'].includes(o.status) && o.production_date
-    );
-});
 
 const isReadyForBilling = (order: Order) => {
     if (!order.is_launch) return true;
@@ -318,66 +317,20 @@ const canDragOrder = (order: Order) => {
     return !!order.billed_at;
 };
 
-const getOrderDisplayMeters = (order: Order) => {
-    if (order.billed_at && order.is_launch && order.order_items.length > 0) {
-        return order.order_items.reduce((sum, item) => sum + (item.billed_quantity || item.quantity_meters || 0), 0);
+const getOrderDisplayMeters = (order: any) => {
+    // CORREÇÃO: Adicionada verificação de segurança para order.order_items
+    if (order.billed_at && order.is_launch && order.order_items?.length > 0) {
+        return order.order_items.reduce((sum: number, item: any) => sum + (item.billed_quantity || item.quantity_meters || 0), 0);
     }
     return order.quantity_meters;
 };
-
-
-// Adiciona dias úteis (não conta domingos)
-const addBusinessDays = (startDate: Date, days: number): Date => {
-  const newDate = new Date(startDate);
-  let addedDays = 0;
-  while (addedDays < days) {
-    newDate.setDate(newDate.getDate() + 1);
-    if (newDate.getDay() !== 0) {
-      addedDays++;
-    }
-  }
-  return newDate;
-};
-
-// Encontra o próximo dia de entrega válido (terça, quinta, sábado)
-const getNextDeliveryDay = (date: Date): Date => {
-    const newDate = new Date(date);
-    newDate.setDate(newDate.getDate() + 1);
-    while (true) {
-        const dayOfWeek = newDate.getDay();
-        if ([2, 4, 6].includes(dayOfWeek)) {
-            return newDate;
-        }
-        newDate.setDate(newDate.getDate() + 1);
-    }
-};
-
-const productionGhosts = computed(() => {
-    return inProductionOrders.value.map(order => {
-        const productionStartDate = parseISO(order.production_date!);
-        const completionDate = addBusinessDays(productionStartDate, 3);
-        const forecastDeliveryDate = getNextDeliveryDay(completionDate);
-
-        // ** CORREÇÃO DA LÓGICA **
-        // A lógica de recalcular a data foi removida.
-        // A função daily-status-update no backend é responsável por mudar o status para 'completed'.
-        // O frontend simplesmente exibirá a data de entrega prevista original.
-        // Se o pedido estiver atrasado (data de conclusão passou), ele ainda aparecerá como fantasma
-        // na data prevista, até que o status seja atualizado para 'completed' e ele vire um card sólido.
-
-        return {
-            ...order,
-            forecast_completion_date: completionDate,
-            forecast_delivery_date: forecastDeliveryDate,
-        };
-    });
-});
 
 const getGhostEntriesForDay = (date: Date) => {
     return productionGhosts.value.filter(ghost =>
         ghost.forecast_delivery_date && isSameDay(ghost.forecast_delivery_date, date)
     );
 };
+
 
 const getDayTotalMeters = (orders: Order[]) => {
     const total = orders.reduce((sum, order) => sum + getOrderDisplayMeters(order), 0);
@@ -482,66 +435,24 @@ const formatDate = (date: Date | string | null | undefined, formatString: string
 };
 
 const fetchDeliveryOrders = async () => {
-  loading.value = true;
-  try {
-    const relevantStatuses = ['completed', 'delivered', 'in_printing', 'in_cutting', 'production_queue'];
+  const { data: completedData, error: completedError } = await supabase
+    .from('orders')
+    .select(`
+      id, customer_name, quantity_meters, status, is_launch, details, production_date, billed_at, order_number,
+      creator:created_by(full_name),
+      actual_delivery_date, delivery_confirmed_at,
+      order_items(id, status, fabric_type, quantity_meters, billed_quantity)
+    `)
+    .in('status', ['completed', 'delivered']);
+  if (completedError) throw completedError;
 
-    const { data: scheduledData, error: scheduledError } = await supabase
-      .from('production_schedule')
-      .select(`
-        scheduled_date,
-        order:orders!inner(
-          id, customer_name, quantity_meters, status, is_launch, details, billed_at, order_number,
-          creator:created_by(full_name),
-          actual_delivery_date, delivery_confirmed_at,
-          order_items(id, status, fabric_type, quantity_meters, billed_quantity)
-        )
-      `)
-      .in('order.status', relevantStatuses);
-    if (scheduledError) throw scheduledError;
-
-    const scheduledOrdersMap = new Map();
-    (scheduledData || []).forEach(schedule => {
-        const order = schedule.order;
-        if (order && !scheduledOrdersMap.has(order.id)) {
-             scheduledOrdersMap.set(order.id, {
-                ...order,
-                production_date: schedule.scheduled_date
-            });
-        }
-    });
-
-    const { data: completedData, error: completedError } = await supabase
-      .from('orders')
-      .select(`
-        id, customer_name, quantity_meters, status, is_launch, details, production_date, billed_at, order_number,
-        creator:created_by(full_name),
-        actual_delivery_date, delivery_confirmed_at,
-        order_items(id, status, fabric_type, quantity_meters, billed_quantity)
-      `)
-      .in('status', ['completed', 'delivered']);
-    if (completedError) throw completedError;
-
-    (completedData || []).forEach(order => {
-        if (!scheduledOrdersMap.has(order.id)) {
-            scheduledOrdersMap.set(order.id, order);
-        }
-    });
-
-
-    allOrders.value = Array.from(scheduledOrdersMap.values()).map((o: any) => ({
-        ...o,
-        actual_delivery_date: o.actual_delivery_date ? parseISO(o.actual_delivery_date) : null,
-    }));
-
-  } catch (err: any) {
-    console.error('Erro ao buscar pedidos para entrega:', err.message);
-  } finally {
-    loading.value = false;
-  }
+  allOrders.value = (completedData || []).map((o: any) => ({
+      ...o,
+      actual_delivery_date: o.actual_delivery_date ? parseISO(o.actual_delivery_date) : null,
+  }));
 };
 
-const openForceCompleteModal = (order: Order) => {
+const openForceCompleteModal = (order: any) => {
     selectedOrderForForceComplete.value = order;
     showForceCompleteModal.value = true;
 };
@@ -560,7 +471,7 @@ const confirmForceComplete = async () => {
             p_admin_id: userStore.profile.id
         });
         if (error) throw error;
-        await fetchDeliveryOrders();
+        await Promise.all([fetchDeliveryOrders(), dashboardStore.fetchProductionSchedule()]);
         closeForceCompleteModal();
     } catch (err: any) {
         console.error("Erro ao forçar conclusão do pedido:", err);
@@ -608,7 +519,15 @@ const filteredDeliveredOrders = computed(() => {
 });
 
 
-onMounted(fetchDeliveryOrders);
+onActivated(async () => {
+    await fetchDeliveryOrders();
+    await dashboardStore.fetchProductionSchedule();
+});
+
+onMounted(async () => {
+    await fetchDeliveryOrders();
+    await dashboardStore.fetchProductionSchedule();
+});
 
 </script>
 

@@ -223,7 +223,7 @@ const groupedOrders = computed((): GroupedOrder[] => {
     const ordersMap = new Map<string, GroupedOrder>();
     const itemsWithStartDate = allProductionItems.value.map(item => ({
         ...item,
-        production_start_date: getProductionStartDate(item.scheduled_date)
+        production_start_date: parseISO(item.scheduled_date)
     }));
 
     for (const item of itemsWithStartDate) {
@@ -395,12 +395,6 @@ const closeReleaseModal = () => {
 };
 
 const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => fabricMachineMap[fabric] || 'CORRIDA';
-const getProductionStartDate = (scheduledDateStr: string): Date => {
-    const scheduledDate = parseISO(scheduledDateStr);
-    let startDate = addDays(scheduledDate, 1);
-    if (getDay(startDate) === 0) startDate = addDays(startDate, 1);
-    return startDate;
-};
 const weekRangeText = computed(() => `${format(currentWeekStart.value, 'dd MMM', { locale: ptBR })} - ${format(endOfWeek(currentWeekStart.value, { weekStartsOn: 1 }), 'dd MMM', { locale: ptBR })}`);
 const nextWeek = () => { transitionName.value = 'slide-next'; currentWeekStart.value = addDays(currentWeekStart.value, 7); };
 const previousWeek = () => { transitionName.value = 'slide-prev'; currentWeekStart.value = subDays(currentWeekStart.value, 7); };
