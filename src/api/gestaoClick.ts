@@ -148,22 +148,33 @@ const gestaoApi = {
   },
 
   async cadastrarVenda(vendaData: SalePayload): Promise<any> {
+    console.log('[gestaoClick.ts] Iniciando cadastrarVenda...');
     try {
       const response = await fetch(`${API_BASE_URL}/vendas`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify(vendaData)
       });
+
+      console.log(`[gestaoClick.ts] Status da Resposta da API: ${response.status}`);
+
       const responseData = await response.json();
+      console.log('[gestaoClick.ts] Resposta completa da API:', responseData);
+
       if (!response.ok || responseData.status !== 'success') {
-          throw new Error(responseData?.msg || responseData.erros?.join(', ') || 'Erro ao cadastrar a venda na API externa.');
+          // Linha corrigida para extrair a mensagem do campo "message"
+          const apiMessage = responseData?.message || responseData?.msg || (responseData.erros && responseData.erros.join(', ')) || 'A API não retornou uma mensagem de erro específica.';
+          throw new Error(`[ERRO DA API GESTÃO CLICK] ${apiMessage}`);
       }
+
       return responseData.data;
+
     } catch (error) {
-        console.error('Erro em cadastrarVenda:', error);
+        console.error('Erro detalhado em cadastrarVenda:', error);
+        // Agora o throw vai conter a mensagem de erro real
         throw error;
     }
-  },
+},
 
   async cadastrarServico(nomeServico: string): Promise<{ id: string; nome: string }> {
     try {
@@ -187,7 +198,6 @@ const gestaoApi = {
     }
   },
 
-  // ===== INÍCIO DA CORREÇÃO: Funções movidas para o local correto e com vírgula =====
   async buscarServicoPorId(id: string): Promise<any> {
     try {
         const response = await fetch(`${API_BASE_URL}/servicos/${id}`, { headers: getAuthHeaders() });
@@ -221,7 +231,6 @@ const gestaoApi = {
         throw error;
     }
   }
-  // ===== FIM DA CORREÇÃO =====
 };
 
 export { gestaoApi };
