@@ -199,19 +199,15 @@ const pdfProgress = ref<Record<string, {
 
 const dailyLimits = { mesa: 4000, corrida: 10000, overall: 14000, saturday: 5000 };
 
-// --- INÍCIO DA CORREÇÃO 1 (KANBAN) ---
-// Chaves convertidas para minúsculas para comparação insensível
 const fabricMachineMap: Record<string, 'MESA' | 'CORRIDA'> = {
   'tecido creponado': 'MESA', 'malha tulle': 'MESA', 'malha fluity': 'MESA', 'malha canelada': 'MESA', 'malha suplex': 'MESA', 'tecido chiffon': 'MESA', 'malha liganet': 'MESA',
   'tecido crepinho': 'CORRIDA', 'tecido twill fly': 'CORRIDA', 'tecido toque de seda': 'CORRIDA', 'tecido corta-vento': 'CORRIDA', 'tecido tactel': 'CORRIDA', 'tecido alfaiataria': 'CORRIDA'
 };
 
 const getMachineTypeForFabric = (fabric: string): 'MESA' | 'CORRIDA' => {
-  // Normaliza o nome do tecido (remove espaços e converte para minúsculas)
   const normalizedFabric = fabric?.trim().toLowerCase() || '';
   return fabricMachineMap[normalizedFabric] || 'CORRIDA';
 };
-// --- FIM DA CORREÇÃO 1 (KANBAN) ---
 
 const statusDisplayMap: Record<string, string> = {
     in_printing: 'Impressão', in_cutting: 'Corte'
@@ -335,7 +331,7 @@ const imageToBase64 = (url: string): Promise<string> => new Promise((resolve, re
 });
 
 const generateDailyPdf = async (day: { date: Date; items: ProductionItem[] }) => {
-  const dateKey = format(day.date, 'yyyy-MM-dd');
+  const dateKey = format(day.date, "yyyy-MM-dd");
   pdfProgress.value[dateKey] = { generating: true, current: 0, total: day.items.length };
 
   try {
@@ -370,78 +366,96 @@ const generateDailyPdf = async (day: { date: Date; items: ProductionItem[] }) =>
     doc.setFontSize(11).setFont('helvetica', 'normal');
     doc.text(formattedDate, pageWidth / 2, 48, { align: 'center' });
 
+    const groupedByOrder = day.items.reduce((acc, item) => {
+        const orderId = item.order_number;
+        if (!acc[orderId]) acc[orderId] = [];
+        acc[orderId].push(item);
+        return acc;
+    }, {} as Record<string, ProductionItem[]>);
+
+    const colorPalette = [
+        [207, 216, 220], [179, 229, 252], [188, 239, 192], [255, 224, 178],
+        [225, 190, 231], [178, 235, 242], [255, 249, 196], [255, 205, 210],
+        [209, 196, 233], [197, 225, 165], [174, 214, 241], [249, 206, 238]
+    ];
+    const orderColors: Record<string, number[]> = {};
+    const legendData: { text: string; color: number[] }[] = [];
+    let colorIndex = 0;
+
     const tableBody = [];
-    for (const [index, item] of day.items.entries()) {
-        pdfProgress.value[dateKey].current = index + 1;
-        await new Promise(resolve => setTimeout(resolve, 10));
+    for (const orderNumber in groupedByOrder) {
+        const items = groupedByOrder[orderNumber];
+        const color = colorPalette[colorIndex % colorPalette.length];
+        orderColors[orderNumber] = color;
+        legendData.push({ text: `#${String(orderNumber).padStart(4, '0')} - ${items[0].customer_name}`, color });
+        colorIndex++;
 
-        const { data: opNumber } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
-        const completionDate = addBusinessDays(parseISO(item.scheduled_date), 3);
-        const forecastDate = getNextDeliveryDay(completionDate);
-        const formattedForecastDate = format(forecastDate, 'dd/MM/yyyy', { locale: ptBR });
+        for (const item of items) {
+            pdfProgress.value[dateKey].current++;
+            await new Promise(resolve => setTimeout(resolve, 10));
+            const { data: opNumber } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
+            const completionDate = addBusinessDays(parseISO(item.scheduled_date), 3);
+            const forecastDate = getNextDeliveryDay(completionDate);
+            const formattedForecastDate = format(forecastDate, 'dd/MM/yyyy', { locale: ptBR });
+            tableBody.push({
+                orderNumber,
+                cells: [`#${String(item.order_number).padStart(4, '0')}`, `#${String(opNumber).padStart(4, '0')}`, item.customer_name, item.creator_name, item.stamp_ref, item.fabric_type, `${formatMeters(item.quantity_meters)}m`, formattedForecastDate, '']
+            });
+        }
+    }
 
-        tableBody.push([
-            `#${String(item.order_number).padStart(4, '0')}`,
-            `#${String(opNumber).padStart(4, '0')}`,
-            item.stamp_ref,
-            item.fabric_type,
-            `${formatMeters(item.quantity_meters)}m`,
-            formattedForecastDate,
-            '' // Coluna para o Check
-        ]);
+    let startY = 55;
+    if (legendData.length > 0) {
+        doc.setFontSize(10).setFont('helvetica', 'bold').setTextColor(40, 40, 40).text('Legenda de Pedidos', 14, startY);
+        startY += 5;
+        let currentX = 15;
+        legendData.forEach((legend) => {
+            const textWidth = doc.getTextWidth(legend.text) + 7; // Add padding
+            if (currentX + 5 + textWidth > pageWidth - 15) { // Check if it overflows
+                startY += 6; // Move to next line
+                currentX = 15; // Reset X position
+            }
+            doc.setFillColor(legend.color[0], legend.color[1], legend.color[2]);
+            doc.rect(currentX, startY - 3.5, 4, 4, 'F');
+            doc.setFontSize(8).setFont('helvetica', 'normal').setTextColor(50, 50, 50);
+            doc.text(legend.text, currentX + 6, startY);
+            currentX += 5 + textWidth + 4; // spacing between items
+        });
+        startY += 8; // Margin after legend
     }
 
     autoTable(doc, {
-      startY: 55,
-      head: [['Pedido', 'OP', 'Referência', 'Tecido', 'Metragem', 'Prev. Entrega', 'Check']],
-      body: tableBody,
+      startY: startY,
+      head: [['Ped.', 'OP', 'Cliente', 'Vend.', 'Ref.', 'Tecido', 'Qtd.', 'Entrega', 'OK']],
+      body: tableBody.map(row => row.cells),
       theme: 'grid',
+      willDrawCell: (data) => {
+         if (data.section === 'body' && tableBody[data.row.index]) {
+              const rowOrderNumber = tableBody[data.row.index].orderNumber;
+              const color = orderColors[rowOrderNumber];
+              if (color) {
+                  doc.setFillColor(color[0], color[1], color[2]);
+              }
+          }
+      },
       columnStyles: {
-        0: { cellWidth: 18 },
-        1: { cellWidth: 15 },
-        2: { cellWidth: 'auto' },
-        3: { cellWidth: 40 },
-        4: { cellWidth: 18, halign: 'right' },
-        5: { cellWidth: 22 },
-        6: { cellWidth: 15, halign: 'center' }
+        0: { cellWidth: 12 }, 1: { cellWidth: 12 }, 2: { cellWidth: 35 }, 3: { cellWidth: 25 },
+        4: { cellWidth: 30 }, 5: { cellWidth: 25 }, 6: { cellWidth: 12, halign: 'right' },
+        7: { cellWidth: 18 }, 8: { cellWidth: 10, halign: 'center' }
       },
-      rowPageBreak: 'auto',
-      rowHeight: 9,
-      headStyles: {
-        fillColor: [41, 128, 185],
-        valign: 'middle'
-      },
-      bodyStyles: {
-        valign: 'middle',
-        fontSize: 8
-      },
+      headStyles: { fillColor: [41, 128, 185], valign: 'middle', textColor: [255, 255, 255] },
+      bodyStyles: { valign: 'middle', fontSize: 8, textColor: [0, 0, 0] },
     });
 
-    // --- INÍCIO DA CORREÇÃO 2 (RODAPÉ) ---
     const totalPages = (doc as any).internal.getNumberOfPages();
-
     for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i); // Muda para a página i
-
-        doc.setFontSize(9);
-        doc.setTextColor(150);
-
-        // Rodapé centralizado
-        const footerText = 'Gerado com MJProcess';
-        doc.text(footerText, pageWidth / 2, pageHeight - 10, {
-            align: 'center'
-        });
-
-        // Rodapé com número da página
-        const pageNumText = `Página ${i} de ${totalPages}`;
-        doc.text(pageNumText, pageWidth - 15, pageHeight - 10, {
-            align: 'right'
-        });
+        doc.setPage(i);
+        doc.setFontSize(9).setTextColor(150);
+        doc.text('Gerado com MJProcess', pageWidth / 2, pageHeight - 10, { align: 'center' });
+        doc.text(`Página ${i} de ${totalPages}`, pageWidth - 15, pageHeight - 10, { align: 'right' });
     }
-    // --- FIM DA CORREÇÃO 2 (RODAPÉ) ---
 
     doc.save(`Producao_${format(day.date, 'yyyy-MM-dd')}.pdf`);
-
   } catch(error) {
       console.error("ERRO GERAL na geração do PDF:", error);
       alert("Ocorreu um erro inesperado ao gerar o PDF. Verifique o console para mais detalhes.")
@@ -449,7 +463,6 @@ const generateDailyPdf = async (day: { date: Date; items: ProductionItem[] }) =>
     pdfProgress.value[dateKey].generating = false;
   }
 };
-
 
 const closeDetailModal = () => { showDetailModal.value = false; };
 
