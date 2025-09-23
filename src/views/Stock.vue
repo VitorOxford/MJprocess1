@@ -88,8 +88,15 @@ const filteredStockItems = computed(() => {
 });
 
 const getMeterColor = (item: StockItem): string => {
-  if (item.low_stock_threshold && item.available_meters < item.low_stock_threshold) return 'text-error';
-  if (item.low_stock_threshold && item.available_meters < item.low_stock_threshold * 1.5) return 'text-warning'; // Alerta amarelo um pouco antes
+  // Vermelho se o estoque for negativo
+  if (item.available_meters < 0) {
+    return 'text-error';
+  }
+  // Laranja se estiver abaixo do limite mínimo (mas não negativo)
+  if (item.low_stock_threshold && item.available_meters < item.low_stock_threshold) {
+    return 'text-warning';
+  }
+  // Verde se estiver acima ou igual ao limite
   return 'text-success';
 }
 
