@@ -41,7 +41,17 @@
             <div class="d-flex align-center">
               <div>
                 <h3 class="text-h6 font-weight-bold">{{ item.fabric_type }}</h3>
-                <p class="text-caption text-medium-emphasis mt-1">Disponível em estoque</p>
+                <v-chip
+                  :color="getStockStatus(item).color"
+                  :prepend-icon="getStockStatus(item).icon"
+                  size="small"
+                  label
+                  variant="flat"
+                  :class="['stock-status-chip', getStockStatus(item).pulseClass]"
+                  class="mt-2"
+                >
+                  {{ getStockStatus(item).text }}
+                </v-chip>
               </div>
               <v-spacer></v-spacer>
               <div class="text-right">
@@ -49,7 +59,7 @@
                   <v-icon size="small" class="mr-1">mdi-tape-measure</v-icon>
                   <span class="text-caption font-weight-bold">{{ item.meters_per_roll }}{{ item.unit_of_measure === 'kg' ? 'kg' : 'm' }} / Rolo</span>
                 </div>
-                <p class="text-h4 font-weight-bold" :class="getMeterColor(item)">
+                <p class="text-h4 font-weight-bold" :class="`text-${getStockStatus(item).color}`">
                   {{ item.available_meters.toLocaleString('pt-BR') }}{{ item.unit_of_measure === 'kg' ? 'kg' : 'm' }}
                 </p>
               </div>
@@ -87,18 +97,30 @@ const filteredStockItems = computed(() => {
   ).sort((a, b) => a.fabric_type.localeCompare(b.fabric_type));
 });
 
-const getMeterColor = (item: StockItem): string => {
-  // Vermelho se o estoque for negativo
-  if (item.available_meters < 0) {
-    return 'text-error';
+const getStockStatus = (item: StockItem): { text: string; color: string; icon: string; pulseClass: string } => {
+  if (item.available_meters <= 0) {
+    return {
+      text: 'Sem estoque',
+      color: 'error',
+      icon: 'mdi-close-octagon-outline',
+      pulseClass: 'pulse-error'
+    };
   }
-  // Laranja se estiver abaixo do limite mínimo (mas não negativo)
   if (item.low_stock_threshold && item.available_meters < item.low_stock_threshold) {
-    return 'text-warning';
+    return {
+      text: 'Abaixo do mínimo',
+      color: 'warning',
+      icon: 'mdi-alert-outline',
+      pulseClass: 'pulse-warning'
+    };
   }
-  // Verde se estiver acima ou igual ao limite
-  return 'text-success';
-}
+  return {
+    text: 'Estoque OK',
+    color: 'success',
+    icon: 'mdi-check-circle-outline',
+    pulseClass: ''
+  };
+};
 
 const fetchStock = async () => {
   loading.value = true;
@@ -117,6 +139,30 @@ onMounted(fetchStock);
 </script>
 
 <style scoped lang="scss">
+@keyframes pulse-warning-animation {
+  0% {
+    box-shadow: 0 0 0 0 rgba(251, 140, 0, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 10px 10px rgba(251, 140, 0, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 140, 0, 0);
+  }
+}
+
+@keyframes pulse-error-animation {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 10px 10px rgba(244, 67, 54, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
+  }
+}
+
 .stock-item-card {
   border-radius: 12px;
   background-color: rgba(30, 30, 35, 0.8);
@@ -128,6 +174,18 @@ onMounted(fetchStock);
     transform: translateY(-5px);
     box-shadow: 0 8px 25px rgba(0,0,0,0.3);
     border-color: rgba(var(--v-theme-primary), 0.5);
+  }
+}
+
+.stock-status-chip {
+  font-weight: bold;
+  
+  &.pulse-warning {
+    animation: pulse-warning-animation 2s infinite;
+  }
+
+  &.pulse-error {
+    animation: pulse-error-animation 2s infinite;
   }
 }
 </style>
