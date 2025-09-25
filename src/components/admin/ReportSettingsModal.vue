@@ -95,6 +95,8 @@
                <v-select
                 v-model="selectedStatus"
                 :items="statusOptions"
+                item-title="text"
+                item-value="value"
                 variant="outlined"
                 density="compact"
                 placeholder="Todos"
@@ -151,7 +153,13 @@ const selectedClients = ref<string[]>([]);
 const selectedFabrics = ref<string[]>([]);
 const selectedStatus = ref<string | null>(null);
 
-const statusOptions = ['design_pending', 'customer_approval', 'production_queue', 'completed', 'delivered'];
+const statusOptions = [
+  { value: 'design_pending', text: 'Em design' },
+  { value: 'customer_approval', text: 'Aprovação do vendedor' },
+  { value: 'completed', text: 'Completado' },
+  { value: 'production_queue', text: 'Em produção' },
+  { value: 'delivered', text: 'Entregue' }
+];
 
 const dates = computed<[Date, Date]>(() => {
     return [startOfDay(parseISO(customStartDate.value)), endOfDay(parseISO(customEndDate.value))];
