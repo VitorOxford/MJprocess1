@@ -1,7 +1,6 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
-import { useUserStore } from '@/stores/user';
-import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays } from 'date-fns';
+import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export type OrderItem = {
@@ -57,6 +56,24 @@ export type ProductionScheduleItem = {
   item: OrderItem;
 };
 
+// ================== INÍCIO DAS ALTERAÇÕES ==================
+
+// Lista de vendedores a serem ignorados em todos os cálculos de gráficos.
+const excludedSellers = ['João Vitor', 'Levi Lopes'];
+
+// Função para padronizar os nomes dos tecidos.
+const normalizeFabricName = (name: string | null | undefined): string => {
+    if (!name) return 'Não especificado';
+    return name
+        .toLowerCase()
+        .replace(/^(tecido|malha)\s+/i, '') // Remove "tecido " ou "malha " do início
+        .trim()
+        .replace(/^\w/, (c) => c.toUpperCase()); // Capitaliza a primeira letra
+};
+
+// ================== FIM DAS ALTERAÇÕES ==================
+
+
 // Função para adicionar dias úteis (não conta domingos)
 const addBusinessDays = (startDate: Date, days: number): Date => {
   const newDate = new Date(startDate);
@@ -94,7 +111,12 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   getters: {
-    // CORREÇÃO APLICADA AQUI
+    // Getter auxiliar para filtrar os pedidos uma única vez
+    filteredOrdersForCharts(state): Order[] {
+        return state.orders.filter(order =>
+            order.creator && !excludedSellers.includes(order.creator.full_name)
+        );
+    },
     productionGhosts(state) {
       if (!state.productionScheduleItems || state.productionScheduleItems.length === 0) {
         return [];
@@ -131,7 +153,7 @@ export const useDashboardStore = defineStore('dashboard', {
         groupedGhosts.push({
           ...parentOrder,
           id: parentOrder.id,
-          order_items: allItemsForThisOrder, // Garante que a lista de itens esteja no objeto
+          order_items: allItemsForThisOrder,
           quantity_meters: totalMeters,
           forecast_completion_date: completionDate,
           forecast_delivery_date: forecastDeliveryDate,
@@ -262,7 +284,7 @@ export const useDashboardStore = defineStore('dashboard', {
     },
     salesBySeller(state): { seller: string, totalMeters: number }[] {
         const salesMap = new Map<string, number>();
-        state.orders.forEach(order => {
+        this.filteredOrdersForCharts.forEach(order => {
             const sellerName = order.creator?.full_name || 'Sem Vendedor';
             const currentMeters = salesMap.get(sellerName) || 0;
             salesMap.set(sellerName, currentMeters + order.quantity_meters);
@@ -271,20 +293,67 @@ export const useDashboardStore = defineStore('dashboard', {
     },
     salesByFabric(state): { fabric: string, totalMeters: number }[] {
         const fabricMap = new Map<string, number>();
-        state.orders.forEach(order => {
+        this.filteredOrdersForCharts.forEach(order => {
             if (order.is_launch) {
                 order.order_items.forEach(item => {
-                    const fabricName = item.fabric_type || 'Não especificado';
+                    const fabricName = normalizeFabricName(item.fabric_type);
                     const currentMeters = fabricMap.get(fabricName) || 0;
                     fabricMap.set(fabricName, currentMeters + item.quantity_meters);
                 });
             } else if(order.details?.fabric_type) {
-                const fabricName = order.details.fabric_type;
+                const fabricName = normalizeFabricName(order.details.fabric_type);
                 const currentMeters = fabricMap.get(fabricName) || 0;
                 fabricMap.set(fabricName, currentMeters + order.quantity_meters);
             }
         });
         return Array.from(fabricMap.entries()).map(([fabric, totalMeters]) => ({ fabric, totalMeters })).sort((a, b) => b.totalMeters - a.totalMeters);
+    },
+    monthlySalesPerformance(state): { labels: string[], data: number[] } {
+        const monthMap = new Map<string, number>();
+        const today = new Date();
+
+        for (let i = 5; i >= 0; i--) {
+            const date = subMonths(today, i);
+            const monthKey = format(date, 'MMM/yy', { locale: ptBR });
+            monthMap.set(monthKey, 0);
+        }
+
+        this.filteredOrdersForCharts.forEach(order => {
+            const orderDate = parseISO(order.created_at);
+            if (isValid(orderDate)) {
+                const monthKey = format(orderDate, 'MMM/yy', { locale: ptBR });
+                if (monthMap.has(monthKey)) {
+                    const currentMeters = monthMap.get(monthKey) || 0;
+                    monthMap.set(monthKey, currentMeters + order.quantity_meters);
+                }
+            }
+        });
+
+        return {
+            labels: Array.from(monthMap.keys()),
+            data: Array.from(monthMap.values()),
+        };
+    },
+    designItemsByStatus(state): { labels: string[], data: number[] } {
+        const statusMap = new Map<string, number>();
+        const designStatuses = ['Desenvolvimento', 'Alteração', 'Finalização', 'Aprovado'];
+
+        designStatuses.forEach(status => statusMap.set(status, 0));
+
+        state.orders.forEach(order => {
+            if (order.is_launch && order.order_items) {
+                order.order_items.forEach(item => {
+                    if (item.design_tag && statusMap.has(item.design_tag)) {
+                        statusMap.set(item.design_tag, (statusMap.get(item.design_tag) || 0) + 1);
+                    }
+                });
+            }
+        });
+
+        return {
+            labels: Array.from(statusMap.keys()),
+            data: Array.from(statusMap.values()),
+        };
     },
     designItemsStatus(state): { onTime: number, delayed: number } {
       const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'finalizing'];
