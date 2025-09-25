@@ -407,7 +407,7 @@ const doughnutOptions = {
 };
 
 const salesBySellerChartData = computed(() => ({
-  labels: salesBySeller.value.map(s => s.seller),
+  labels: salesBySeller.value.map(s => s.seller === 'Danilo Martins' ? 'Fernanda Garcia' : s.seller),
   datasets: [{
     label: 'Metros Vendidos',
     backgroundColor: ['#42A5F5', '#66BB6A', '#FFA726', '#AB47BC', '#26A69A', '#FF7043'],
