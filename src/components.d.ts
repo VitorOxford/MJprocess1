@@ -38,6 +38,8 @@ declare module 'vue' {
     ProjectFormModal: typeof import('./components/projects/ProjectFormModal.vue')['default']
     ReleasedForProductionModal: typeof import('./components/design/ReleasedForProductionModal.vue')['default']
     ReleaseOrderModal: typeof import('./components/production/ReleaseOrderModal.vue')['default']
+    ReportGeneratorModal: typeof import('./components/admin/ReportGeneratorModal.vue')['default']
+    ReportSettingsModal: typeof import('./components/admin/ReportSettingsModal.vue')['default']
     RequestChangesModal: typeof import('./components/RequestChangesModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

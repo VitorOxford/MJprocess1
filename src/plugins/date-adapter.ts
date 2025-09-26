@@ -39,6 +39,8 @@ export const dateAdapter = {
       monthAndYear: "MMMM 'de' yyyy",
       dayOfMonth: 'd',
       year: 'yyyy',
+      // ===== LINHA DA CORREÇÃO ADICIONADA AQUI =====
+      fullDateWithWeekday: "EEEE, dd 'de' MMMM 'de' yyyy",
     };
     const internalFormat = map[formatString] ?? formatString;
     return formatDate(date, internalFormat, { locale: ptBR });
@@ -88,9 +90,6 @@ export const dateAdapter = {
     return Array.from({ length: 7 }).map((_, i) => formatDate(addDays(start, i), 'EEEEE', { locale: ptBR }));
   },
 
-  // ==========================================================
-  // ===== FUNÇÃO QUE FALTAVA ADICIONADA AQUI =================
-  // ==========================================================
   getWeekArray: (date: Date) => {
     const start = startOfWeek(startOfMonth(date), { locale: ptBR, weekStartsOn: 1 });
     const end = endOfWeek(endOfMonth(date), { locale: ptBR, weekStartsOn: 1 });

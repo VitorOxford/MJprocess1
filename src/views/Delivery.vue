@@ -143,6 +143,7 @@
             </template>
             <template #footer>
                 <div v-for="ghost in getGhostEntriesForDay(day.date)" :key="ghost.id">
+                    {{ console.log(`[DELIVERY.VUE] Renderizando card fantasma para o dia ${format(day.date, 'dd/MM')}:`, ghost) }}
                     <v-card class="order-card ghost-card production-ghost mb-4" elevation="4">
                         <v-card-text @click="openDetailModal(ghost.id)">
                             <p class="font-weight-bold text-subtitle-1">{{ ghost.customer_name }}</p>
@@ -250,7 +251,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, onActivated } from 'vue';
+import { ref, onMounted, computed, onActivated, watch } from 'vue';
 import { supabase } from '@/api/supabase';
 import OrderDetailModal from '@/components/OrderDetailModal.vue';
 import BillingModal from '@/components/BillingModal.vue';
@@ -258,7 +259,7 @@ import draggable from 'vuedraggable';
 import { useUserStore } from '@/stores/user';
 import { useDashboardStore } from '@/stores/dashboard';
 import { storeToRefs } from 'pinia';
-import { format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays, isToday } from 'date-fns';
+import { format, addDays, startOfToday, getDay, isSameDay, parseISO, isBefore, startOfWeek, endOfWeek, subDays, isToday, isValid } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // Types
@@ -272,11 +273,13 @@ type Order = {
   order_number: number;
   order_items: OrderItem[];
   creator: { full_name: string; } | null;
+  forecast_delivery_date?: string | null; // Adicionado para consistência
 };
 
 // State
 const userStore = useUserStore();
 const dashboardStore = useDashboardStore();
+// LOG: Desestruturando o getter productionGhosts para ser usado no template
 const { productionGhosts, loading } = storeToRefs(dashboardStore);
 
 const showDetailModal = ref(false);
@@ -293,6 +296,12 @@ const selectedOrderForBilling = ref<Order | null>(null);
 const showForceCompleteModal = ref(false);
 const isForcingComplete = ref(false);
 const selectedOrderForForceComplete = ref<Order | null>(null);
+
+// LOG: Observando a propriedade productionGhosts para depuração
+watch(productionGhosts, (newGhosts) => {
+    console.log('[DELIVERY.VUE] A propriedade `productionGhosts` foi atualizada. Novos fantasmas:', newGhosts);
+}, { deep: true });
+
 
 const historyHeaders = [
   { title: 'Cliente', key: 'customer_name' },
@@ -318,17 +327,22 @@ const canDragOrder = (order: Order) => {
 };
 
 const getOrderDisplayMeters = (order: any) => {
-    // CORREÇÃO: Adicionada verificação de segurança para order.order_items
     if (order.billed_at && order.is_launch && order.order_items?.length > 0) {
         return order.order_items.reduce((sum: number, item: any) => sum + (item.billed_quantity || item.quantity_meters || 0), 0);
     }
     return order.quantity_meters;
 };
 
+// LOG: Função para buscar os fantasmas para um dia específico
 const getGhostEntriesForDay = (date: Date) => {
-    return productionGhosts.value.filter(ghost =>
-        ghost.forecast_delivery_date && isSameDay(ghost.forecast_delivery_date, date)
+    console.log(`[getGhostEntriesForDay] Buscando fantasmas para o dia: ${format(date, 'dd/MM')}`);
+    const ghostsForDay = productionGhosts.value.filter(ghost =>
+        ghost.forecast_delivery_date && isValid(ghost.forecast_delivery_date) && isSameDay(ghost.forecast_delivery_date, date)
     );
+    if (ghostsForDay.length > 0) {
+      console.log(`[getGhostEntriesForDay] ENCONTRADOS ${ghostsForDay.length} FANTASMAS para ${format(date, 'dd/MM')}:`, ghostsForDay);
+    }
+    return ghostsForDay;
 };
 
 
@@ -425,12 +439,19 @@ const openBillingModal = (order: Order) => {
 const handleBilled = async () => {
     showBillingModal.value = false;
     await fetchDeliveryOrders();
+    // LOG: Forçar uma nova busca no dashboard para atualizar o estado
+    await dashboardStore.fetchData();
 };
 
 
 const formatDate = (date: Date | string | null | undefined, formatString: string) => {
   if (!date) return '';
   const dateObj = typeof date === 'string' ? parseISO(date) : new Date(date);
+  // LOG: Verificando se a data é válida antes de formatar
+  if (!isValid(dateObj)) {
+    console.error(`[formatDate] Data inválida recebida:`, date);
+    return 'Data Inválida';
+  }
   return format(dateObj, formatString, { locale: ptBR });
 };
 
@@ -471,7 +492,9 @@ const confirmForceComplete = async () => {
             p_admin_id: userStore.profile.id
         });
         if (error) throw error;
-        await Promise.all([fetchDeliveryOrders(), dashboardStore.fetchProductionSchedule()]);
+        await fetchDeliveryOrders();
+        // LOG: Forçar uma nova busca no dashboard para atualizar o estado
+        await dashboardStore.fetchData();
         closeForceCompleteModal();
     } catch (err: any) {
         console.error("Erro ao forçar conclusão do pedido:", err);
@@ -521,12 +544,14 @@ const filteredDeliveredOrders = computed(() => {
 
 onActivated(async () => {
     await fetchDeliveryOrders();
-    await dashboardStore.fetchProductionSchedule();
+    // LOG: Forçar uma nova busca no dashboard para atualizar o estado
+    await dashboardStore.fetchData();
 });
 
 onMounted(async () => {
     await fetchDeliveryOrders();
-    await dashboardStore.fetchProductionSchedule();
+    // LOG: Forçar uma nova busca no dashboard para atualizar o estado
+    await dashboardStore.fetchData();
 });
 
 </script>

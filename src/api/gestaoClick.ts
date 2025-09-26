@@ -230,7 +230,21 @@ const gestaoApi = {
         console.error(`Erro em atualizarServico para ID "${servicoId}":`, error);
         throw error;
     }
-  }
+  },
+
+  async verificarVendaPorCodigo(codigo: number): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/vendas?codigo=${codigo}`, { headers: getAuthHeaders() });
+      if (!response.ok) {
+        return false;
+      }
+      const responseData = await response.json();
+      return responseData.status === 'success' && Array.isArray(responseData.data) && responseData.data.length > 0;
+    } catch (error) {
+      console.error(`Erro ao verificar venda por código "${codigo}":`, error);
+      return false;
+    }
+  },
 };
 
 export { gestaoApi };

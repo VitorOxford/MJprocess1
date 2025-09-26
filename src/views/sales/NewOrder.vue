@@ -7,6 +7,14 @@
           Lançar Novo Pedido
         </v-toolbar-title>
         <v-spacer></v-spacer>
+
+        <div class="pa-2 text-right mr-4">
+          <div class="text-caption text-grey d-flex align-center">
+             <v-icon start small class="blinking-icon">mdi-truck-fast-outline</v-icon>
+            Previsão de Entrega
+          </div>
+          <div class="text-h6 font-weight-bold">{{ forecastDeliveryDate }}</div>
+        </div>
         <div class="pa-2 text-right">
           <div class="text-caption text-grey">Próximo Pedido</div>
           <div v-if="loadingNextOrderNumber" class="text-center">
@@ -82,6 +90,7 @@
                         :key="index"
                         :active="editedItemIndex === index"
                         @click="editItem(index)"
+                        :class="{ 'stock-warning-item': item.has_insufficient_stock }"
                       >
                         <template #prepend>
                           <v-img
@@ -111,6 +120,12 @@
                           >
                             {{ item.design_tag }}
                           </v-chip>
+                          <v-tooltip v-if="item.has_insufficient_stock" location="top">
+                            <template v-slot:activator="{ props }">
+                              <v-icon v-bind="props" color="warning" size="small" class="ml-2">mdi-information</v-icon>
+                            </template>
+                            <span>Prazo estendido! Sem estoque suficiente, foram adicionados 2 dias úteis à previsão de entrega.</span>
+                          </v-tooltip>
                         </v-list-item-title>
                         <v-list-item-subtitle>
                           {{ item.fabric_type || 'Sem tecido' }} -
@@ -540,6 +555,7 @@ type OrderItem = {
   notes: string;
   design_tag: 'Desenvolvimento' | 'Alteração' | 'Finalização' | 'Aprovado';
   new_stamp_file?: File | null;
+  has_insufficient_stock: boolean; // <-- NOVA PROPRIEDADE
 };
 type StampLibraryItem = {
     id: number;
@@ -638,7 +654,7 @@ const orderHeader = reactive<OrderHeader>({
 const createNewItem = (): OrderItem => ({
   fabric_type: null, stamp_ref_id: null, stamp_ref: '', quantity: null, quantity_meters: null,
   unit_of_measure: 'm', rendimento: null, valor_unitario: null, stamp_image_url: null,
-  notes: '', design_tag: 'Desenvolvimento', new_stamp_file: null,
+  notes: '', design_tag: 'Desenvolvimento', new_stamp_file: null, has_insufficient_stock: false,
 });
 
 const orderItems = ref<OrderItem[]>([]);
@@ -648,6 +664,30 @@ const isEditing = computed(() => editedItemIndex.value !== null);
 
 const feedback = reactive<Feedback>({ message: '', type: 'success' });
 
+// --- Funções Auxiliares de Data ---
+const addBusinessDays = (startDate: Date, days: number): Date => {
+  const newDate = new Date(startDate);
+  let addedDays = 0;
+  while (addedDays < days) {
+    newDate.setDate(newDate.getDate() + 1);
+    if (newDate.getDay() !== 0) { // Domingo = 0
+      addedDays++;
+    }
+  }
+  return newDate;
+};
+
+const getNextDeliveryDay = (date: Date): Date => {
+  const newDate = new Date(date);
+  newDate.setDate(newDate.getDate() + 1);
+  while (true) {
+    const dayOfWeek = newDate.getDay();
+    if ([2, 4, 6].includes(dayOfWeek)) { // Ter, Qui, Sáb
+      return newDate;
+    }
+    newDate.setDate(newDate.getDate() + 1);
+  }
+};
 
 // --- Validation and Computed Properties ---
 const rules = {
@@ -656,6 +696,17 @@ const rules = {
   fileRequired: (v: any) => !!v || 'É obrigatório selecionar um arquivo.',
   fileSize: (v: File[] | null) => !v || v.length === 0 || !v[0] || v[0].size < 5000000 || 'O arquivo não pode exceder 5 MB!',
 };
+
+const forecastDeliveryDate = computed(() => {
+    const today = new Date();
+    const hasStockIssues = orderItems.value.some(item => item.has_insufficient_stock);
+    const extraDays = hasStockIssues ? 2 : 0; // Adiciona 2 dias se houver problema
+    const startProductionDate = addDays(today, 1);
+    // Prazo de 3 dias (início + 2 dias úteis) + dias extras = 5 dias de produção (início + 4 dias úteis)
+    const completionDate = addBusinessDays(startProductionDate, 2 + extraDays);
+    const deliveryDate = getNextDeliveryDay(completionDate);
+    return format(deliveryDate, "EEEE, dd/MM", { locale: ptBR });
+});
 
 const totalOrderValue = computed(() => {
   return orderItems.value.reduce((total, item) => total + (item.quantity || 0) * (item.valor_unitario || 0), 0);
@@ -687,7 +738,8 @@ const selectedProductRendimento = computed(() => {
 });
 const selectedProductStock = computed(() => {
     if (!selectedProduct.value) return null;
-    return (selectedProduct.value as StockItem).available_meters ?? parseFloat((selectedProduct.value as GestaoClickProduct).estoque as string);
+    const stockItem = stockItems.value.find(s => s.gestao_click_id === (selectedProduct.value as GestaoClickProduct).id);
+    return stockItem ? stockItem.available_meters : parseFloat((selectedProduct.value as GestaoClickProduct).estoque as string);
 });
 const estimatedMeters = computed(() => {
     if (selectedProductUnit.value !== 'kg' || !selectedProductRendimento.value || !editedItem.value.quantity) return null;
@@ -921,13 +973,12 @@ const saveOrUpdateItem = async () => {
     }
   }
 
-  const rawItem = toRaw(editedItem.value);
-  if (rawItem.unit_of_measure === 'kg' && rawItem.rendimento && rawItem.quantity) {
-    rawItem.quantity_meters = rawItem.quantity * rawItem.rendimento;
-  } else {
-    rawItem.quantity_meters = rawItem.quantity;
-  }
+  const stockItem = stockItems.value.find(s => s.fabric_type === editedItem.value.fabric_type);
+  const availableStock = stockItem ? stockItem.available_meters : 0;
+  const requiredMeters = editedItem.value.quantity_meters || 0;
+  editedItem.value.has_insufficient_stock = requiredMeters > availableStock;
 
+  const rawItem = toRaw(editedItem.value);
   if (isEditing.value && editedItemIndex.value !== null) {
     orderItems.value[editedItemIndex.value] = structuredClone(rawItem);
   } else {
@@ -977,7 +1028,6 @@ const handleInstallmentValueChange = (changedIndex: number, newValue: string | n
     const changedValue = numericValue;
     const total = totalOrderValue.value;
 
-    // Calcula o total já preenchido, excluindo a parcela que está sendo alterada
     let filledTotal = 0;
     paymentDetails.installments.forEach((inst, index) => {
         if (index !== changedIndex) {
@@ -985,7 +1035,6 @@ const handleInstallmentValueChange = (changedIndex: number, newValue: string | n
         }
     });
 
-    // O valor restante a ser distribuído
     const remainingValue = total - changedValue;
     const remainingInstallments = paymentDetails.installments.length - 1;
 
@@ -1021,16 +1070,13 @@ const syncOrderWithGestaoClick = async (proofPublicUrl: string | null) => {
         observations += `\n\nComprovante de entrada disponível em: ${proofPublicUrl}`;
     }
 
-    // --- PAYLOAD FINAL E CORRIGIDO ---
    const salePayload: any = {
     codigo: String(nextOrderNumber.value),
     tipo: "produto",
     data: new Date().toISOString().split('T')[0],
-    // --- CORREÇÃO: REMOVER String() ---
     cliente_id: String(orderHeader.customer_id),
     vendedor_id: String(userStore.profile?.gestao_click_id),
     situacao_id: String(situacao.id),
-    // --- FIM DA CORREÇÃO ---
     condicao_pagamento: paymentDetails.type === 'vista' ? 'a_vista' : paymentDetails.type,
     observacoes: observations.trim(),
     produtos: orderItems.value.map(item => {
@@ -1067,10 +1113,7 @@ const syncOrderWithGestaoClick = async (proofPublicUrl: string | null) => {
             valor: inst.value.toFixed(2),
             forma_pagamento_id: String(inst.payment_method_id),
             plano_contas_id: "32651675",
-            // --- ALTERAÇÃO AQUI ---
-            // Remova o número do pedido desta string
             observacao: `Parcela referente ao pedido do cliente.`
-            // --- FIM DA ALTERAÇÃO ---
         }
     }))
 };
@@ -1134,7 +1177,6 @@ const submitLaunch = async () => {
       proofPublicUrl = await uploadFile(file, 'proofs', filePath);
     }
 
-    // Passa a URL do comprovante para a função de sincronização
     await syncOrderWithGestaoClick(proofPublicUrl);
 
     const itemsPayload = orderItems.value.map(item => ({
@@ -1175,7 +1217,7 @@ const resetForm = () => {
   orderHeader.observation = '';
   paymentDetails.type = 'vista';
   paymentDetails.installments = [];
-  paymentDetails.installments_interval = 30; // Reseta para o padrão
+  paymentDetails.installments_interval = 30;
   clientSearch.value = '';
   clientList.value = [];
   orderItems.value = [];
@@ -1289,6 +1331,16 @@ onMounted(() => {
 </script>
 
 <style scoped lang="scss">
+@keyframes blink {
+  50% {
+    opacity: 0.5;
+  }
+}
+.blinking-icon {
+  animation: blink 1.5s infinite ease-in-out;
+  color: #03A9F4;
+}
+
 .glassmorphism-card-order {
   backdrop-filter: blur(15px);
   background-color: rgba(25, 25, 30, 0.7);
@@ -1310,5 +1362,16 @@ onMounted(() => {
   background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
+}
+
+@keyframes pulse-red {
+  0% { background-color: rgba(255, 82, 82, 0.1); }
+  50% { background-color: rgba(255, 82, 82, 0.25); }
+  100% { background-color: rgba(255, 82, 82, 0.1); }
+}
+
+.stock-warning-item {
+  animation: pulse-red 2s infinite;
+  border-left: 3px solid #FF5252;
 }
 </style>
