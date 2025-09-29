@@ -13,11 +13,25 @@
           @click="$emit('select-channel', channel.id)"
           :active="channel.id === activeChannelId"
           class="channel-item"
+          lines="two"
         >
           <template v-slot:prepend>
-            <v-avatar :image="getChannelAvatar(channel)" size="40"></v-avatar>
+            <v-avatar :image="channel.icon_image_url" size="40"></v-avatar>
           </template>
-          <v-list-item-title class="font-weight-medium">{{ getChannelName(channel) }}</v-list-item-title>
+          <v-list-item-title class="font-weight-medium">{{ channel.name || 'Canal sem nome' }}</v-list-item-title>
+
+          <v-list-item-subtitle class="last-message-preview" :class="{ 'font-weight-bold text-white': channel.unread_count > 0 }">
+            {{ channel.last_message_content || 'Nenhuma mensagem ainda.' }}
+          </v-list-item-subtitle>
+
+          <template v-slot:append>
+            <v-badge
+              v-if="channel.unread_count > 0"
+              color="error"
+              :content="channel.unread_count"
+              inline
+            ></v-badge>
+          </template>
         </v-list-item>
       </v-list>
     </div>
@@ -37,20 +51,6 @@ defineProps<{
 const emit = defineEmits(['select-channel']);
 
 const newConversationModal = ref(false);
-
-const getChannelName = (channel: any) => {
-  if (channel.is_private_dm && channel.other_participant) {
-    return channel.other_participant.full_name;
-  }
-  return channel.name || 'Canal sem nome';
-};
-
-const getChannelAvatar = (channel: any) => {
-  if (channel.is_private_dm && channel.other_participant) {
-    return channel.other_participant.avatar_url;
-  }
-  return channel.icon_image_url;
-};
 
 const handleConversationStart = (channelId: number) => {
     emit('select-channel', channelId);
@@ -81,5 +81,11 @@ const handleConversationStart = (channelId: number) => {
 .channel-item {
   margin: 8px;
   border-radius: 8px;
+}
+.last-message-preview {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 }
 </style>

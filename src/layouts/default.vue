@@ -7,7 +7,7 @@
       <div class="particles-overlay"></div>
     </div>
 
-    <audio ref="notificationSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
+    <audio ref="notificationSoundRef" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/ding-101492.mp3?v=1755543134" preload="auto"></audio>
     <audio ref="alertSound" src="https://cdn.shopify.com/s/files/1/0661/4574/6991/files/new-notification-022-370046.mp3?v=1757327480" preload="auto" loop></audio>
 
     <transition name="toast-slide">
@@ -88,8 +88,10 @@
           <v-btn v-if="isAdmin" :to="{ name: 'Admin' }" icon variant="text" title="Painel Admin">
             <v-icon>mdi-security</v-icon>
           </v-btn>
-          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat" disabled>
-            <v-icon>mdi-forum-outline</v-icon>
+          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat" :disabled="true" style="pointer-events: none; opacity: 0.5;">
+            <v-badge :content="chatStore.totalUnreadCount" color="error" :model-value="chatStore.totalUnreadCount > 0">
+              <v-icon>mdi-forum-outline</v-icon>
+            </v-badge>
           </v-btn>
 
           <v-menu
@@ -194,6 +196,7 @@ import { useRouter } from 'vue-router';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useUserStore } from '@/stores/user';
 import { useAppStore } from '@/stores/app';
+import { useChatStore } from '@/stores/chat';
 import { storeToRefs } from 'pinia';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -203,6 +206,7 @@ import PendingApprovalAlertModal from '@/components/admin/PendingApprovalAlertMo
 const router = useRouter();
 const userStore = useUserStore();
 const appStore = useAppStore();
+const chatStore = useChatStore(); // Inicializa o store
 const { profile, isAdmin } = storeToRefs(userStore);
 const { lowStockAlerts } = storeToRefs(appStore);
 const { mobile } = useDisplay();
@@ -213,7 +217,7 @@ type Notification = {
   id: string; content: string; recipient_id: string | null; redirect_url: string | null; is_read: boolean; created_at: string;
 };
 
-const notificationSound = ref<HTMLAudioElement | null>(null);
+const notificationSoundRef = ref<HTMLAudioElement | null>(null);
 const alertSound = ref<HTMLAudioElement | null>(null);
 const notifications = ref<Notification[]>([]);
 const notificationMenu = ref(false);
@@ -226,7 +230,6 @@ const currentLowStockAlert = computed(() => lowStockAlerts.value.length > 0 ? lo
 const showPendingApprovalAlert = ref(false);
 const currentPendingApprovalAlert = ref<{title: string, message: string, redirectUrl: string | null} | null>(null);
 
-
 const showToast = ref(false);
 const toastKey = ref(0);
 const toastContent = reactive({ title: '', message: '', icon: '', color: '' });
@@ -234,7 +237,6 @@ const toastStyle = ref({});
 let toastTimeout: NodeJS.Timeout;
 const isAudioUnlocked = ref(false);
 
-// ===== INÍCIO DA ALTERAÇÃO: LÓGICA PARA ACESSAR SISTEMAS EXTERNOS =====
 const loadingFinanceToken = ref(false);
 const handleGoToFinance = async () => {
   loadingFinanceToken.value = true;
@@ -249,12 +251,10 @@ const handleGoToFinance = async () => {
     }
   } catch (error: any) {
     console.error('Erro ao gerar token para o sistema financeiro:', error);
-    // Opcional: mostrar um snackbar de erro
   } finally {
     loadingFinanceToken.value = false;
   }
 };
-// ===== FIM DA ALTERAÇÃO =====
 
 watch(lowStockAlerts, (newAlerts) => {
   if (newAlerts.length > 0 && !showLowStockAlert.value) {
@@ -276,14 +276,14 @@ const dismissCurrentStockAlert = () => {
   showLowStockAlert.value = false;
 };
 
-
 const unlockAudio = async () => {
   if (isAudioUnlocked.value) return;
   try {
-    if (notificationSound.value) {
-      await notificationSound.value.play();
-      notificationSound.value.pause();
-      notificationSound.value.currentTime = 0;
+    if (notificationSoundRef.value) {
+      chatStore.initializeSound(notificationSoundRef.value);
+      await notificationSoundRef.value.play();
+      notificationSoundRef.value.pause();
+      notificationSoundRef.value.currentTime = 0;
     }
     if (alertSound.value) {
       await alertSound.value.play();
@@ -327,7 +327,7 @@ const toggleHoverEffect = (event: MouseEvent, shouldAdd: boolean, value: string)
 };
 
 const getNotificationDetails = (notification: Notification) => {
-    const content = notification.content; // Não converter para minúsculas para preservar o alerta
+    const content = notification.content;
     if (content.startsWith('[ALERT_PENDING_APPROVAL]')) {
         const parts = content.replace('[ALERT_PENDING_APPROVAL]', '').split('::');
         return { title: parts[0] || 'Alerta', message: parts[1] || 'Aprovação pendente.', icon: 'mdi-alert-decagram', color: 'warning' };
@@ -392,72 +392,48 @@ const handleNotificationClick = async (notification: Notification) => {
 const dismissNotification = async (notificationId: string) => {
     if(!userStore.user) return;
     try {
-        const { error } = await supabase
-            .from('user_notification_dismissals')
-            .insert({ user_id: userStore.user.id, notification_id: notificationId });
+        const { error } = await supabase.from('user_notification_dismissals').insert({ user_id: userStore.user.id, notification_id: notificationId });
         if (error) throw error;
         notifications.value = notifications.value.filter(n => n.id !== notificationId);
-    } catch (err) {
-        console.error("Erro ao dispensar notificação:", err);
-    }
+    } catch (err) { console.error("Erro ao dispensar notificação:", err); }
 };
 
 const clearAllNotifications = async () => {
     if(!userStore.user) return;
     try {
-        const dismissals = notifications.value.map(n => ({
-            user_id: userStore.user!.id,
-            notification_id: n.id
-        }));
+        const dismissals = notifications.value.map(n => ({ user_id: userStore.user!.id, notification_id: n.id }));
         if (dismissals.length === 0) return;
         const { error } = await supabase.from('user_notification_dismissals').insert(dismissals);
         if (error) throw error;
         notifications.value = [];
-    } catch (err) {
-        console.error("Erro ao limpar notificações:", err);
-    }
+    } catch (err) { console.error("Erro ao limpar notificações:", err); }
 };
 
 const handleNewNotification = (payload: any) => {
     const newNotification = payload.new as Notification;
-
     if (newNotification.content.startsWith('[ALERT_PENDING_APPROVAL]')) {
         const parts = newNotification.content.replace('[ALERT_PENDING_APPROVAL]', '').split('::');
-        currentPendingApprovalAlert.value = {
-            title: parts[0] || 'Aprovação Pendente',
-            message: parts[1] || 'Um pedido requer sua atenção.',
-            redirectUrl: newNotification.redirect_url
-        };
+        currentPendingApprovalAlert.value = { title: parts[0] || 'Aprovação Pendente', message: parts[1] || 'Um pedido requer sua atenção.', redirectUrl: newNotification.redirect_url };
         showPendingApprovalAlert.value = true;
         if (alertSound.value && isAudioUnlocked.value) {
             alertSound.value.play().catch(e => console.error("Erro ao tocar som de alerta:", e));
         }
         return;
     }
-
     notifications.value.unshift(newNotification);
-
     const details = getNotificationDetails(newNotification);
     toastContent.title = details.title;
     toastContent.message = details.message;
     toastContent.icon = details.icon;
     toastContent.color = details.color;
     toastStyle.value = { '--pulse-color': `var(--v-theme-${details.color})` };
-
     toastKey.value++;
     showToast.value = true;
     isBellRinging.value = true;
     setTimeout(() => { isBellRinging.value = false; }, 2000);
-
-    if (notificationSound.value && isAudioUnlocked.value) {
-      notificationSound.value.currentTime = 0;
-      notificationSound.value.play().catch(e => console.error("Erro ao tocar som:", e));
-    }
-
+    chatStore.playNotificationSound(); // Usa o som do store
     clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => {
-        showToast.value = false;
-    }, 6000);
+    toastTimeout = setTimeout(() => { showToast.value = false; }, 6000);
 };
 
 const handleGoToApproval = () => {
@@ -474,29 +450,18 @@ const handleGoToApproval = () => {
 
 const setupNotificationListener = () => {
     if (!userStore.user || notificationListener.value) return;
-
     notificationListener.value = supabase.channel('public:notifications')
-        .on('postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'notifications' },
-            (payload) => {
-                const newNotification = payload.new as Notification;
-                const isForAll = newNotification.recipient_id === null;
-                const isForMe = newNotification.recipient_id === userStore.user?.id;
-
-                if (isForAll || isForMe) {
-                    const isDismissed = notifications.value.some(n => n.id === newNotification.id);
-                    if (!isDismissed) {
-                        handleNewNotification(payload);
-                    }
-                }
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, (payload) => {
+            const newNotification = payload.new as Notification;
+            const isForAll = newNotification.recipient_id === null;
+            const isForMe = newNotification.recipient_id === userStore.user?.id;
+            if (isForAll || isForMe) {
+                const isDismissed = notifications.value.some(n => n.id === newNotification.id);
+                if (!isDismissed) handleNewNotification(payload);
             }
-        )
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                console.log(`Conectado ao canal de notificações públicas com sucesso!`);
-            } else if (status === 'CHANNEL_ERROR') {
-                console.error(`Erro ao se conectar ao canal de notificações.`);
-            }
+        }).subscribe((status) => {
+            if (status === 'SUBSCRIBED') console.log(`Conectado ao canal de notificações públicas com sucesso!`);
+            else if (status === 'CHANNEL_ERROR') console.error(`Erro ao se conectar ao canal de notificações.`);
         });
 };
 
@@ -506,6 +471,9 @@ const formatDistance = (dateString: string) => {
 };
 
 onMounted(async () => {
+  if (notificationSoundRef.value) {
+    chatStore.initializeSound(notificationSoundRef.value);
+  }
   if (userStore.isLoggedIn) {
     await fetchNotifications();
     setupNotificationListener();
@@ -514,15 +482,13 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  if (notificationListener.value) {
-      supabase.removeChannel(notificationListener.value);
-      notificationListener.value = null;
-  }
+  if (notificationListener.value) supabase.removeChannel(notificationListener.value);
   clearTimeout(toastTimeout);
 });
 </script>
 
 <style lang="scss">
+/* Seus estilos existentes aqui */
 .background-container {
   position: fixed;
   top: 0;
@@ -705,11 +671,11 @@ onUnmounted(() => {
 
 .v-list-item {
   .v-avatar {
-    height: 36px !important; // Altura fixa para o avatar
-    width: 36px !important;  // Largura fixa para o avatar
-    min-width: 36px !important; // Garante que não encolha
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
     .v-img {
-      object-fit: contain !important; // Garante que a imagem se ajuste dentro do avatar
+      object-fit: contain !important;
       width: 100%;
       height: 100%;
     }
@@ -718,21 +684,20 @@ onUnmounted(() => {
 
 .quick-actions {
   .v-list-item {
-    min-height: 48px !important; // Garante altura mínima para cada item
+    min-height: 48px !important;
   }
 }
 
-// Estilo específico para o modal do hub para evitar que a lista fique muito espaçada
 .v-card.glassmorphism-card-dialog {
   .v-list-item {
-    padding-left: 16px; // Ajusta o padding horizontal
+    padding-left: 16px;
     padding-right: 16px;
   }
   .v-list-item__prepend {
-    align-self: center; // Centraliza o avatar verticalmente
+    align-self: center;
   }
   .v-list-item-title {
-    line-height: 1.2; // Ajusta o espaçamento da linha do título
+    line-height: 1.2;
   }
 }
 </style>

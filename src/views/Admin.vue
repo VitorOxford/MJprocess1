@@ -57,6 +57,9 @@
             <v-window-item value="users">
               <AdminUserManagement />
             </v-window-item>
+            <v-window-item value="proofs">
+              <AdminDownPaymentProofs />
+            </v-window-item>
           </v-window>
         </v-card>
       </div>
@@ -65,14 +68,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import StockManagement from '@/views/admin/StockManagement.vue';
-import AdminAuditTab from '@/components/admin/AdminAuditTab.vue';
-import AdminReportsTab from '@/components/admin/AdminReportsTab.vue';
-import AdminNotificationsTab from '@/components/admin/AdminNotificationsTab.vue';
-import AdminPriceListManagement from '@/components/admin/AdminPriceListManagement.vue';
-import AdminUserManagement from '@/components/admin/AdminUserManagement.vue';
-import AdminDashboardCard from '@/components/admin/AdminDashboardCard.vue';
+import { ref, computed, defineAsyncComponent } from 'vue';
+
+// Carregamento dinâmico para melhorar a performance inicial
+const StockManagement = defineAsyncComponent(() => import('@/views/admin/StockManagement.vue'));
+const AdminAuditTab = defineAsyncComponent(() => import('@/components/admin/AdminAuditTab.vue'));
+const AdminReportsTab = defineAsyncComponent(() => import('@/components/admin/AdminReportsTab.vue'));
+const AdminNotificationsTab = defineAsyncComponent(() => import('@/components/admin/AdminNotificationsTab.vue'));
+const AdminPriceListManagement = defineAsyncComponent(() => import('@/components/admin/AdminPriceListManagement.vue'));
+const AdminUserManagement = defineAsyncComponent(() => import('@/components/admin/AdminUserManagement.vue'));
+const AdminDashboardCard = defineAsyncComponent(() => import('@/components/admin/AdminDashboardCard.vue'));
+// NOVO: Importa o novo componente
+const AdminDownPaymentProofs = defineAsyncComponent(() => import('@/components/admin/AdminDownPaymentProofs.vue'));
+
 
 const selectedView = ref<string | null>(null);
 
@@ -118,6 +126,14 @@ const adminViews = [
     subtitle: 'Gerencie perfis e permissões',
     icon: 'mdi-account-group-outline',
     color: 'blue-grey',
+  },
+  // NOVO: Adiciona a nova aba à lista de visualizações
+  {
+    key: 'proofs',
+    title: 'Comprovantes de Entrada',
+    subtitle: 'Visualize os sinais dos pedidos',
+    icon: 'mdi-receipt-text-check-outline',
+    color: 'teal',
   },
 ];
 

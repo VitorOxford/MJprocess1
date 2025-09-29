@@ -13,10 +13,9 @@
           <template v-for="(group, index) in groupedMessages" :key="index">
             <div class="date-divider"><span>{{ group.date }}</span></div>
             <ChatMessage
-              v-for="(message, msgIndex) in group.messages"
+              v-for="message in group.messages"
               :key="message.id"
               :message="message"
-              :is-consecutive="isConsecutiveMessage(message, msgIndex, group.messages)"
               @show-menu="onShowMenu"
             />
           </template>
@@ -117,12 +116,6 @@ const groupedMessages = computed(() => {
     return groups;
 });
 
-const isConsecutiveMessage = (message: any, index: number, group: any[]) => {
-    if (index === 0) return false;
-    const prevMessage = group[index - 1];
-    return prevMessage.profile_id === message.profile_id;
-};
-
 const fetchAllUsersWithStatus = async () => {
   if (!userStore.profile?.id) return;
   const { data, error } = await supabase.rpc('get_all_users_with_status', { p_exclude_user_id: userStore.profile.id });
@@ -166,37 +159,22 @@ const setActiveChannel = (channelId: number) => {
 const startDirectMessage = async (user: any) => {
   if (!userStore.profile) return;
   const { data, error } = await supabase.rpc('find_or_create_dm_channel', { p_user1_id: userStore.profile.id, p_user2_id: user.id });
-  if (error) console.error('Erro ao iniciar DM:', error);
-  else {
+  if (error) {
+    console.error('Erro ao iniciar DM:', error);
+  } else {
     await fetchChannels();
     setActiveChannel(data);
   }
 };
 
 const sendMessage = async (contentOverride: any = null, messageType: string = 'text') => {
-  if (typeof contentOverride === 'object' && contentOverride !== null) contentOverride = null;
+  if (typeof contentOverride === 'object' && contentOverride !== null) {
+      contentOverride = null;
+  }
   const content = contentOverride || newMessage.value.trim();
   if (!content || !activeChannelId.value || !userStore.profile) return;
   if (messageType === 'text') newMessage.value = '';
-
-  const optimisticMessage = {
-      id: Date.now(),
-      created_at: new Date().toISOString(),
-      content: content,
-      profile_id: userStore.profile.id,
-      channel_id: activeChannelId.value,
-      message_type: messageType,
-      profile: userStore.profile,
-      is_optimistic: true
-  };
-  messages.value.push(optimisticMessage);
-
-  const { error } = await supabase.from('messages').insert({ content, channel_id: activeChannelId.value, profile_id: userStore.profile.id, message_type: messageType });
-
-  if (error) {
-      console.error("Erro ao enviar mensagem:", error);
-      messages.value = messages.value.filter(m => m.id !== optimisticMessage.id);
-  }
+  await supabase.from('messages').insert({ content, channel_id: activeChannelId.value, profile_id: userStore.profile.id, message_type: messageType });
 };
 
 const triggerFileInput = () => fileInput.value?.click();
@@ -226,18 +204,12 @@ const setupRealtimeListeners = () => {
     if (member) {
         if (payload.eventType === 'INSERT') {
             const newMessage = payload.new as any;
-            if (newMessage.profile_id === userStore.profile?.id) {
-                messages.value = messages.value.filter(m => !m.is_optimistic);
+            if (newMessage.channel_id === activeChannelId.value) {
                 const { data: profileData } = await supabase.from('profiles').select('*').eq('id', newMessage.profile_id).single();
                 if (profileData) messages.value.push({ ...newMessage, profile: profileData });
-            } else {
-                if (newMessage.channel_id === activeChannelId.value) {
-                    const { data: profileData } = await supabase.from('profiles').select('*').eq('id', newMessage.profile_id).single();
-                    if (profileData) messages.value.push({ ...newMessage, profile: profileData });
-                    await supabase.rpc('update_last_read', { p_channel_id: newMessage.channel_id });
-                } else {
-                    chatStore.playNotificationSound();
-                }
+                await supabase.rpc('update_last_read', { p_channel_id: newMessage.channel_id });
+            } else if (newMessage.profile_id !== userStore.profile?.id) {
+                chatStore.playNotificationSound();
             }
         }
         if (payload.eventType === 'UPDATE') {
@@ -251,7 +223,6 @@ const setupRealtimeListeners = () => {
   });
 
   presenceChannel = supabase.channel('online-users', { config: { presence: { key: userStore.profile.id } } });
-
   const updatePresenceList = () => {
     const presenceState = presenceChannel?.presenceState();
     if (!presenceState) return;
@@ -267,8 +238,8 @@ const setupRealtimeListeners = () => {
   presenceChannel.on('presence', { event: 'sync' }, updatePresenceList);
   presenceChannel.on('presence', { event: 'join' }, updatePresenceList);
   presenceChannel.on('presence', { event: 'leave' }, updatePresenceList);
-
   presenceChannel.subscribe(async (status) => { if (status === 'SUBSCRIBED') await updateStatus('online'); });
+
   realtimeChannel.subscribe();
 };
 
