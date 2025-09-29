@@ -3,59 +3,60 @@ import { supabase } from '@/api/supabase';
 import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
-// TIPAGEM (sem alterações)
+// TIPAGEM
 export type OrderItem = {
-  id: string;
-  status: string;
-  fabric_type: string;
-  quantity_meters: number;
-  created_at: string;
-  design_tag: string;
-  billed_quantity: number | null;
-  [key: string]: any;
+  id: string;
+  status: string;
+  fabric_type: string;
+  quantity_meters: number;
+  created_at: string;
+  design_tag: string;
+  billed_quantity: number | null;
+  has_insufficient_stock: boolean; // Garante que este campo está na tipagem
+  [key: string]: any;
 };
 
 export type Order = {
-  id: string;
-  status: string;
-  quantity_meters: number;
-  created_at: string;
-  created_by: string;
-  customer_name: string;
-  order_number: number | null;
-  is_launch: boolean;
-  has_down_payment: boolean;
-  down_payment_proof_url: string | null;
+  id: string;
+  status: string;
+  quantity_meters: number;
+  created_at: string;
+  created_by: string;
+  customer_name: string;
+  order_number: number | null;
+  is_launch: boolean;
+  has_down_payment: boolean;
+  down_payment_proof_url: string | null;
   forecast_delivery_date?: string | null;
-  details: {
-    fabric_type: string;
-    [key: string]: any;
-  } | null;
-  stores: {
-    name: string;
-  } | null;
-  creator?: {
-    full_name: string;
-  };
-  order_items: OrderItem[];
-  updated_at: string;
-  billed_at: string | null;
-  delivery_confirmed_at: string | null;
-  actual_delivery_date: string | null;
+  details: {
+    fabric_type: string;
+    [key: string]: any;
+  } | null;
+  stores: {
+    name: string;
+  } | null;
+  creator?: {
+    full_name: string;
+  };
+  order_items: OrderItem[];
+  updated_at: string;
+  billed_at: string | null;
+  delivery_confirmed_at: string | null;
+  actual_delivery_date: string | null;
 };
 
 export type Task = {
-  id: string;
-  title: string;
-  is_completed: boolean;
-  created_at: string;
-  user_id: string;
+  id: string;
+  title: string;
+  is_completed: boolean;
+  created_at: string;
+  user_id: string;
 };
 
 export type ProductionScheduleItem = {
-  scheduled_date: string;
-  order: Order;
-  item: OrderItem;
+  scheduled_date: string;
+  order: Order;
+  item: OrderItem;
 };
 
 // FUNÇÕES AUXILIARES
@@ -88,18 +89,17 @@ const getNextDeliveryDay = (date: Date): Date => {
 };
 
 export const useDashboardStore = defineStore('dashboard', {
-  state: () => ({
-    orders: [] as Order[],
-    tasks: [] as Task[],
-    productionScheduleItems: [] as ProductionScheduleItem[],
-    loading: false,
-    lastFetched: null as Date | null,
-    kpiSelectedDate: new Date(),
-  }),
+  state: () => ({
+    orders: [] as Order[],
+    tasks: [] as Task[],
+    productionScheduleItems: [] as ProductionScheduleItem[],
+    loading: false,
+    lastFetched: null as Date | null,
+    kpiSelectedDate: new Date(),
+  }),
 
-  getters: {
+  getters: {
     productionGhosts(state) {
-      // 1. Filtra os pedidos para encontrar os "fantasmas" em potencial.
       const inProgressLaunchOrders = state.orders.filter(order =>
         order.is_launch &&
         !order.actual_delivery_date &&
@@ -107,23 +107,17 @@ export const useDashboardStore = defineStore('dashboard', {
         order.status !== 'delivered'
       );
 
-      // 2. Mapeia os candidatos para o formato final, calculando as datas.
       const finalGhosts = inProgressLaunchOrders.map(order => {
         const creationDate = parseISO(order.created_at);
 
-        // ===== INÍCIO DA CORREÇÃO =====
-        // Verifica se algum item no pedido tem o status 'pending_stock'.
-        const hasStockIssues = order.order_items.some(item => item.status === 'pending_stock');
-        const extraDays = hasStockIssues ? 2 : 0; // Adiciona 2 dias úteis extras se houver falta de estoque.
-        // ===== FIM DA CORREÇÃO =====
+        // ===== CORREÇÃO APLICADA AQUI =====
+        // A lógica agora verifica o campo 'has_insufficient_stock' que vem do banco de dados.
+        const hasStockIssues = order.order_items.some(item => item.has_insufficient_stock);
+        const extraDays = hasStockIssues ? 2 : 0;
+        // ===================================
 
-        // A produção começa NO DIA SEGUINTE ao lançamento.
         const startProductionDate = addDays(creationDate, 1);
-
-        // Adiciona 2 dias úteis + os dias extras calculados.
         const completionDate = addBusinessDays(startProductionDate, 2 + extraDays);
-
-        // Encontra o próximo dia de entrega (Ter, Qui, Sáb) após a conclusão.
         const forecastDeliveryDate = getNextDeliveryDay(completionDate);
 
         return {
@@ -137,7 +131,25 @@ export const useDashboardStore = defineStore('dashboard', {
       return finalGhosts;
     },
 
-    // ... (o restante dos getters permanece igual) ...
+    itemsPendingStock(state): { count: number, totalMeters: number } {
+        let count = 0;
+        let totalMeters = 0;
+        const countedItems = new Set<string>(); // Para não contar o mesmo item duas vezes
+        state.orders.forEach(order => {
+            if (order.is_launch && order.order_items) {
+                order.order_items.forEach(item => {
+                    // ===== CORREÇÃO APLICADA AQUI =====
+                    // A lógica agora verifica o campo 'has_insufficient_stock'.
+                    if (item.has_insufficient_stock && !countedItems.has(item.id)) {
+                        count++;
+                        totalMeters += item.quantity_meters || 0;
+                        countedItems.add(item.id);
+                    }
+                });
+            }
+        });
+        return { count, totalMeters };
+    },
 
     filteredOrdersForCharts(state): Order[] {
         return state.orders.filter(order =>
@@ -171,16 +183,18 @@ export const useDashboardStore = defineStore('dashboard', {
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
     itemsDelayedInDesign(state): { count: number, totalMeters: number } {
-        const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'finalizing'];
         const today = startOfToday();
         let count = 0;
         let totalMeters = 0;
         state.orders.forEach(order => {
             if (order.is_launch && order.order_items) {
                 order.order_items.forEach(item => {
-                    if (designStatuses.includes(item.status) && isBefore(parseISO(item.created_at), today)) {
+                    // Mantida a regra conforme solicitado: apenas itens em 'Finalização'
+                    // que passaram do dia da criação são contados como atrasados.
+                    // Se o resultado for 0, significa que não há itens que cumpram AMBOS os critérios.
+                    if (item.design_tag === 'Finalização' && isBefore(parseISO(item.created_at), today)) {
                         count++;
-                        totalMeters += item.quantity_meters;
+                        totalMeters += item.quantity_meters || 0;
                     }
                 });
             }
@@ -188,14 +202,13 @@ export const useDashboardStore = defineStore('dashboard', {
         return { count, totalMeters };
     },
     delayedDesignItemsDetails(state) {
-      const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'finalizing'];
       const today = startOfToday();
       return state.orders
           .flatMap(order =>
               (order.order_items || []).map(item => ({ ...item, orderInfo: order }))
           )
           .filter(item =>
-              designStatuses.includes(item.status) &&
+              item.design_tag === 'Finalização' &&
               isBefore(parseISO(item.created_at), today)
           )
           .map(item => ({
@@ -362,8 +375,10 @@ export const useDashboardStore = defineStore('dashboard', {
         const user = (await supabase.auth.getSession()).data.session?.user;
         if (!user) throw new Error('Usuário não autenticado.');
 
+        // ===== CORREÇÃO APLICADA AQUI =====
+        // A query agora busca o campo 'has_insufficient_stock' para garantir consistência.
         const { data, error } = await supabase.from('orders')
-          .select('*, creator:created_by(full_name), order_items(*), forecast_delivery_date');
+          .select('*, creator:created_by(full_name), order_items(*, has_insufficient_stock), forecast_delivery_date');
 
         if (error) throw error;
 
