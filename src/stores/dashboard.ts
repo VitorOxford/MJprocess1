@@ -59,12 +59,20 @@ export type ProductionScheduleItem = {
   item: OrderItem;
 };
 
+// --- INÍCIO DA CORREÇÃO ---
 // FUNÇÕES AUXILIARES
 const excludedSellers = ['João Vitor', 'Levi Lopes'];
+
+// Função para normalizar nomes de tecidos (ex: "TECIDO CREPONADO" e "Creponado" viram "Creponado")
 const normalizeFabricName = (name: string | null | undefined): string => {
     if (!name) return 'Não especificado';
-    return name.toLowerCase().replace(/^(tecido|malha)\s+/i, '').trim().replace(/^\w/, (c) => c.toUpperCase());
+    return name.toLowerCase()
+      .replace(/^(tecido|malha)\s+/i, '')
+      .trim()
+      .replace(/^\w/, (c) => c.toUpperCase());
 };
+// --- FIM DA CORREÇÃO ---
+
 const addBusinessDays = (startDate: Date, days: number): Date => {
   const newDate = new Date(startDate);
   let addedDays = 0;
@@ -109,13 +117,8 @@ export const useDashboardStore = defineStore('dashboard', {
 
       const finalGhosts = inProgressLaunchOrders.map(order => {
         const creationDate = parseISO(order.created_at);
-
-        // ===== CORREÇÃO APLICADA AQUI =====
-        // A lógica agora verifica o campo 'has_insufficient_stock' que vem do banco de dados.
         const hasStockIssues = order.order_items.some(item => item.has_insufficient_stock);
         const extraDays = hasStockIssues ? 2 : 0;
-        // ===================================
-
         const startProductionDate = addDays(creationDate, 1);
         const completionDate = addBusinessDays(startProductionDate, 2 + extraDays);
         const forecastDeliveryDate = getNextDeliveryDay(completionDate);
@@ -134,12 +137,10 @@ export const useDashboardStore = defineStore('dashboard', {
     itemsPendingStock(state): { count: number, totalMeters: number } {
         let count = 0;
         let totalMeters = 0;
-        const countedItems = new Set<string>(); // Para não contar o mesmo item duas vezes
+        const countedItems = new Set<string>();
         state.orders.forEach(order => {
             if (order.is_launch && order.order_items) {
                 order.order_items.forEach(item => {
-                    // ===== CORREÇÃO APLICADA AQUI =====
-                    // A lógica agora verifica o campo 'has_insufficient_stock'.
                     if (item.has_insufficient_stock && !countedItems.has(item.id)) {
                         count++;
                         totalMeters += item.quantity_meters || 0;
@@ -189,9 +190,6 @@ export const useDashboardStore = defineStore('dashboard', {
         state.orders.forEach(order => {
             if (order.is_launch && order.order_items) {
                 order.order_items.forEach(item => {
-                    // Mantida a regra conforme solicitado: apenas itens em 'Finalização'
-                    // que passaram do dia da criação são contados como atrasados.
-                    // Se o resultado for 0, significa que não há itens que cumpram AMBOS os critérios.
                     if (item.design_tag === 'Finalização' && isBefore(parseISO(item.created_at), today)) {
                         count++;
                         totalMeters += item.quantity_meters || 0;
@@ -281,6 +279,9 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return Array.from(salesMap.entries()).map(([seller, totalMeters]) => ({ seller, totalMeters })).sort((a, b) => b.totalMeters - a.totalMeters);
     },
+
+    // --- INÍCIO DA CORREÇÃO ---
+    // Getter atualizado para usar a função de normalização
     salesByFabric(state): { fabric: string, totalMeters: number }[] {
         const fabricMap = new Map<string, number>();
         this.filteredOrdersForCharts.forEach(order => {
@@ -298,6 +299,8 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return Array.from(fabricMap.entries()).map(([fabric, totalMeters]) => ({ fabric, totalMeters })).sort((a, b) => b.totalMeters - a.totalMeters);
     },
+    // --- FIM DA CORREÇÃO ---
+
     monthlySalesPerformance(state): { labels: string[], data: number[] } {
         const monthMap = new Map<string, number>();
         const today = new Date();
@@ -375,8 +378,6 @@ export const useDashboardStore = defineStore('dashboard', {
         const user = (await supabase.auth.getSession()).data.session?.user;
         if (!user) throw new Error('Usuário não autenticado.');
 
-        // ===== CORREÇÃO APLICADA AQUI =====
-        // A query agora busca o campo 'has_insufficient_stock' para garantir consistência.
         const { data, error } = await supabase.from('orders')
           .select('*, creator:created_by(full_name), order_items(*, has_insufficient_stock), forecast_delivery_date');
 

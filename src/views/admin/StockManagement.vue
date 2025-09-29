@@ -155,7 +155,7 @@ const editedItem = ref<{
     meters_per_roll: null,
     unit_of_measure: 'metro',
     rendimento: null,
-    low_stock_threshold: null
+    low_stock_threshold: 100
 });
 
 const headers = [

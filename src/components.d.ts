@@ -11,6 +11,7 @@ declare module 'vue' {
     AdminAuditTab: typeof import('./components/admin/AdminAuditTab.vue')['default']
     AdminChatAudit: typeof import('./components/admin/AdminChatAudit.vue')['default']
     AdminDashboard: typeof import('./components/dashboards/AdminDashboard.vue')['default']
+    AdminDashboardCard: typeof import('./components/admin/AdminDashboardCard.vue')['default']
     AdminNotificationsTab: typeof import('./components/admin/AdminNotificationsTab.vue')['default']
     AdminPriceListManagement: typeof import('./components/admin/AdminPriceListManagement.vue')['default']
     AdminReportsTab: typeof import('./components/admin/AdminReportsTab.vue')['default']

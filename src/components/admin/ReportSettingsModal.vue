@@ -172,6 +172,108 @@ const dateRangeText = computed(() => {
     return 'Período não selecionado';
 });
 
+// --- INÍCIO DA CORREÇÃO ---
+const imageToBase64 = (url: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      } else {
+        reject(new Error('Contexto do canvas não obtido'));
+      }
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+
+const addHeader = async (doc: jsPDF) => {
+    const pageWidth = doc.internal.pageSize.width;
+    try {
+        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+        const logoBase64 = await imageToBase64(logoUrl);
+        const logoProps = doc.getImageProperties(logoBase64);
+        const logoWidth = 40;
+        const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
+        doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
+    } catch (e) {
+        console.error("Não foi possível carregar o logo para o PDF", e);
+    }
+
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text([
+      "MR JACKY - 20.631.721/0001-07",
+      "RUA LUIZ MONTANHAN, 1302, TIETE - SP",
+      "Fone: (15) 99847-8789"
+    ], pageWidth - 15, 15, { align: 'right' });
+
+    doc.setLineWidth(0.5);
+    doc.line(15, 35, pageWidth - 15, 35);
+};
+
+const addFooter = (doc: jsPDF) => {
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    doc.setFontSize(8).setTextColor(150);
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.text(`Gerado com MJProcess em ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 15, pageHeight - 10);
+        doc.text(`Página ${i} de ${pageCount}`, pageWidth - 15, pageHeight - 10, { align: 'right' });
+    }
+};
+
+const generatePdf = async () => {
+  if (filteredReportItems.value.length === 0) {
+    alert("Nenhum pedido encontrado para os filtros selecionados.");
+    return;
+  }
+  isGeneratingPdf.value = true;
+  try {
+    const doc = new jsPDF({ orientation: 'landscape' });
+    await addHeader(doc);
+
+    doc.setFontSize(14).setFont('helvetica', 'bold').setTextColor(0);
+    doc.text(`Relatório Detalhado de Pedidos`, 15, 45);
+    doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(80);
+    doc.text(`Período: ${dateRangeText.value}`, 15, 51);
+
+    const headers = [['Nº', 'Cliente', 'Vendedor', 'Data', 'Status', 'Metragem (m)']];
+    const body = filteredReportItems.value.map(item => [
+      `#${String(item.order_number || 0).padStart(4, '0')}`,
+      item.customer_name,
+      item.creator?.full_name || 'N/A',
+      format(parseISO(item.created_at), 'dd/MM/yyyy'),
+      item.status,
+      item.quantity_meters.toLocaleString('pt-BR'),
+    ]);
+
+    autoTable(doc, {
+        head: headers,
+        body: body,
+        startY: 58,
+        headStyles: { fillColor: [41, 128, 185] }
+    });
+
+    addFooter(doc);
+    doc.save(`relatorio_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+  } catch(e) {
+    console.error("Erro ao gerar PDF: ", e);
+    alert("Ocorreu um erro ao gerar o PDF.");
+  } finally {
+    isGeneratingPdf.value = false;
+  }
+};
+// --- FIM DA CORREÇÃO ---
+
+
 const setPeriod = (value: string) => {
   const end = new Date();
   let start = new Date();
@@ -211,44 +313,6 @@ const filteredReportItems = computed(() => {
   });
 });
 
-
-const generatePdf = () => {
-  if (filteredReportItems.value.length === 0) {
-    alert("Nenhum pedido encontrado para os filtros selecionados. Altere os filtros e tente novamente.");
-    return;
-  }
-  isGeneratingPdf.value = true;
-  try {
-    const doc = new jsPDF({ orientation: 'landscape' });
-    doc.text(`Relatório Detalhado de Pedidos`, 14, 16);
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Período: ${dateRangeText.value}`, 14, 22);
-
-    const headers = [['Nº', 'Cliente', 'Vendedor', 'Data', 'Status', 'Metragem (m)']];
-    const body = filteredReportItems.value.map(item => [
-      `#${String(item.order_number || 0).padStart(4, '0')}`,
-      item.customer_name,
-      item.creator?.full_name || 'N/A',
-      format(parseISO(item.created_at), 'dd/MM/yyyy'),
-      item.status,
-      item.quantity_meters.toLocaleString('pt-BR'),
-    ]);
-
-    autoTable(doc, {
-        head: headers,
-        body: body,
-        startY: 30,
-    });
-
-    doc.save(`relatorio_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
-  } catch(e) {
-    console.error("Erro ao gerar PDF: ", e);
-    alert("Ocorreu um erro ao gerar o PDF.");
-  } finally {
-    isGeneratingPdf.value = false;
-  }
-};
 </script>
 
 <style scoped lang="scss">
