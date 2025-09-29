@@ -172,6 +172,7 @@ type KanbanItem = {
   production_entry_date?: string;
   is_ghost: boolean;
   is_delayed: boolean;
+  has_insufficient_stock: boolean; // NOVO: Campo adicionado
 };
 
 const loading = ref(true);
@@ -224,10 +225,18 @@ const filteredItems = computed(() => {
 });
 
 const totalMetersInDesign = computed(() => ghostItems.value.reduce((sum, item) => sum + item.quantity_meters, 0));
+
+// ===== INÍCIO DA CORREÇÃO =====
+// A lógica agora verifica o campo 'has_insufficient_stock'
 const ordersPendingStock = computed(() => {
-    const orderIds = new Set(allItems.value.filter(item => item.status === 'pending_stock').map(item => item.order_id));
+    const orderIds = new Set(
+        allItems.value
+            .filter(item => item.has_insufficient_stock)
+            .map(item => item.order_id)
+    );
     return Array.from(orderIds);
 });
+// ===== FIM DA CORREÇÃO =====
 
 const weekDays = computed(() => Array.from({ length: 6 }, (_, i) => {
     const date = addDays(currentWeekStart.value, i);
@@ -265,11 +274,14 @@ const openQueueModal = (queueType: 'design' | 'stock') => {
     } else {
         modalTitle.value = 'Pedidos Aguardando Matéria-Prima';
         const ordersMap = new Map();
+        // ===== INÍCIO DA CORREÇÃO =====
+        // A lógica agora filtra por 'has_insufficient_stock'
         allItems.value.forEach(item => {
-            if (item.status === 'pending_stock' && !ordersMap.has(item.order_id)) {
+            if (item.has_insufficient_stock && !ordersMap.has(item.order_id)) {
                 ordersMap.set(item.order_id, item);
             }
         });
+        // ===== FIM DA CORREÇÃO =====
         modalItems.value = Array.from(ordersMap.values());
     }
     showQueueModal.value = true;
@@ -278,16 +290,19 @@ const openQueueModal = (queueType: 'design' | 'stock') => {
 const fetchAllData = async () => {
   loading.value = true;
   try {
+    // ===== INÍCIO DA CORREÇÃO =====
+    // A query agora também busca o campo 'has_insufficient_stock' de cada item.
     const { data, error } = await supabase
       .from('orders')
       .select(`
         id, order_number, customer_name, status, created_at,
         creator:created_by(full_name),
         order_items(
-          id, status, quantity_meters, fabric_type, stamp_ref, created_at
+          id, status, quantity_meters, fabric_type, stamp_ref, created_at, has_insufficient_stock
         ),
         production_schedule(scheduled_date, order_item_id, created_at)
       `);
+    // ===== FIM DA CORREÇÃO =====
 
     if (error) throw error;
 
@@ -323,6 +338,7 @@ const fetchAllData = async () => {
                 production_entry_date: schedule?.created_at,
                 is_ghost: isGhost,
                 is_delayed: isDelayed,
+                has_insufficient_stock: item.has_insufficient_stock // NOVO: Atribui o campo
             });
         });
     });

@@ -555,7 +555,8 @@ type OrderItem = {
   notes: string;
   design_tag: 'Desenvolvimento' | 'Alteração' | 'Finalização' | 'Aprovado';
   new_stamp_file?: File | null;
-  has_insufficient_stock: boolean; // <-- NOVA PROPRIEDADE
+  has_insufficient_stock: boolean;
+  status: 'design_pending' | 'pending_stock'; // NOVO: Adiciona o status ao item
 };
 type StampLibraryItem = {
     id: number;
@@ -654,7 +655,7 @@ const orderHeader = reactive<OrderHeader>({
 const createNewItem = (): OrderItem => ({
   fabric_type: null, stamp_ref_id: null, stamp_ref: '', quantity: null, quantity_meters: null,
   unit_of_measure: 'm', rendimento: null, valor_unitario: null, stamp_image_url: null,
-  notes: '', design_tag: 'Desenvolvimento', new_stamp_file: null, has_insufficient_stock: false,
+  notes: '', design_tag: 'Desenvolvimento', new_stamp_file: null, has_insufficient_stock: false, status: 'design_pending',
 });
 
 const orderItems = ref<OrderItem[]>([]);
@@ -978,6 +979,15 @@ const saveOrUpdateItem = async () => {
   const requiredMeters = editedItem.value.quantity_meters || 0;
   editedItem.value.has_insufficient_stock = requiredMeters > availableStock;
 
+  // ===== INÍCIO DA CORREÇÃO =====
+  // Define o status inicial do item com base na disponibilidade de estoque
+  if (editedItem.value.has_insufficient_stock) {
+    editedItem.value.status = 'pending_stock';
+  } else {
+    editedItem.value.status = 'design_pending';
+  }
+  // ===== FIM DA CORREÇÃO =====
+
   const rawItem = toRaw(editedItem.value);
   if (isEditing.value && editedItemIndex.value !== null) {
     orderItems.value[editedItemIndex.value] = structuredClone(rawItem);
@@ -1179,11 +1189,15 @@ const submitLaunch = async () => {
 
     await syncOrderWithGestaoClick(proofPublicUrl);
 
+    // ===== INÍCIO DA CORREÇÃO =====
+    // O payload de itens agora inclui o status de cada um
     const itemsPayload = orderItems.value.map(item => ({
         fabric_type: item.fabric_type, stamp_ref: item.stamp_ref, quantity_meters: item.quantity_meters,
         stamp_image_url: item.stamp_image_url, design_tag: item.design_tag, notes: item.notes,
         quantity_unit: item.quantity, unit_of_measure: item.unit_of_measure, rendimento: item.rendimento,
+        status: item.status, // <- AQUI está a correção
     }));
+    // ===== FIM DA CORREÇÃO =====
 
     const { data: newOrderNumber, error: rpcError } = await supabase.rpc('create_launch_order', {
       p_customer_name: selectedClient.nome, p_created_by: userStore.profile?.id, p_store_id: userStore.profile?.store_id,

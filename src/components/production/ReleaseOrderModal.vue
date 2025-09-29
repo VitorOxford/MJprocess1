@@ -142,7 +142,8 @@ const statusMap: Record<string, { text: string; color: string; hex: string, icon
     customer_approval: { text: 'Aprovação Vendedor', color: 'orange', hex: '#FB8C00', icon: 'mdi-account-clock' },
     changes_requested: { text: 'Alteração Solicitada', color: 'error', hex: '#F44336', icon: 'mdi-alert-circle' },
     approved_by_seller: { text: 'Aprovado', color: 'green-lighten-1', hex: '#66BB6A', icon: 'mdi-check' },
-    design_pending: { text: 'Em Design', color: 'blue-grey', hex: '#607D8B', icon: 'mdi-palette' }
+    design_pending: { text: 'Em Design', color: 'blue-grey', hex: '#607D8B', icon: 'mdi-palette' },
+    pending_stock: { text: 'Aguardando Estoque', color: 'warning', hex: '#FFB300', icon: 'mdi-package-variant-remove'} // NOVO
 };
 
 const designTagMap: Record<string, { color: string, hex: string }> = {
@@ -153,7 +154,7 @@ const designTagMap: Record<string, { color: string, hex: string }> = {
 };
 
 const statusInfo = (item: any) => {
-    // **NOVA LÓGICA**: Prioridade para o status de estoque
+    // A flag has_insufficient_stock agora é a fonte da verdade para o status de estoque
     if (item.has_insufficient_stock) {
         return {
             text: 'Aguardando Estoque',
@@ -162,7 +163,6 @@ const statusInfo = (item: any) => {
             icon: 'mdi-package-variant-remove'
         };
     }
-    // Lógica original para outros status
     if (item.status === 'design_pending' && item.design_tag) {
         const tagInfo = designTagMap[item.design_tag];
         if (tagInfo) {
@@ -212,14 +212,18 @@ watch(
   { immediate: true }
 );
 
-// **MODIFICAÇÃO**: A função agora só verifica o status do item
+// ===== INÍCIO DA CORREÇÃO =====
+// A função agora verifica se o item está na fila de produção.
+// A lógica de estoque é tratada diretamente no template (`:disabled`).
 const canReleaseItem = (item: any) => {
   return item.status === "production_queue";
 };
+// ===== FIM DA CORREÇÃO =====
 
 const releaseItemForProduction = async (item: any) => {
   let confirmationText = `Tem certeza que deseja liberar o item "${item.stamp_ref}" para a produção? A data de início será resetada para HOJE.`;
 
+  // Mensagem especial para admin forçando a liberação
   if (item.has_insufficient_stock && userStore.isAdmin) {
       confirmationText = `ATENÇÃO, ADMINISTRADOR!\n\nEste item NÃO possui estoque suficiente.\n\nTem certeza que deseja FORÇAR a liberação do item "${item.stamp_ref}" para a produção?`;
   }
@@ -228,6 +232,7 @@ const releaseItemForProduction = async (item: any) => {
 
   releasing[item.id] = true;
   try {
+    // Chamada da nova RPC v2 que lida com a lógica no backend
     const { error: rpcError } = await supabase.rpc(
       "release_item_to_production_v2",
       {
@@ -237,6 +242,7 @@ const releaseItemForProduction = async (item: any) => {
 
     if (rpcError) throw rpcError;
 
+    // Atualização visual imediata
     const foundItem = localItems.value.find((i) => i.id === item.id);
     if (foundItem) {
       foundItem.status = "in_printing";
