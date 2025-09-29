@@ -6,14 +6,14 @@
         <span class="font-weight-bold author-name">{{ message.profile?.full_name }}</span>
       </div>
 
-      <div v-if="message.message_type === 'image'" class="media-container">
-        <v-img
-          :src="message.content"
-          class="rounded-lg media-content"
-          max-height="300"
-          max-width="400"
-          @click="openImageModal(message.content)"
-        ></v-img>
+      <div v-if="message.message_type === 'image'" class="media-container" @click="openImageModal(message.content)">
+        <v-img :src="message.content" class="rounded-lg media-content" aspect-ratio="1" cover>
+          <template v-slot:placeholder>
+            <div class="d-flex align-center justify-center fill-height">
+              <v-progress-circular color="grey-lighten-4" indeterminate></v-progress-circular>
+            </div>
+          </template>
+        </v-img>
       </div>
 
       <div v-else-if="message.message_type === 'audio'" class="audio-container">
@@ -25,11 +25,12 @@
         <a :href="message.content" target="_blank" download class="file-link">{{ getFileName(message.content) }}</a>
       </div>
 
-      <p v-else class="message-text">{{ message.content }}</p>
-
-      <div class="message-footer">
-        <span class="message-time">{{ formattedTime }}</span>
-        <v-icon v-if="isMyMessage" size="16" class="ml-1 read-receipt-icon">mdi-check-all</v-icon>
+      <div v-else class="message-content-wrapper">
+        <p class="message-text" v-html="highlightedContent"></p>
+        <div class="message-footer">
+          <span class="message-time">{{ formattedTime }}</span>
+          <v-icon v-if="isMyMessage" size="16" class="ml-1 read-receipt-icon">mdi-check-all</v-icon>
+        </div>
       </div>
     </div>
 
@@ -46,6 +47,7 @@ import ImageModal from '@/components/ImageModal.vue';
 const props = defineProps<{
   message: any;
   isConsecutive: boolean;
+  searchQuery?: string;
 }>();
 
 const emit = defineEmits(['show-menu']);
@@ -56,6 +58,15 @@ const formattedTime = computed(() => format(new Date(props.message.created_at), 
 
 const imageModal = reactive({ show: false, url: '' });
 
+const highlightedContent = computed(() => {
+  const content = props.message.content;
+  if (!props.searchQuery || props.message.message_type !== 'text') {
+    return content;
+  }
+  const regex = new RegExp(`(${props.searchQuery})`, 'gi');
+  return content.replace(regex, '<mark class="search-highlight">$1</mark>');
+});
+
 const openImageModal = (url: string) => {
   imageModal.url = url;
   imageModal.show = true;
@@ -64,7 +75,6 @@ const openImageModal = (url: string) => {
 const getFileName = (url: string) => {
   try {
     const decodedUrl = decodeURIComponent(url);
-    // Remove o timestamp do início do nome do arquivo
     return decodedUrl.split('/').pop()?.split('?')[0].slice(14) || 'Arquivo';
   } catch {
     return 'Arquivo';
@@ -76,16 +86,24 @@ const showMenu = (event: MouseEvent) => {
 };
 </script>
 
+<style lang="scss">
+.search-highlight {
+  background-color: #FFC107;
+  color: #000;
+  padding: 1px 0;
+}
+</style>
+
 <style lang="scss" scoped>
 .message-wrapper {
   display: flex;
-  margin: 2px 0;
-  align-items: flex-end; /* Alinha na base */
+  margin: 8px 0;
+  align-items: flex-end;
 
   &.my-message {
     justify-content: flex-end;
     .message-bubble {
-      background-color: #267267; // Verde escuro para minhas mensagens
+      background-color: rgba(38, 114, 103, 0.7); // Verde com transparência
       border-bottom-right-radius: 4px;
     }
   }
@@ -93,15 +111,18 @@ const showMenu = (event: MouseEvent) => {
   &:not(.my-message) {
     justify-content: flex-start;
     .message-bubble {
-      background-color: #2C2C2C; // Cinza escuro para mensagens dos outros
+      background-color: rgba(44, 44, 44, 0.7); // Cinza com transparência
       border-bottom-left-radius: 4px;
     }
   }
 
   &.consecutive {
-    margin-top: -8px; /* Junta as mensagens */
+    margin-top: 2px;
     .message-bubble {
-      border-radius: 12px; // Remove a "cauda"
+      border-radius: 12px;
+    }
+    &:not(.my-message) {
+       padding-left: 44px;
     }
   }
 }
@@ -118,32 +139,50 @@ const showMenu = (event: MouseEvent) => {
   word-wrap: break-word;
   position: relative;
   box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  cursor: pointer;
+
+  // Efeito Glassmorphism
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .author-name {
-  color: #4DB6AC; // Cor de destaque para o nome
+  color: #4DB6AC;
   font-size: 0.9rem;
 }
+
+.message-content-wrapper {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap; // Permite que a hora quebre a linha se necessário
+  gap: 8px; // Espaço entre o texto e a hora
+}
+
 .message-text {
   margin: 0;
-  padding-bottom: 18px; /* Espaço para o tempo */
   line-height: 1.4;
   white-space: pre-wrap;
+  min-width: 20px; // Garante espaço mínimo para o texto
+  flex: 1 1 auto; // Permite que o texto cresça
 }
+
 .message-footer {
-  position: absolute;
-  bottom: 5px;
-  right: 10px;
   font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.6);
   display: flex;
   align-items: center;
+  white-space: nowrap; // Evita que a hora quebre
+  flex-shrink: 0; // Não deixa a hora encolher
 }
 .read-receipt-icon {
-  color: #53bdeb; // Cor para o "check" de lido
+  color: #53bdeb;
 }
 .media-container, .audio-container {
-  padding-bottom: 20px;
   cursor: pointer;
+}
+.media-container {
+  min-width: 250px;
+  max-width: 400px;
 }
 audio {
   width: 250px;

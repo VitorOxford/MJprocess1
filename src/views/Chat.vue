@@ -1,5 +1,5 @@
 <template>
-  <ChatLayout />
+  <ChatLayout class="fill-height" />
 </template>
 
 <script setup lang="ts">

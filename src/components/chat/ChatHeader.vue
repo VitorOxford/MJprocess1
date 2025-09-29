@@ -1,35 +1,71 @@
 <template>
-  <header class="chat-header">
-    <div v-if="channel" class="d-flex align-center">
-      <v-avatar :image="getChannelAvatar(channel)" size="40" class="mr-3"></v-avatar>
-      <div>
-        <h3 class="font-weight-bold">{{ getChannelName(channel) }}</h3>
-        <p class="text-caption text-medium-emphasis">{{ getStatusText }}</p>
+  <v-toolbar density="compact" color="rgba(30, 30, 30, 0.7)" class="chat-header">
+    <v-btn v-if="isMobile" icon="mdi-arrow-left" variant="text" class="mr-2" @click="$emit('back')"></v-btn>
+
+    <template v-if="!isSearchActive">
+      <div v-if="channel" class="d-flex align-center">
+        <v-avatar :image="getChannelAvatar(channel)" size="40" class="mr-3"></v-avatar>
+        <div>
+          <h3 class="font-weight-bold text-body-1">{{ getChannelName(channel) }}</h3>
+          <p class="text-caption text-medium-emphasis">{{ getStatusText }}</p>
+        </div>
       </div>
-    </div>
-    <v-spacer></v-spacer>
+      <v-spacer></v-spacer>
+    </template>
+
+    <template v-else>
+       <v-text-field
+        :model-value="searchQuery"
+        @update:model-value="$emit('update:searchQuery', $event)"
+        placeholder="Buscar na conversa..."
+        variant="solo"
+        flat
+        dense
+        hide-details
+        autofocus
+        prepend-inner-icon="mdi-magnify"
+        class="search-input"
+      ></v-text-field>
+    </template>
+
     <div class="header-actions">
-        <v-btn icon="mdi-video-outline" variant="text"></v-btn>
-        <v-btn icon="mdi-magnify" variant="text"></v-btn>
-        <v-btn icon="mdi-information-outline" variant="text" @click="$emit('toggle-repository')"></v-btn>
+      <v-btn v-if="!isSearchActive" icon="mdi-magnify" variant="text" @click="isSearchActive = true"></v-btn>
+      <v-btn v-else icon="mdi-close" variant="text" @click="closeSearch"></v-btn>
+
+      <v-btn variant="text" @click="$emit('toggle-repository')" icon>
+        <v-icon>mdi-information-outline</v-icon>
+        <v-tooltip activator="parent" location="bottom">Mídia e Arquivos</v-tooltip>
+      </v-btn>
     </div>
-  </header>
+  </v-toolbar>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, computed } from 'vue';
 
-const props = defineProps<{ channel: any; onlineUsers: any[] }>();
-defineEmits(['toggle-repository']);
+const props = defineProps<{
+  channel: any;
+  onlineUsers: any[];
+  isMobile: boolean;
+  searchQuery: string;
+}>();
+const emit = defineEmits(['toggle-repository', 'back', 'update:searchQuery']);
 
-const getChannelName = (channel) => {
+const isSearchActive = ref(false);
+
+const closeSearch = () => {
+    isSearchActive.value = false;
+    emit('update:searchQuery', ''); // Limpa a busca ao fechar
+};
+
+const getChannelName = (channel: any) => {
   if (channel.is_private_dm && channel.other_participant) {
     return channel.other_participant.full_name;
   }
   return channel.name || 'Canal';
 };
 
-const getChannelAvatar = (channel) => {
+const getChannelAvatar = (channel: any) => {
   if (channel.is_private_dm && channel.other_participant) {
     return channel.other_participant.avatar_url;
   }
@@ -37,8 +73,10 @@ const getChannelAvatar = (channel) => {
 };
 
 const getStatusText = computed(() => {
-    if (!props.channel || !props.channel.is_private_dm) return 'Grupo';
+    if (!props.channel) return '';
+    if (!props.channel.is_private_dm) return 'Grupo';
     const participant = props.channel.other_participant;
+    if(!participant) return 'Grupo';
     const onlineInfo = props.onlineUsers.find(u => u.id === participant.id);
     const status = onlineInfo?.status || 'offline';
     return status.charAt(0).toUpperCase() + status.slice(1);
@@ -47,11 +85,21 @@ const getStatusText = computed(() => {
 
 <style scoped lang="scss">
 .chat-header {
-  padding: 12px 16px;
-  background-color: #1E1E1E;
-  border-bottom: 1px solid #2E2E2E;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
+  padding: 0 8px;
+}
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.search-input {
+    :deep(.v-field) {
+        background-color: rgba(255,255,255,0.1) !important;
+        box-shadow: none !important;
+    }
 }
 </style>
