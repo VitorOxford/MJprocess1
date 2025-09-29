@@ -71,8 +71,7 @@
           </v-col>
         </v-row>
          </v-card-text>
-
-      <v-divider class="my-4"></v-divider>
+         <v-divider class="my-4"></v-divider>
 
       <v-card-text class="py-0">
         <v-row align="center" justify="center">
@@ -267,7 +266,7 @@ const {
   ordersPendingApproval,
   totalMetersPendingApproval,
   itemsDelayedInDesign,
-  itemsPendingStock, // NOVO
+  itemsPendingStock,
   totalMetersInProduction,
   totalMetersInDesign,
   completedOrders,
@@ -471,6 +470,7 @@ onMounted(async () => {
   border-radius: 12px;
   transition: all 0.2s ease-in-out; position: relative; overflow: hidden;
   color: white;
+  min-height: 110px; // Altura mínima para consistência
 
   &.clickable-kpi { cursor: pointer; &:hover { transform: translateY(-4px); box-shadow: 0 8px 15px rgba(0,0,0,0.2); } }
   &.alert-card { background: linear-gradient(45deg, #d32f2f, #f44336); color: white; box-shadow: 0 4px 20px rgba(211, 47, 47, 0.4); }
@@ -508,14 +508,14 @@ onMounted(async () => {
   background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
-// ===== INÍCIO DA CORREÇÃO =====
-// Ajuste de layout para 5 cards
+// Layout para 5 cards por linha em telas grandes (lg)
 .v-row {
   .v-col-lg-2_4 {
-    width: 20%;
-    flex: 0 0 20%;
-    max-width: 20%;
+    @media (min-width: 1280px) {
+      width: 20%;
+      flex: 0 0 20%;
+      max-width: 20%;
+    }
   }
 }
-// ===== FIM DA CORREÇÃO =====
 </style>

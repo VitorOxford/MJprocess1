@@ -34,6 +34,7 @@ declare module 'vue' {
     DesignerDashboard: typeof import('./components/dashboards/DesignerDashboard.vue')['default']
     DminUserManagement: typeof import('./components/admin/dminUserManagement.vue')['default']
     FileUploadModal: typeof import('./components/FileUploadModal.vue')['default']
+    ForwardMessageModal: typeof import('./components/chat/ForwardMessageModal.vue')['default']
     HelloWorld: typeof import('./components/HelloWorld.vue')['default']
     ImageModal: typeof import('./components/ImageModal.vue')['default']
     KpiCard: typeof import('./components/admin/KpiCard.vue')['default']

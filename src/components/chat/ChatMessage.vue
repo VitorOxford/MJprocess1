@@ -6,6 +6,11 @@
         <span class="font-weight-bold author-name">{{ message.profile?.full_name }}</span>
       </div>
 
+      <div v-if="message.replied_message" class="reply-container">
+          <div class="reply-author">{{ message.replied_message.profile.full_name }}</div>
+          <div class="reply-text text-truncate">{{ message.replied_message.content }}</div>
+      </div>
+
       <div v-if="message.message_type === 'image'" class="media-container" @click="openImageModal(message.content)">
         <v-img :src="message.content" class="rounded-lg media-content" aspect-ratio="1" cover>
           <template v-slot:placeholder>
@@ -102,28 +107,22 @@ const showMenu = (event: MouseEvent) => {
 
   &.my-message {
     justify-content: flex-end;
-    .message-bubble {
-      background-color: rgba(38, 114, 103, 0.7); // Verde com transparência
-      border-bottom-right-radius: 4px;
-    }
+    .message-bubble { background-color: rgba(38, 114, 103, 0.7); border-bottom-right-radius: 4px; }
+    .reply-container { border-left-color: #80CBC4; }
+    .reply-author { color: #80CBC4; }
   }
 
   &:not(.my-message) {
     justify-content: flex-start;
-    .message-bubble {
-      background-color: rgba(44, 44, 44, 0.7); // Cinza com transparência
-      border-bottom-left-radius: 4px;
-    }
+    .message-bubble { background-color: rgba(44, 44, 44, 0.7); border-bottom-left-radius: 4px; }
+    .reply-container { border-left-color: #4DB6AC; }
+    .reply-author { color: #4DB6AC; }
   }
 
   &.consecutive {
     margin-top: 2px;
-    .message-bubble {
-      border-radius: 12px;
-    }
-    &:not(.my-message) {
-       padding-left: 44px;
-    }
+    .message-bubble { border-radius: 12px; }
+    &:not(.my-message) { padding-left: 44px; }
   }
 }
 
@@ -140,57 +139,28 @@ const showMenu = (event: MouseEvent) => {
   position: relative;
   box-shadow: 0 1px 2px rgba(0,0,0,0.15);
   cursor: pointer;
-
-  // Efeito Glassmorphism
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-.author-name {
-  color: #4DB6AC;
-  font-size: 0.9rem;
+.author-name { color: #4DB6AC; font-size: 0.9rem; }
+
+.reply-container {
+    padding: 6px 10px;
+    margin: -2px -6px 8px -6px;
+    background-color: rgba(0,0,0,0.2);
+    border-left: 3px solid;
+    border-radius: 4px;
+    .reply-author { font-size: 0.8rem; font-weight: bold; }
+    .reply-text { font-size: 0.85rem; color: #e0e0e0; }
 }
 
-.message-content-wrapper {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap; // Permite que a hora quebre a linha se necessário
-  gap: 8px; // Espaço entre o texto e a hora
-}
-
-.message-text {
-  margin: 0;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  min-width: 20px; // Garante espaço mínimo para o texto
-  flex: 1 1 auto; // Permite que o texto cresça
-}
-
-.message-footer {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.6);
-  display: flex;
-  align-items: center;
-  white-space: nowrap; // Evita que a hora quebre
-  flex-shrink: 0; // Não deixa a hora encolher
-}
-.read-receipt-icon {
-  color: #53bdeb;
-}
-.media-container, .audio-container {
-  cursor: pointer;
-}
-.media-container {
-  min-width: 250px;
-  max-width: 400px;
-}
-audio {
-  width: 250px;
-  height: 40px;
-}
-.file-attachment a {
-  color: white;
-  text-decoration: none;
-  &:hover { text-decoration: underline; }
-}
+.message-content-wrapper { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 8px; }
+.message-text { margin: 0; line-height: 1.4; white-space: pre-wrap; min-width: 20px; flex: 1 1 auto; }
+.message-footer { font-size: 0.7rem; color: rgba(255, 255, 255, 0.6); display: flex; align-items: center; white-space: nowrap; flex-shrink: 0; }
+.read-receipt-icon { color: #53bdeb; }
+.media-container, .audio-container { cursor: pointer; }
+.media-container { min-width: 250px; max-width: 400px; }
+audio { width: 250px; height: 40px; }
+.file-attachment a { color: white; text-decoration: none; &:hover { text-decoration: underline; } }
 </style>

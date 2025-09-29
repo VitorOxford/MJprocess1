@@ -3,10 +3,10 @@
     <v-btn v-if="isMobile" icon="mdi-arrow-left" variant="text" class="mr-2" @click="$emit('back')"></v-btn>
 
     <template v-if="!isSearchActive">
-      <div v-if="channel" class="d-flex align-center">
+      <div v-if="channel" class="d-flex align-center" style="min-width: 0;">
         <v-avatar :image="getChannelAvatar(channel)" size="40" class="mr-3"></v-avatar>
-        <div>
-          <h3 class="font-weight-bold text-body-1">{{ getChannelName(channel) }}</h3>
+        <div style="min-width: 0;">
+          <h3 class="font-weight-bold text-body-1 text-truncate">{{ getChannelName(channel) }}</h3>
           <p class="text-caption text-medium-emphasis">{{ getStatusText }}</p>
         </div>
       </div>
@@ -55,7 +55,7 @@ const isSearchActive = ref(false);
 
 const closeSearch = () => {
     isSearchActive.value = false;
-    emit('update:searchQuery', ''); // Limpa a busca ao fechar
+    emit('update:searchQuery', '');
 };
 
 const getChannelName = (channel: any) => {
