@@ -9,8 +9,8 @@
       </v-toolbar>
 
       <v-tabs v-model="tab" color="primary" class="styled-tabs" grow>
-        <v-tab value="audit" class="tab-item"><v-icon start>mdi-history</v-icon>Auditoria</v-tab>
         <v-tab value="reports" class="tab-item"><v-icon start>mdi-chart-line</v-icon>Relatórios</v-tab>
+        <v-tab value="audit" class="tab-item"><v-icon start>mdi-history</v-icon>Auditoria</v-tab>
         <v-tab value="notifications" class="tab-item"><v-icon start>mdi-bullhorn-outline</v-icon>Notificações</v-tab>
         <v-tab value="stock" class="tab-item"><v-icon start>mdi-warehouse</v-icon>Estoque</v-tab>
         <v-tab value="prices" class="tab-item"><v-icon start>mdi-currency-usd</v-icon>Tabela de Preços</v-tab>
@@ -20,12 +20,12 @@
       <v-divider></v-divider>
 
       <v-window v-model="tab" class="pa-2 pa-md-5">
-        <v-window-item value="audit" :eager="true">
-          <AdminAuditTab />
-        </v-window-item>
-
         <v-window-item value="reports" :eager="true">
           <AdminReportsTab />
+        </v-window-item>
+
+        <v-window-item value="audit" :eager="true">
+          <AdminAuditTab />
         </v-window-item>
 
         <v-window-item value="notifications" :eager="true">
@@ -55,9 +55,9 @@ import AdminAuditTab from '@/components/admin/AdminAuditTab.vue';
 import AdminReportsTab from '@/components/admin/AdminReportsTab.vue';
 import AdminNotificationsTab from '@/components/admin/AdminNotificationsTab.vue';
 import AdminPriceListManagement from '@/components/admin/AdminPriceListManagement.vue';
-import AdminUserManagement from '@/components/admin/AdminUserManagement.vue'; // <-- NOVO IMPORT
+import AdminUserManagement from '@/components/admin/AdminUserManagement.vue';
 
-const tab = ref('audit');
+const tab = ref('reports'); // Começa na aba de Relatórios
 </script>
 
 <style scoped lang="scss">

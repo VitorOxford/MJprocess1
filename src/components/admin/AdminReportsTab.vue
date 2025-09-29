@@ -38,7 +38,7 @@
         <v-window-item value="sales">
             <v-row>
                 <v-col cols="12" md="8">
-                  <ChartCard title="Desempenho por Vendedor">
+                  <ChartCard title="Desempenho por Vendedor (Itens de Lançamentos)">
                     <template #actions>
                        <v-chip-group v-model="salesChartMetric" mandatory variant="outlined" density="compact">
                           <v-chip value="items_count" size="small">Itens</v-chip>

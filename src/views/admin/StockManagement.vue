@@ -147,6 +147,7 @@ const editedItem = ref<{
     rendimento: number | null;
     low_stock_threshold: number | null;
     current_stock?: number;
+    gestao_click_id?: string | null;
 }>({
     id: null,
     fabric_type: '',
@@ -246,7 +247,8 @@ const openEditDialog = (item: StockItem) => {
       unit_of_measure: item.unit_of_measure,
       rendimento: item.rendimento,
       low_stock_threshold: item.low_stock_threshold,
-      current_stock: item.available_meters
+      current_stock: item.available_meters,
+      gestao_click_id: item.gestao_click_id,
   };
   dialog.value = true;
 };
@@ -285,8 +287,19 @@ const saveStock = async () => {
                   x: editedItem.value.quantity
               });
               if (rpcError) throw rpcError;
+
+              // ===== INÍCIO DA CORREÇÃO =====
+              // Sincroniza a alteração com o Gestão Click
+              if (editedItem.value.gestao_click_id) {
+                  const currentStock = editedItem.value.current_stock || 0;
+                  const newStock = currentStock + (editedItem.value.quantity || 0);
+                  await gestaoApi.atualizarEstoqueProduto(editedItem.value.gestao_click_id, newStock);
+              }
+              // ===== FIM DA CORREÇÃO =====
           }
       } else {
+          // A criação de um novo produto no Gestão Click não é suportada pela API atual
+          // A sincronização deve ser feita do Gestão Click para o MJProcess
           const { error } = await supabase.from('stock').insert({
               fabric_type: editedItem.value.fabric_type,
               available_meters: editedItem.value.quantity || 0,

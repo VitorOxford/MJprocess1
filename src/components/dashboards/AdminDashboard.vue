@@ -23,7 +23,7 @@
 
       <v-card-text>
         <v-row>
-           <v-col cols="12" sm="6" md="3">
+           <v-col cols="12" sm="6" md="4" lg="2_4">
             <div class="kpi-stat-card clickable-kpi alert-card" @click="showApprovalModal = true">
               <div class="shine-effect"></div>
               <v-icon class="kpi-icon">mdi-check-decagram-outline</v-icon>
@@ -33,7 +33,7 @@
               </div>
             </div>
           </v-col>
-          <v-col cols="12" sm="6" md="3">
+          <v-col cols="12" sm="6" md="4" lg="2_4">
             <div class="kpi-stat-card clickable-kpi" @click="openKpiDetailModal('delayed')" style="background: linear-gradient(45deg, #f57c00, #ff9800); color: white;">
               <v-icon class="kpi-icon">mdi-clock-alert-outline</v-icon>
               <div class="kpi-content">
@@ -42,7 +42,16 @@
               </div>
             </div>
           </v-col>
-          <v-col cols="12" sm="6" md="3">
+           <v-col cols="12" sm="6" md="4" lg="2_4">
+            <div class="kpi-stat-card" style="background: linear-gradient(45deg, #c62828, #e53935); color: white;">
+              <v-icon class="kpi-icon">mdi-package-variant-closed-remove</v-icon>
+              <div class="kpi-content">
+                <span class="kpi-value">{{ itemsPendingStock.count }} ({{ formatNumber(itemsPendingStock.totalMeters) }}m)</span>
+                <span class="kpi-title">Aguardando Estoque</span>
+              </div>
+            </div>
+          </v-col>
+          <v-col cols="12" sm="6" md="6" lg="2_4">
             <div class="kpi-stat-card" style="background: linear-gradient(45deg, #6a1b9a, #9c27b0); color: white;">
               <v-icon class="kpi-icon">mdi-factory</v-icon>
               <div class="kpi-content">
@@ -51,7 +60,7 @@
               </div>
             </div>
           </v-col>
-          <v-col cols="12" sm="6" md="3">
+          <v-col cols="12" sm="12" md="6" lg="2_4">
             <div class="kpi-stat-card clickable-kpi" @click="openKpiDetailModal('inDesign')" style="background: linear-gradient(45deg, #1e88e5, #42a5f5); color: white;">
               <v-icon class="kpi-icon">mdi-palette-swatch-outline</v-icon>
               <div class="kpi-content">
@@ -61,7 +70,7 @@
             </div>
           </v-col>
         </v-row>
-      </v-card-text>
+         </v-card-text>
 
       <v-divider class="my-4"></v-divider>
 
@@ -241,6 +250,7 @@ const ApprovalWarningModal = defineAsyncComponent(() => import('@/components/adm
 const ReportSettingsModal = defineAsyncComponent(() => import('@/components/admin/ReportSettingsModal.vue'));
 const Doughnut = defineAsyncComponent(() => import('vue-chartjs').then(c => c.Doughnut));
 const ChartCard = defineAsyncComponent(() => import('@/components/admin/ChartCard.vue'));
+const Bar = defineAsyncComponent(() => import('vue-chartjs').then(c => c.Bar));
 
 // --- ESTADO ---
 const showDetailModal = ref(false);
@@ -257,6 +267,7 @@ const {
   ordersPendingApproval,
   totalMetersPendingApproval,
   itemsDelayedInDesign,
+  itemsPendingStock, // NOVO
   totalMetersInProduction,
   totalMetersInDesign,
   completedOrders,
@@ -285,6 +296,7 @@ const statusInfo: Record<string, { text: string; color: string }> = {
   in_cutting: { text: 'Corte', color: 'purple' },
   changes_requested: { text: 'Alteração', color: 'error' },
   approved_by_seller: { text: 'Aprovado', color: 'green' },
+  pending_stock: { text: 'Aguardando Estoque', color: 'warning' },
 };
 
 const filteredOrders = computed(() => {
@@ -495,4 +507,15 @@ onMounted(async () => {
 :deep(.v-data-table .v-data-table-header) {
   background-color: rgba(255, 255, 255, 0.05) !important;
 }
+
+// ===== INÍCIO DA CORREÇÃO =====
+// Ajuste de layout para 5 cards
+.v-row {
+  .v-col-lg-2_4 {
+    width: 20%;
+    flex: 0 0 20%;
+    max-width: 20%;
+  }
+}
+// ===== FIM DA CORREÇÃO =====
 </style>
