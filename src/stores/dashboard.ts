@@ -26,7 +26,7 @@ export type Order = {
   is_launch: boolean;
   has_down_payment: boolean;
   down_payment_proof_url: string | null;
-  forecast_delivery_date?: string | null; // <-- GARANTIR QUE ESTE CAMPO ESTÁ NA TIPAGEM
+  forecast_delivery_date?: string | null;
   details: {
     fabric_type: string;
     [key: string]: any;
@@ -58,7 +58,7 @@ export type ProductionScheduleItem = {
   item: OrderItem;
 };
 
-// FUNÇÕES AUXILIARES (sem alterações)
+// FUNÇÕES AUXILIARES
 const excludedSellers = ['João Vitor', 'Levi Lopes'];
 const normalizeFabricName = (name: string | null | undefined): string => {
     if (!name) return 'Não especificado';
@@ -67,7 +67,7 @@ const normalizeFabricName = (name: string | null | undefined): string => {
 const addBusinessDays = (startDate: Date, days: number): Date => {
   const newDate = new Date(startDate);
   let addedDays = 0;
-  while (addedDays < targetDays) {
+  while (addedDays < days) {
     newDate.setDate(newDate.getDate() + 1);
     if (newDate.getDay() !== 0) { // Domingo = 0
       addedDays++;
@@ -87,58 +87,44 @@ const getNextDeliveryDay = (date: Date): Date => {
     }
 };
 
-// STORE COM LOGS
 export const useDashboardStore = defineStore('dashboard', {
   state: () => ({
     orders: [] as Order[],
     tasks: [] as Task[],
-    productionScheduleItems: [] as ProductionScheduleItem[], // Mantido para outras partes do app
+    productionScheduleItems: [] as ProductionScheduleItem[],
     loading: false,
     lastFetched: null as Date | null,
     kpiSelectedDate: new Date(),
   }),
 
   getters: {
-    // GETTER `productionGhosts` COM LOGS DETALHADOS
-    productionGhosts(state) {
-      console.log("================ GHOSTS LOG START ================");
-      console.log(`[GHOSTS] Total de pedidos no state: ${state.orders.length}`);
-
+    productionGhosts(state) {
       // 1. Filtra os pedidos para encontrar os "fantasmas" em potencial.
-      const inProgressLaunchOrders = state.orders.filter(order => {
-        const isGhostCandidate =
-          order.is_launch &&
-          !order.actual_delivery_date &&
-          order.status !== 'completed' &&
-          order.status !== 'delivered';
-
-        if (isGhostCandidate) {
-          // Log para cada candidato a fantasma
-          console.log(`[GHOSTS] Pedido #${order.order_number} é um candidato. Status: ${order.status}, Data Prevista do DB: ${order.forecast_delivery_date}`);
-        }
-        return isGhostCandidate;
-      });
-      console.log(`[GHOSTS] Encontrados ${inProgressLaunchOrders.length} pedidos candidatos a fantasma.`);
+      const inProgressLaunchOrders = state.orders.filter(order =>
+        order.is_launch &&
+        !order.actual_delivery_date &&
+        order.status !== 'completed' &&
+        order.status !== 'delivered'
+      );
 
       // 2. Mapeia os candidatos para o formato final, calculando as datas.
       const finalGhosts = inProgressLaunchOrders.map(order => {
         const creationDate = parseISO(order.created_at);
 
+        // ===== INÍCIO DA CORREÇÃO =====
+        // Verifica se algum item no pedido tem o status 'pending_stock'.
+        const hasStockIssues = order.order_items.some(item => item.status === 'pending_stock');
+        const extraDays = hasStockIssues ? 2 : 0; // Adiciona 2 dias úteis extras se houver falta de estoque.
+        // ===== FIM DA CORREÇÃO =====
+
         // A produção começa NO DIA SEGUINTE ao lançamento.
         const startProductionDate = addDays(creationDate, 1);
 
-        // Adiciona 2 dias úteis para completar o total de 3 dias de produção.
-        const completionDate = addBusinessDays(startProductionDate, 2);
+        // Adiciona 2 dias úteis + os dias extras calculados.
+        const completionDate = addBusinessDays(startProductionDate, 2 + extraDays);
 
         // Encontra o próximo dia de entrega (Ter, Qui, Sáb) após a conclusão.
         const forecastDeliveryDate = getNextDeliveryDay(completionDate);
-
-        // Log detalhado para cada fantasma processado
-        console.log(`[GHOSTS] Processando Pedido #${order.order_number}:
-          - Data Criação: ${format(creationDate, 'dd/MM/yyyy')}
-          - Início Produção (Dia Seguinte): ${format(startProductionDate, 'dd/MM/yyyy')}
-          - Conclusão (Início + 2 dias úteis): ${format(completionDate, 'dd/MM/yyyy')}
-          - PREVISÃO DE ENTREGA CALCULADA: ${format(forecastDeliveryDate, 'dd/MM/yyyy (EEEE)', { locale: ptBR })}`);
 
         return {
           ...order,
@@ -148,12 +134,11 @@ export const useDashboardStore = defineStore('dashboard', {
         };
       });
 
-      console.log(`[GHOSTS] Array final de fantasmas a ser enviado para o componente:`, finalGhosts);
-      console.log("================ GHOSTS LOG END ================");
       return finalGhosts;
     },
 
-    // O resto dos seus getters permanece aqui...
+    // ... (o restante dos getters permanece igual) ...
+
     filteredOrdersForCharts(state): Order[] {
         return state.orders.filter(order =>
             order.creator && !excludedSellers.includes(order.creator.full_name)
@@ -361,50 +346,37 @@ export const useDashboardStore = defineStore('dashboard', {
         });
       return { onTime, delayed };
     }
-  },
+  },
 
-  actions: {
-    nextMonthKpi() { this.kpiSelectedDate = addMonths(this.kpiSelectedDate, 1); },
-    previousMonthKpi() { this.kpiSelectedDate = subMonths(this.kpiSelectedDate, 1); },
+  actions: {
+    nextMonthKpi() { this.kpiSelectedDate = addMonths(this.kpiSelectedDate, 1); },
+    previousMonthKpi() { this.kpiSelectedDate = subMonths(this.kpiSelectedDate, 1); },
 
-    // AÇÃO `fetchData` COM LOGS E QUERY CORRIGIDA
-    async fetchData() {
-      if (this.lastFetched && (new Date().getTime() - this.lastFetched.getTime()) < 30000) {
-        return;
-      }
+    async fetchData() {
+      if (this.lastFetched && (new Date().getTime() - this.lastFetched.getTime()) < 30000) {
+        return;
+      }
 
-      this.loading = true;
-      try {
-        const user = (await supabase.auth.getSession()).data.session?.user;
-        if (!user) throw new Error('Usuário não autenticado.');
+      this.loading = true;
+      try {
+        const user = (await supabase.auth.getSession()).data.session?.user;
+        if (!user) throw new Error('Usuário não autenticado.');
 
-        console.log("[FETCH_DATA] Buscando dados do Supabase...");
-
-        // A query agora busca explicitamente a coluna `forecast_delivery_date`
-        const { data, error } = await supabase.from('orders')
+        const { data, error } = await supabase.from('orders')
           .select('*, creator:created_by(full_name), order_items(*), forecast_delivery_date');
 
         if (error) throw error;
 
-        console.log(`[FETCH_DATA] Recebidos ${data.length} pedidos do banco de dados.`);
-        // Log para verificar se a coluna `forecast_delivery_date` está a vir
-        if (data.length > 0) {
-          console.log('[FETCH_DATA] Exemplo de primeiro pedido recebido:', data[0]);
-        }
+        this.orders = data as any[];
+        this.lastFetched = new Date();
 
-        this.orders = data as any[];
-        // Não precisamos mais buscar tasks ou a production_schedule aqui
-        this.lastFetched = new Date();
+      } catch (error: any) {
+        console.error('Erro ao buscar dados para o dashboard:', error);
+      } finally {
+        this.loading = false;
+      }
+    },
 
-      } catch (error: any) {
-        console.error('Erro ao buscar dados para o dashboard:', error);
-      } finally {
-        this.loading = false;
-      }
-    },
-
-    // ===== INÍCIO DA CORREÇÃO =====
-    // Ação reintroduzida para buscar dados específicos da produção
     async fetchProductionSchedule() {
       this.loading = true;
       try {
@@ -424,6 +396,5 @@ export const useDashboardStore = defineStore('dashboard', {
         this.loading = false;
       }
     },
-    // ===== FIM DA CORREÇÃO =====
-  },
+  },
 });
