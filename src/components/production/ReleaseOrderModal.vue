@@ -143,7 +143,7 @@ const statusMap: Record<string, { text: string; color: string; hex: string, icon
     changes_requested: { text: 'Alteração Solicitada', color: 'error', hex: '#F44336', icon: 'mdi-alert-circle' },
     approved_by_seller: { text: 'Aprovado', color: 'green-lighten-1', hex: '#66BB6A', icon: 'mdi-check' },
     design_pending: { text: 'Em Design', color: 'blue-grey', hex: '#607D8B', icon: 'mdi-palette' },
-    pending_stock: { text: 'Aguardando Estoque', color: 'warning', hex: '#FFB300', icon: 'mdi-package-variant-remove'} // NOVO
+    pending_stock: { text: 'Aguardando Estoque', color: 'warning', hex: '#FFB300', icon: 'mdi-package-variant-remove'}
 };
 
 const designTagMap: Record<string, { color: string, hex: string }> = {
@@ -154,7 +154,6 @@ const designTagMap: Record<string, { color: string, hex: string }> = {
 };
 
 const statusInfo = (item: any) => {
-    // A flag has_insufficient_stock agora é a fonte da verdade para o status de estoque
     if (item.has_insufficient_stock) {
         return {
             text: 'Aguardando Estoque',
@@ -183,7 +182,6 @@ const fetchFullOrderDetails = async (orderId: string) => {
   try {
     const { data, error } = await supabase
       .from("orders")
-      // **MODIFICAÇÃO**: Adicionado 'has_insufficient_stock' na query
       .select("*, created_by:profiles!created_by(full_name), order_items(*, has_insufficient_stock)")
       .eq("id", orderId)
       .single();
@@ -212,18 +210,13 @@ watch(
   { immediate: true }
 );
 
-// ===== INÍCIO DA CORREÇÃO =====
-// A função agora verifica se o item está na fila de produção.
-// A lógica de estoque é tratada diretamente no template (`:disabled`).
 const canReleaseItem = (item: any) => {
   return item.status === "production_queue";
 };
-// ===== FIM DA CORREÇÃO =====
 
 const releaseItemForProduction = async (item: any) => {
   let confirmationText = `Tem certeza que deseja liberar o item "${item.stamp_ref}" para a produção? A data de início será resetada para HOJE.`;
 
-  // Mensagem especial para admin forçando a liberação
   if (item.has_insufficient_stock && userStore.isAdmin) {
       confirmationText = `ATENÇÃO, ADMINISTRADOR!\n\nEste item NÃO possui estoque suficiente.\n\nTem certeza que deseja FORÇAR a liberação do item "${item.stamp_ref}" para a produção?`;
   }
@@ -232,7 +225,6 @@ const releaseItemForProduction = async (item: any) => {
 
   releasing[item.id] = true;
   try {
-    // Chamada da nova RPC v2 que lida com a lógica no backend
     const { error: rpcError } = await supabase.rpc(
       "release_item_to_production_v2",
       {
@@ -242,11 +234,9 @@ const releaseItemForProduction = async (item: any) => {
 
     if (rpcError) throw rpcError;
 
-    // Atualização visual imediata
     const foundItem = localItems.value.find((i) => i.id === item.id);
     if (foundItem) {
       foundItem.status = "in_printing";
-      // Também removemos a flag de estoque para o item não ficar com status duplo
       foundItem.has_insufficient_stock = false;
     }
 
@@ -412,20 +402,16 @@ const getNextDeliveryDay = (date: Date): Date => {
   }
 };
 
+// ===== INÍCIO DA CORREÇÃO =====
 const generateOpPdf = async (item: any) => {
   const parentOrder = fullOrderDetails.value;
   if (!parentOrder) {
-    alert(
-      "Os detalhes completos do pedido ainda estão carregando. Tente novamente em um instante."
-    );
+    alert("Os detalhes completos do pedido ainda estão carregando. Tente novamente em um instante.");
     return;
   }
 
   try {
-    const { data: opNumber, error: rpcError } = await supabase.rpc(
-      "generate_op_number",
-      { p_item_id: item.id }
-    );
+    const { data: opNumber, error: rpcError } = await supabase.rpc("generate_op_number", { p_item_id: item.id });
     if (rpcError) throw rpcError;
 
     const { data: schedule, error: scheduleError } = await supabase
@@ -433,28 +419,24 @@ const generateOpPdf = async (item: any) => {
       .select("scheduled_date")
       .eq("order_item_id", item.id)
       .single();
-    if (scheduleError || !schedule)
-      throw new Error("Agendamento do item não encontrado.");
+    if (scheduleError || !schedule) throw new Error("Agendamento do item não encontrado.");
 
-    const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3);
+    // Lógica para adicionar dias extras com base no estoque
+    const hasStockIssues = parentOrder.order_items.some((i: any) => i.has_insufficient_stock || i.status === 'pending_stock');
+    const extraDays = hasStockIssues ? 2 : 0;
+
+    const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3 + extraDays);
     const forecastDate = getNextDeliveryDay(completionDate);
     const formattedOpNumber = String(opNumber).padStart(4, "0");
-    const formattedForecastDate = format(forecastDate, "dd/MM/yyyy", {
-      locale: ptBR,
-    });
-    const formattedOrderNumber = String(parentOrder.order_number).padStart(
-      4,
-      "0"
-    );
+    const formattedForecastDate = format(forecastDate, "dd/MM/yyyy", { locale: ptBR });
+    const formattedOrderNumber = String(parentOrder.order_number).padStart(4, "0");
 
     const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
 
     const [logoBase64, artBase64] = await Promise.all([
-      imageToBase64(
-        "https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713"
-      ),
+      imageToBase64("https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713"),
       imageToBase64(item.stamp_image_url || ""),
     ]);
 
@@ -480,9 +462,7 @@ const generateOpPdf = async (item: any) => {
     doc.setTextColor(0);
     doc.text(`OP #${formattedOpNumber}`, 15, 45);
     doc.setFontSize(12);
-    doc.text(`Pedido #${formattedOrderNumber}`, pageWidth - 15, 45, {
-      align: "right",
-    });
+    doc.text(`Pedido #${formattedOrderNumber}`, pageWidth - 15, 45, { align: "right" });
     doc.setLineWidth(0.5);
     doc.line(15, 50, pageWidth - 15, 50);
 
@@ -493,9 +473,7 @@ const generateOpPdf = async (item: any) => {
         [
           parentOrder.customer_name,
           parentOrder.created_by?.full_name || "N/A",
-          format(new Date(parentOrder.created_at), "dd/MM/yyyy", {
-            locale: ptBR,
-          }),
+          format(new Date(parentOrder.created_at), "dd/MM/yyyy", { locale: ptBR }),
           formattedForecastDate,
         ],
       ],
@@ -514,9 +492,13 @@ const generateOpPdf = async (item: any) => {
     const artStartY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
+    // Adiciona o nome do cliente acima da imagem
     doc.text("ARTE APROVADA", 15, artStartY);
+    doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(100);
+    doc.text(`Cliente: ${parentOrder.customer_name}`, 15, artStartY + 5);
 
-    const artY = artStartY + 5;
+
+    const artY = artStartY + 10; // Ajusta a posição da imagem
     const maxImgWidth = pageWidth - 30;
     const maxImgHeight = pageHeight - artY - 25;
     const imgProps = doc.getImageProperties(artBase64);
@@ -552,6 +534,7 @@ const generateOpPdf = async (item: any) => {
     );
   }
 };
+// ===== FIM DA CORREÇÃO =====
 </script>
 
 <style scoped lang="scss">

@@ -490,6 +490,10 @@ const generateOpPdf = async (item: OrderItem) => {
     const artStartY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(12); doc.setFont('helvetica', 'bold');
     doc.text('ARTE APROVADA', 15, artStartY);
+    // ===== INÍCIO DA CORREÇÃO =====
+    doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(100);
+    doc.text(item.order.customer_name, pageWidth - 15, artStartY, { align: 'right' });
+    // ===== FIM DA CORREÇÃO =====
 
     const artY = artStartY + 5;
     const maxImgWidth = pageWidth - 30;
