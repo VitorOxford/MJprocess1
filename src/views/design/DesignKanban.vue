@@ -129,9 +129,7 @@ import { useUserStore } from '@/stores/user';
 import draggable from 'vuedraggable';
 import LaunchDetailModal from '@/components/LaunchDetailModal.vue';
 import FileUploadModal from '@/components/FileUploadModal.vue';
-// ===== INÍCIO DA CORREÇÃO =====
 import ReleasedForProductionModal from '../../components/design/ReleasedForProductionModal.vue';
-// ===== FIM DA CORREÇÃO =====
 import { format, addDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -419,6 +417,7 @@ const imageToBase64 = (url: string): Promise<string> => {
     });
 };
 
+// ===== INÍCIO DA CORREÇÃO =====
 const generateOpPdf = async (item: OrderItem) => {
   try {
     const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
@@ -432,7 +431,11 @@ const generateOpPdf = async (item: OrderItem) => {
     if (scheduleError) throw scheduleError;
     if (!schedule) throw new Error('Agendamento do item não encontrado.');
 
-    const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3);
+    // Verifica se algum item no pedido tem problema de estoque para adicionar dias extras
+    const hasStockIssues = item.order.order_items.some((i: any) => i.status === 'pending_stock' || i.has_insufficient_stock);
+    const extraDays = hasStockIssues ? 2 : 0;
+
+    const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3 + extraDays);
     const forecastDate = getNextDeliveryDay(completionDate);
 
     const formattedOpNumber = String(opNumber).padStart(4, '0');
@@ -490,12 +493,10 @@ const generateOpPdf = async (item: OrderItem) => {
     const artStartY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(12); doc.setFont('helvetica', 'bold');
     doc.text('ARTE APROVADA', 15, artStartY);
-    // ===== INÍCIO DA CORREÇÃO =====
     doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(100);
-    doc.text(item.order.customer_name, pageWidth - 15, artStartY, { align: 'right' });
-    // ===== FIM DA CORREÇÃO =====
+    doc.text(`Cliente: ${item.order.customer_name}`, 15, artStartY + 5);
 
-    const artY = artStartY + 5;
+    const artY = artStartY + 10;
     const maxImgWidth = pageWidth - 30;
     const maxImgHeight = pageHeight - artY - 25;
     const imgProps = doc.getImageProperties(artBase64);
@@ -516,6 +517,7 @@ const generateOpPdf = async (item: OrderItem) => {
     alert("Não foi possível gerar o PDF. Verifique se as imagens estão acessíveis e tente novamente.");
   }
 };
+// ===== FIM DA CORREÇÃO =====
 
 // ===== LÓGICA DO TUTORIAL =====
 const setHintPosition = async (el: any) => {
