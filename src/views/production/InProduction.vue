@@ -232,7 +232,7 @@ const getNextDeliveryDay = (date: Date): Date => {
     const newDate = new Date(date);
     newDate.setDate(newDate.getDate() + 1);
     while (true) {
-        const dayOfWeek = newDate.getDay();
+        const dayOfWeek = getDay(newDate);
         if ([2, 4, 6].includes(dayOfWeek)) {
             return newDate;
         }
@@ -499,6 +499,8 @@ const rescheduleItem = async (itemId: string, newDate: string) => {
   }
 };
 
+// ===== INÍCIO DA CORREÇÃO =====
+// As chamadas agora usam a nova função `fetchProductionSchedule`
 onActivated(async () => {
   await dashboardStore.fetchProductionSchedule();
 });
@@ -506,6 +508,7 @@ onActivated(async () => {
 onMounted(async () => {
   await dashboardStore.fetchProductionSchedule();
 });
+// ===== FIM DA CORREÇÃO =====
 </script>
 
 <style scoped lang="scss">

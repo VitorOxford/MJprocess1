@@ -67,7 +67,7 @@ const normalizeFabricName = (name: string | null | undefined): string => {
 const addBusinessDays = (startDate: Date, days: number): Date => {
   const newDate = new Date(startDate);
   let addedDays = 0;
-  while (addedDays < days) {
+  while (addedDays < targetDays) {
     newDate.setDate(newDate.getDate() + 1);
     if (newDate.getDay() !== 0) { // Domingo = 0
       addedDays++;
@@ -79,7 +79,7 @@ const getNextDeliveryDay = (date: Date): Date => {
     const newDate = new Date(date);
     newDate.setDate(newDate.getDate() + 1);
     while (true) {
-        const dayOfWeek = newDate.getDay();
+        const dayOfWeek = getDay(newDate);
         if ([2, 4, 6].includes(dayOfWeek)) {
             return newDate;
         }
@@ -402,6 +402,28 @@ export const useDashboardStore = defineStore('dashboard', {
         this.loading = false;
       }
     },
-    // A ação fetchProductionSchedule não é mais necessária para os fantasmas, pode ser removida se não for usada em outro lugar.
+
+    // ===== INÍCIO DA CORREÇÃO =====
+    // Ação reintroduzida para buscar dados específicos da produção
+    async fetchProductionSchedule() {
+      this.loading = true;
+      try {
+        const { data, error } = await supabase
+          .from('production_schedule')
+          .select(`
+            scheduled_date,
+            order:orders!inner(id, customer_name, order_number, creator:created_by(full_name)),
+            item:order_items!inner(id, status, quantity_meters, fabric_type, stamp_ref, stamp_image_url)
+          `);
+
+        if (error) throw error;
+        this.productionScheduleItems = (data as any[]) || [];
+      } catch (e: any) {
+        console.error('Erro ao buscar a agenda de produção:', e);
+      } finally {
+        this.loading = false;
+      }
+    },
+    // ===== FIM DA CORREÇÃO =====
   },
 });
