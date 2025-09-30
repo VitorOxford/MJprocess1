@@ -145,53 +145,39 @@ const totalMeters = computed(() => {
 });
 
 
-const statusDisplayMap: Record<string, string> = {
-    design_pending: 'No Design', in_design: 'Em Design', customer_approval: 'Aprovação Vendedor',
-    approved_by_designer: 'Aprovado (Designer)', approved_by_seller: 'Aprovado (Vendedor)',
-    production_queue: 'Fila de Produção', in_printing: 'Em Impressão',
-    in_cutting: 'Em Corte', completed: 'Finalizado', pending_stock: 'Aguardando Estoque'
-};
-const statusColorMap: Record<string, string> = {
-    design_pending: 'blue-grey', customer_approval: 'orange',
-    approved_by_designer: 'teal', approved_by_seller: 'green',
-    production_queue: 'grey', in_printing: 'blue', in_cutting: 'purple',
-    completed: 'success', pending_stock: 'warning'
-};
-const tagColorMap: Record<string, string> = {
-    'Desenvolvimento': 'primary', 'Alteração': 'warning', 'Finalização': 'success', 'Aprovado': 'green'
-};
-
-const isItemReleasedForProd = (status: string) => {
-    const releasedStatuses = ['approved_by_designer', 'approved_by_seller', 'production_queue', 'in_printing', 'in_cutting', 'completed'];
-    return releasedStatuses.includes(status);
-};
-
 const getItemDisplay = (item: any) => {
     if (item.has_insufficient_stock) {
         return { text: 'Aguardando Estoque', color: 'warning', icon: 'mdi-package-variant-remove' };
     }
-    if (order.value?.status === 'design_pending') {
-        const tagInfo = tagColorMap[item.design_tag];
+    if (item.status === 'design_pending' && item.design_tag) {
+        const tagColorMap: Record<string, string> = {
+            'Desenvolvimento': 'primary',
+            'Alteração': 'orange',
+            'Finalização': 'info',
+            'Aprovado': 'teal',
+        };
         return {
-            text: item.design_tag,
-            color: tagInfo || 'default',
-            icon: 'mdi-palette'
-        }
+            text: `Design: ${item.design_tag}`,
+            color: tagColorMap[item.design_tag] || 'grey',
+            icon: 'mdi-palette-outline',
+        };
     }
-    const statusInfo = statusDisplayMap[item.status] || item.status;
-    const colorInfo = statusColorMap[item.status] || 'default';
-    const iconMap: Record<string, string> = {
-        'production_queue': 'mdi-timer-sand',
-        'in_printing': 'mdi-printer',
-        'in_cutting': 'mdi-content-cut',
-        'completed': 'mdi-check-circle'
+    const statusDisplayMap: Record<string, { text: string; color: string; icon: string }> = {
+        'customer_approval': { text: 'Aprovação Vendedor', color: 'amber', icon: 'mdi-account-clock-outline' },
+        'changes_requested': { text: 'Solicitado Alteração', color: 'error', icon: 'mdi-alert-circle-outline' },
+        'approved_by_seller': { text: 'Aprovado', color: 'success', icon: 'mdi-check-decagram' },
+        'production_queue': { text: 'Fila de Produção', color: 'blue-grey', icon: 'mdi-timer-sand' },
+        'in_printing': { text: 'Em Impressão', color: 'blue', icon: 'mdi-printer' },
+        'in_cutting': { text: 'Em Corte', color: 'purple', icon: 'mdi-content-cut' },
+        'completed': { text: 'Finalizado', color: 'teal', icon: 'mdi-check-circle' },
     };
-    return {
-        text: statusInfo,
-        color: colorInfo,
-        icon: iconMap[item.status] || 'mdi-progress-question'
+    const displayInfo = statusDisplayMap[item.status];
+    if (displayInfo) {
+        return displayInfo;
     }
-}
+    return { text: item.status, color: 'default', icon: 'mdi-progress-question' };
+};
+
 
 const fetchOrder = async (id: string) => {
   if (!id) return;
