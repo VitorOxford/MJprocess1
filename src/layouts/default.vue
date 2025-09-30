@@ -1,9 +1,6 @@
 <template>
   <v-app @click.once="unlockAudio" @touchend.once="unlockAudio">
-    <div class="background-container">
-      <div class="logo-container">
-        <v-img src="@/assets/logo.png" max-height="120" contain class="logo-with-glow"></v-img>
-      </div>
+    <div class="background-container" :style="{ backgroundImage: `url(${currentBackground})` }">
       <div class="particles-overlay"></div>
     </div>
 
@@ -63,7 +60,6 @@
 
       <div class="pa-2 quick-actions" style="flex-shrink: 0;">
         <div class="d-flex justify-space-around align-center">
-
            <v-menu location="top end" offset="10">
             <template v-slot:activator="{ props }">
               <v-btn v-bind="props" icon variant="text">
@@ -85,10 +81,34 @@
                </v-list>
             </v-card>
           </v-menu>
+
+           <v-menu location="top end" offset="10" :close-on-content-click="false">
+            <template v-slot:activator="{ props }">
+              <v-btn v-bind="props" icon variant="text">
+                 <v-tooltip activator="parent" location="top">Plano de Fundo</v-tooltip>
+                <v-icon>mdi-cog-outline</v-icon>
+              </v-btn>
+            </template>
+            <v-card class="glassmorphism-card-dialog" width="250">
+               <v-list class="bg-transparent" nav>
+                <v-list-subheader>Escolha um fundo</v-list-subheader>
+                 <v-list-item v-for="(bg, index) in backgrounds" :key="index" @click="changeBackground(bg)">
+                    <template #prepend>
+                      <v-avatar size="32" rounded="sm" class="mr-4">
+                         <v-img :src="bg" cover></v-img>
+                      </v-avatar>
+                   </template>
+                   <v-list-item-title>Fundo {{ index + 1 }}</v-list-item-title>
+                 </v-list-item>
+               </v-list>
+            </v-card>
+          </v-menu>
+
+
           <v-btn v-if="isAdmin" :to="{ name: 'Admin' }" icon variant="text" title="Painel Admin">
             <v-icon>mdi-security</v-icon>
           </v-btn>
-          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat" :disabled="true" style="pointer-events: none; opacity: 0.5;">
+          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat">
             <v-badge :content="chatStore.totalUnreadCount" color="error" :model-value="chatStore.totalUnreadCount > 0">
               <v-icon>mdi-forum-outline</v-icon>
             </v-badge>
@@ -206,7 +226,7 @@ import PendingApprovalAlertModal from '@/components/admin/PendingApprovalAlertMo
 const router = useRouter();
 const userStore = useUserStore();
 const appStore = useAppStore();
-const chatStore = useChatStore(); // Inicializa o store
+const chatStore = useChatStore();
 const { profile, isAdmin } = storeToRefs(userStore);
 const { lowStockAlerts } = storeToRefs(appStore);
 const { mobile } = useDisplay();
@@ -238,6 +258,28 @@ let toastTimeout: NodeJS.Timeout;
 const isAudioUnlocked = ref(false);
 
 const loadingFinanceToken = ref(false);
+
+// --- LÓGICA DO PLANO DE FUNDO ---
+const backgrounds = ref([
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//MJ%20(1).jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//2.jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//3.jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//4.jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//5.jpg',
+]);
+const currentBackground = ref('');
+
+const changeBackground = (url: string) => {
+  currentBackground.value = url;
+  localStorage.setItem('mjprocess-background', url);
+};
+
+onMounted(() => {
+  const savedBg = localStorage.getItem('mjprocess-background');
+  currentBackground.value = savedBg || backgrounds.value[0];
+});
+// --- FIM DA LÓGICA DO PLANO DE FUNDO ---
+
 const handleGoToFinance = async () => {
   loadingFinanceToken.value = true;
   try {
@@ -299,19 +341,19 @@ const unlockAudio = async () => {
 const unreadNotifications = computed(() => notifications.value.filter(n => !n.is_read).length);
 
 const allNavItems = [
-  { icon: 'mdi-view-dashboard-outline', title: 'Dashboard', value: 'home', to: { name: 'Home' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-  { icon: 'mdi-check-decagram-outline', title: 'Aprovar Pedidos', value: 'approvals', to: { name: 'Approvals' }, roles: ['vendedor', 'designer', 'admin'] },
-  { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
-  { icon: 'mdi-rocket-launch-outline', title: 'Lançamentos', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-  { icon: 'mdi-clipboard-check-outline', title: 'Liberação', value: 'liberacao', to: { name: 'Liberacao' }, roles: ['producao', 'admin'] },
-  { icon: 'mdi-cog-sync-outline', title: 'Em Produção', value: 'in-production', to: { name: 'InProduction' }, roles: ['producao', 'admin'] },
-  { icon: 'mdi-palette-swatch-outline', title: 'Design', value: 'design-kanban', to: { name: 'DesignKanban' }, roles: ['designer', 'admin'] },
-  { icon: 'mdi-image-multiple-outline', title: 'Catálogo de Estampas', value: 'stamp-catalog', to: { name: 'StampCatalog' }, roles: ['designer', 'admin'] },
-  { icon: 'mdi-truck-delivery-outline', title: 'Agenda de Entrega', value: 'delivery', to: { name: 'Delivery' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-  { icon: 'mdi-currency-usd', title: 'Tabela de Preços', value: 'price-list', to: { name: 'PriceList' }, roles: ['vendedor', 'admin'] },
-  { icon: 'mdi-warehouse', title: 'Estoque', value: 'stock', to: { name: 'Stock' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
-  { icon: 'mdi-school-outline', title: 'Treinamento', value: 'didatico', to: { name: 'Didatico' }, roles: ['vendedor', 'admin'] },
-  { icon: 'mdi-checkbox-marked-circle-outline', title: 'Tarefas', value: 'tasks', to: { name: 'Tasks' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  { icon: 'mdi-view-dashboard-outline', title: 'Dashboard', value: 'home', to: { name: 'Home' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  { icon: 'mdi-check-decagram-outline', title: 'Aprovar Pedidos', value: 'approvals', to: { name: 'Approvals' }, roles: ['vendedor', 'designer', 'admin'] },
+  { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
+  { icon: 'mdi-rocket-launch-outline', title: 'Lançamentos', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  { icon: 'mdi-clipboard-check-outline', title: 'Liberação', value: 'liberacao', to: { name: 'Liberacao' }, roles: ['producao', 'admin'] },
+  { icon: 'mdi-cog-sync-outline', title: 'Em Produção', value: 'in-production', to: { name: 'InProduction' }, roles: ['producao', 'admin'] },
+  { icon: 'mdi-palette-swatch-outline', title: 'Design', value: 'design-kanban', to: { name: 'DesignKanban' }, roles: ['designer', 'admin'] },
+  { icon: 'mdi-image-multiple-outline', title: 'Catálogo de Estampas', value: 'stamp-catalog', to: { name: 'StampCatalog' }, roles: ['designer', 'admin'] },
+  { icon: 'mdi-truck-delivery-outline', title: 'Agenda de Entrega', value: 'delivery', to: { name: 'Delivery' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  { icon: 'mdi-currency-usd', title: 'Tabela de Preços', value: 'price-list', to: { name: 'PriceList' }, roles: ['vendedor', 'admin'] },
+  { icon: 'mdi-warehouse', title: 'Estoque', value: 'stock', to: { name: 'Stock' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
+  { icon: 'mdi-school-outline', title: 'Treinamento', value: 'didatico', to: { name: 'Didatico' }, roles: ['vendedor', 'admin'] },
+  { icon: 'mdi-checkbox-marked-circle-outline', title: 'Tarefas', value: 'tasks', to: { name: 'Tasks' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
 ];
 
 const navItems = computed(() => {
@@ -488,7 +530,6 @@ onUnmounted(() => {
 </script>
 
 <style lang="scss">
-/* Seus estilos existentes aqui */
 .background-container {
   position: fixed;
   top: 0;
@@ -497,10 +538,17 @@ onUnmounted(() => {
   height: 100%;
   z-index: -1;
   background-color: #121212;
-  background-image: radial-gradient(circle at center, rgba(0,0,0,0.8), #121212);
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  background-size: cover;
+  background-position: center;
+  transition: background-image 1.5s ease-in-out;
+}
+.particles-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(18, 18, 18, 0.6);
 }
 .v-application, .v-application__wrap {
   background: transparent !important;

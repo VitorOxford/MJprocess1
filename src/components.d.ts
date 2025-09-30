@@ -55,6 +55,7 @@ declare module 'vue' {
     RequestChangesModal: typeof import('./components/RequestChangesModal.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SalesMapBrazil: typeof import('./components/dashboards/SalesMapBrazil.vue')['default']
     SalesTraining: typeof import('./components/dashboards/SalesTraining.vue')['default']
     StampCard: typeof import('./components/admin/StampCard.vue')['default']
     StampFolderCard: typeof import('./components/admin/StampFolderCard.vue')['default']

@@ -70,17 +70,24 @@ const password = ref<string>('');
 const loading = ref<boolean>(false);
 const errorMessage = ref<string | null>(null);
 
-// --- LÓGICA DO BACKGROUND (sem alterações) ---
+// --- LÓGICA DO BACKGROUND (CORRIGIDA) ---
 const backgrounds = ref([
-
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//MJ%20(1).jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//2.jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//3.jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//4.jpg',
+  'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//5.jpg',
 ]);
 const currentBackground = ref('');
 let backgroundInterval: NodeJS.Timeout;
 
 const startBackgroundCarousel = () => {
     clearInterval(backgroundInterval);
-    if (backgrounds.value.length === 0) return;
-    currentBackground.value = backgrounds.value[0];
+    // Tenta carregar o fundo salvo; se não houver, usa o primeiro da lista
+    const savedBg = localStorage.getItem('mjprocess-background');
+    currentBackground.value = savedBg || backgrounds.value[0];
+
+    // O carrossel continua funcionando normalmente
     backgroundInterval = setInterval(() => {
         const currentIndex = backgrounds.value.indexOf(currentBackground.value);
         const nextIndex = (currentIndex + 1) % backgrounds.value.length;

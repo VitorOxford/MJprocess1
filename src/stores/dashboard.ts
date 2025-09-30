@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
-import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays, startOfMonth, endOfMonth } from 'date-fns';
+import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays, startOfMonth, endOfMonth, isWithinInterval, subDays } from 'date-fns'; // <-- CORREÇÃO APLICADA AQUI
 import { ptBR } from 'date-fns/locale';
+import { useUserStore } from './user';
 
 // TIPAGEM
 export type OrderItem = {
@@ -181,7 +182,6 @@ export const useDashboardStore = defineStore('dashboard', {
             .filter(item => item.status === 'customer_approval')
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
-    // ===== INÍCIO DA CORREÇÃO =====
     itemsDelayedInDesign(state): { count: number, totalMeters: number } {
         const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
         const today = startOfToday();
@@ -190,8 +190,6 @@ export const useDashboardStore = defineStore('dashboard', {
         state.orders.forEach(order => {
             if (order.is_launch && order.order_items) {
                 order.order_items.forEach(item => {
-                    // Lógica corrigida: verifica se o status do item está na lista de design
-                    // E se foi criado antes de hoje.
                     if (designStatuses.includes(item.status) && isBefore(parseISO(item.created_at), today)) {
                         count++;
                         totalMeters += item.quantity_meters || 0;
@@ -201,7 +199,6 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return { count, totalMeters };
     },
-    // ===== FIM DA CORREÇÃO =====
     delayedDesignItemsDetails(state) {
       const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
       const today = startOfToday();
@@ -362,7 +359,48 @@ export const useDashboardStore = defineStore('dashboard', {
             }
         });
       return { onTime, delayed };
-    }
+    },
+    myThirtyDaySales(state) {
+      const userStore = useUserStore();
+      if (!userStore.profile?.id) return { labels: [], data: [] };
+
+      const myOrders = state.orders.filter(o => o.created_by === userStore.profile.id);
+
+      const labels: string[] = [];
+      const data: number[] = [];
+      const today = new Date();
+
+      const salesByDay = new Map<string, number>();
+
+      // Inicializa o mapa com os últimos 30 dias
+      for (let i = 29; i >= 0; i--) {
+        const date = subDays(today, i);
+        const dayKey = format(date, 'MM-dd');
+        labels.push(format(date, 'dd/MM'));
+        salesByDay.set(dayKey, 0);
+      }
+
+      const thirtyDaysAgo = subDays(today, 29);
+
+      myOrders.forEach(order => {
+        if (!order.created_at) return;
+        const orderDate = parseISO(order.created_at);
+        if (isWithinInterval(orderDate, { start: thirtyDaysAgo, end: today })) {
+          const dayKey = format(orderDate, 'MM-dd');
+          if (salesByDay.has(dayKey)) {
+            salesByDay.set(dayKey, (salesByDay.get(dayKey) || 0) + (order.quantity_meters || 0));
+          }
+        }
+      });
+
+      for (const label of labels) {
+        const [day, month] = label.split('/');
+        const key = `${month}-${day}`;
+        data.push(salesByDay.get(key) || 0);
+      }
+
+      return { labels, data };
+    },
   },
 
   actions: {

@@ -15,6 +15,7 @@ import { createApp } from 'vue'
 
 // Styles
 import 'unfonts.css'
+import 'leaflet/dist/leaflet.css'; // Importação do CSS do Leaflet
 
 const app = createApp(App)
 
