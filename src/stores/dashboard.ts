@@ -59,7 +59,6 @@ export type ProductionScheduleItem = {
   item: OrderItem;
 };
 
-// --- INÍCIO DA CORREÇÃO ---
 // FUNÇÕES AUXILIARES
 const excludedSellers = ['João Vitor', 'Levi Lopes'];
 
@@ -71,7 +70,6 @@ const normalizeFabricName = (name: string | null | undefined): string => {
       .trim()
       .replace(/^\w/, (c) => c.toUpperCase());
 };
-// --- FIM DA CORREÇÃO ---
 
 const addBusinessDays = (startDate: Date, days: number): Date => {
   const newDate = new Date(startDate);
@@ -183,14 +181,18 @@ export const useDashboardStore = defineStore('dashboard', {
             .filter(item => item.status === 'customer_approval')
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
+    // ===== INÍCIO DA CORREÇÃO =====
     itemsDelayedInDesign(state): { count: number, totalMeters: number } {
+        const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
         const today = startOfToday();
         let count = 0;
         let totalMeters = 0;
         state.orders.forEach(order => {
             if (order.is_launch && order.order_items) {
                 order.order_items.forEach(item => {
-                    if (item.design_tag === 'Finalização' && isBefore(parseISO(item.created_at), today)) {
+                    // Lógica corrigida: verifica se o status do item está na lista de design
+                    // E se foi criado antes de hoje.
+                    if (designStatuses.includes(item.status) && isBefore(parseISO(item.created_at), today)) {
                         count++;
                         totalMeters += item.quantity_meters || 0;
                     }
@@ -199,14 +201,16 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return { count, totalMeters };
     },
+    // ===== FIM DA CORREÇÃO =====
     delayedDesignItemsDetails(state) {
+      const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
       const today = startOfToday();
       return state.orders
           .flatMap(order =>
               (order.order_items || []).map(item => ({ ...item, orderInfo: order }))
           )
           .filter(item =>
-              item.design_tag === 'Finalização' &&
+              designStatuses.includes(item.status) &&
               isBefore(parseISO(item.created_at), today)
           )
           .map(item => ({
@@ -280,8 +284,6 @@ export const useDashboardStore = defineStore('dashboard', {
         return Array.from(salesMap.entries()).map(([seller, totalMeters]) => ({ seller, totalMeters })).sort((a, b) => b.totalMeters - a.totalMeters);
     },
 
-    // --- INÍCIO DA CORREÇÃO ---
-    // Getter atualizado para usar a função de normalização
     salesByFabric(state): { fabric: string, totalMeters: number }[] {
         const fabricMap = new Map<string, number>();
         this.filteredOrdersForCharts.forEach(order => {
@@ -299,7 +301,6 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return Array.from(fabricMap.entries()).map(([fabric, totalMeters]) => ({ fabric, totalMeters })).sort((a, b) => b.totalMeters - a.totalMeters);
     },
-    // --- FIM DA CORREÇÃO ---
 
     monthlySalesPerformance(state): { labels: string[], data: number[] } {
         const monthMap = new Map<string, number>();
