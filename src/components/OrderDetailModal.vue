@@ -21,25 +21,30 @@
       <v-card-text v-else-if="order" class="pa-md-6 pa-4">
         <v-card class="order-info-card mb-6" variant="outlined">
           <v-row no-gutters>
-            <v-col cols="12" sm="5" class="pa-3">
+            <v-col cols="12" sm="4" class="pa-3">
               <div class="text-caption text-grey">CLIENTE</div>
               <div class="text-h6 font-weight-bold">{{ order.customer_name }}</div>
             </v-col>
             <v-divider vertical class="d-none d-sm-block"></v-divider>
-            <v-col cols="12" sm="4" class="pa-3">
+            <v-col cols="12" sm="3" class="pa-3">
               <div class="text-caption text-grey">VENDEDOR</div>
               <div class="text-h6 font-weight-medium">{{ order.profiles?.full_name || 'N/A' }}</div>
             </v-col>
-             <v-divider vertical class="d-none d-sm-block"></v-divider>
-            <v-col cols="12" sm="3" class="pa-3 text-sm-right">
-                <div class="text-caption text-grey">STATUS GERAL</div>
-                <v-chip size="small" :color="statusColorMap[order.status]" variant="flat" label class="mt-1 font-weight-bold">{{ statusDisplayMap[order.status] || order.status }}</v-chip>
+            <v-divider vertical class="d-none d-sm-block"></v-divider>
+            <v-col cols="6" sm="2" class="pa-3">
+                <div class="text-caption text-grey">DATA</div>
+                <div class="text-h6 font-weight-bold">{{ formatDate(order.created_at) }}</div>
+            </v-col>
+            <v-divider vertical class="d-none d-sm-block"></v-divider>
+            <v-col cols="6" sm="3" class="pa-3 text-sm-right">
+                <div class="text-caption text-grey">METRAGEM TOTAL</div>
+                <div class="text-h6 font-weight-bold">{{ formatMeters(totalMeters) }}m</div>
             </v-col>
           </v-row>
         </v-card>
 
         <h3 class="text-h6 font-weight-bold mb-4">
-            {{ focusedItem ? 'Item em Destaque' : 'Itens do Lançamento' }}
+            {{ focusedItem ? 'Item em Destaque' : (order.is_launch ? 'Itens do Lançamento' : 'Item do Pedido') }}
         </h3>
 
         <v-card v-if="focusedItem" class="item-card focused-item mb-4" variant="flat">
@@ -104,6 +109,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
 import { supabase } from '@/api/supabase';
+import { format, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const props = defineProps({
   show: Boolean,
@@ -123,9 +130,20 @@ const focusedItem = computed(() => {
 
 const otherItems = computed(() => {
     if (!order.value || !order.value.order_items) return [];
+    // Se não houver item focado (clique no card pai), mostra todos os itens
     if (!focusedItem.value) return order.value.order_items;
+    // Se houver um item focado, mostra os outros
     return order.value.order_items.filter((item: any) => item.id !== focusedItem.value.id);
 });
+
+const totalMeters = computed(() => {
+    if (!order.value) return 0;
+    if (order.value.is_launch && order.value.order_items) {
+        return order.value.order_items.reduce((sum: number, item: any) => sum + (item.quantity_meters || 0), 0);
+    }
+    return order.value.quantity_meters || 0;
+});
+
 
 const statusDisplayMap: Record<string, string> = {
     design_pending: 'No Design', in_design: 'Em Design', customer_approval: 'Aprovação Vendedor',
@@ -162,7 +180,7 @@ const getItemDisplay = (item: any) => {
     }
     const statusInfo = statusDisplayMap[item.status] || item.status;
     const colorInfo = statusColorMap[item.status] || 'default';
-    const iconMap = {
+    const iconMap: Record<string, string> = {
         'production_queue': 'mdi-timer-sand',
         'in_printing': 'mdi-printer',
         'in_cutting': 'mdi-content-cut',
@@ -195,9 +213,18 @@ const fetchOrder = async (id: string) => {
   }
 };
 
-const formatMeters = (value: number | undefined | null) => {
+const formatMeters = (value: number | undefined | null): string => {
     if (value === null || value === undefined) return '0';
     return Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+}
+
+const formatDate = (dateString: string | null): string => {
+    if (!dateString) return 'N/A';
+    try {
+        return format(parseISO(dateString), 'dd/MM/yy', { locale: ptBR });
+    } catch {
+        return 'Data inválida';
+    }
 }
 
 watch(() => props.orderId, (newId) => {

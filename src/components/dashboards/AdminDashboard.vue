@@ -43,14 +43,16 @@
             </div>
           </v-col>
            <v-col cols="12" sm="6" md="4" lg="2_4">
-            <div class="kpi-stat-card" style="background: linear-gradient(45deg, #c62828, #e53935); color: white;">
-              <v-icon class="kpi-icon">mdi-package-variant-closed-remove</v-icon>
+            <div class="kpi-stat-card clickable-kpi" @click="handleStockRecheck" style="background: linear-gradient(45deg, #c62828, #e53935); color: white;">
+              <v-progress-circular v-if="isRecheckingStock" indeterminate color="white" size="24" width="2" class="kpi-loading-spinner"></v-progress-circular>
+              <v-icon v-else class="kpi-icon">mdi-package-variant-closed-remove</v-icon>
               <div class="kpi-content">
                 <span class="kpi-value">{{ itemsPendingStock.count }} ({{ formatNumber(itemsPendingStock.totalMeters) }}m)</span>
                 <span class="kpi-title">Aguardando Estoque</span>
               </div>
+               <v-tooltip activator="parent" location="bottom">Clique para re-verificar o estoque dos itens pendentes</v-tooltip>
             </div>
-          </v-col>
+            </v-col>
           <v-col cols="12" sm="6" md="6" lg="2_4">
             <div class="kpi-stat-card" style="background: linear-gradient(45deg, #6a1b9a, #9c27b0); color: white;">
               <v-icon class="kpi-icon">mdi-factory</v-icon>
@@ -230,16 +232,22 @@
         </v-card-text>
       </v-card>
     </v-dialog>
+
+    <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="4000" location="top right">
+      {{ snackbar.text }}
+    </v-snackbar>
+
   </v-container>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, defineAsyncComponent } from 'vue';
+import { ref, computed, onMounted, onActivated, defineAsyncComponent, reactive } from 'vue';
 import { useDashboardStore } from '@/stores/dashboard';
 import { storeToRefs } from 'pinia';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, isWithinInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale, LineElement, LinearScale, PointElement, BarElement } from 'chart.js';
+import { supabase } from '@/api/supabase'; // Importa o Supabase
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LineElement, LinearScale, PointElement, BarElement);
 
@@ -249,7 +257,6 @@ const ApprovalWarningModal = defineAsyncComponent(() => import('@/components/adm
 const ReportSettingsModal = defineAsyncComponent(() => import('@/components/admin/ReportSettingsModal.vue'));
 const Doughnut = defineAsyncComponent(() => import('vue-chartjs').then(c => c.Doughnut));
 const ChartCard = defineAsyncComponent(() => import('@/components/admin/ChartCard.vue'));
-const Bar = defineAsyncComponent(() => import('vue-chartjs').then(c => c.Bar));
 
 // --- ESTADO ---
 const showDetailModal = ref(false);
@@ -259,6 +266,11 @@ const showReportModal = ref(false);
 const search = ref('');
 const filterType = ref('current_month');
 const mainTab = ref('list');
+
+// NOVO ESTADO PARA RE-CHECK
+const isRecheckingStock = ref(false);
+const snackbar = reactive({ show: false, text: '', color: '' });
+
 
 const dashboardStore = useDashboardStore();
 const {
@@ -282,6 +294,35 @@ const {
 const showKpiDetailModal = ref(false);
 const modalTitle = ref('');
 const modalItems = ref<any[]>([]);
+
+// --- NOVA FUNÇÃO PARA CHAMAR RPC ---
+const handleStockRecheck = async () => {
+    isRecheckingStock.value = true;
+    snackbar.text = 'Verificando estoque dos itens pendentes...';
+    snackbar.color = 'info';
+    snackbar.show = true;
+
+    try {
+        const { data, error } = await supabase.rpc('recheck_stock_for_pending_items');
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+            snackbar.text = `${data.length} item(ns) foram atualizados e retornaram para o fluxo de design.`;
+            snackbar.color = 'success';
+        } else {
+            snackbar.text = 'Nenhum item pôde ser atualizado. O estoque ainda está insuficiente.';
+            snackbar.color = 'warning';
+        }
+        await dashboardStore.fetchData(); // Recarrega os dados do dashboard
+    } catch (err: any) {
+        snackbar.text = `Erro na verificação: ${err.message}`;
+        snackbar.color = 'error';
+    } finally {
+        isRecheckingStock.value = false;
+        snackbar.show = true;
+    }
+};
+
 
 // --- LÓGICA DE FILTROS E DADOS ---
 
@@ -395,17 +436,6 @@ const openKpiDetailModal = (type: 'delayed' | 'inDesign') => {
 };
 
 // --- LÓGICA DE GRÁFICOS ---
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      position: 'top' as const,
-      labels: { color: '#fff' }
-    }
-  },
-};
-
 const doughnutOptions = {
   responsive: true,
   maintainAspectRatio: false,
@@ -470,7 +500,7 @@ onMounted(async () => {
   border-radius: 12px;
   transition: all 0.2s ease-in-out; position: relative; overflow: hidden;
   color: white;
-  min-height: 110px; // Altura mínima para consistência
+  min-height: 110px;
 
   &.clickable-kpi { cursor: pointer; &:hover { transform: translateY(-4px); box-shadow: 0 8px 15px rgba(0,0,0,0.2); } }
   &.alert-card { background: linear-gradient(45deg, #d32f2f, #f44336); color: white; box-shadow: 0 4px 20px rgba(211, 47, 47, 0.4); }
@@ -478,6 +508,9 @@ onMounted(async () => {
     position: absolute; top: 0; left: 0; width: 50%; height: 100%;
     background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.4) 50%, rgba(255, 255, 255, 0) 100%);
     animation: shine 3s infinite;
+  }
+  .kpi-loading-spinner {
+    margin-right: 16px;
   }
 }
 .kpi-icon { font-size: 32px; margin-right: 16px; color: inherit; }

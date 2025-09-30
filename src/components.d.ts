@@ -40,7 +40,7 @@ declare module 'vue' {
     KpiCard: typeof import('./components/admin/KpiCard.vue')['default']
     LaunchDetailModal: typeof import('./components/LaunchDetailModal.vue')['default']
     LowStockAlertModal: typeof import('./components/LowStockAlertModal.vue')['default']
-    MediaRepository: typeof import('./components/MediaRepository.vue')['default']
+    MediaRepository: typeof import('./components/chat/MediaRepository.vue')['default']
     MessageMenu: typeof import('./components/chat/MessageMenu.vue')['default']
     NewConversationModal: typeof import('./components/chat/NewConversationModal.vue')['default']
     OrderDetailModal: typeof import('./components/OrderDetailModal.vue')['default']
