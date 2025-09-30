@@ -50,9 +50,9 @@
                 <span class="kpi-value">{{ itemsPendingStock.count }} ({{ formatNumber(itemsPendingStock.totalMeters) }}m)</span>
                 <span class="kpi-title">Aguardando Estoque</span>
               </div>
-               <v-tooltip activator="parent" location="bottom">Clique para re-verificar o estoque dos itens pendentes</v-tooltip>
+               <v-tooltip activator="parent" location="bottom">Clique para desbloquear pedidos com estoque suficiente</v-tooltip>
             </div>
-            </v-col>
+          </v-col>
           <v-col cols="12" sm="6" md="6" lg="2_4">
             <div class="kpi-stat-card" style="background: linear-gradient(45deg, #6a1b9a, #9c27b0); color: white;">
               <v-icon class="kpi-icon">mdi-factory</v-icon>
@@ -233,7 +233,7 @@
       </v-card>
     </v-dialog>
 
-    <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="4000" location="top right">
+    <v-snackbar v-model="snackbar.show" :color="snackbar.color" :timeout="5000" location="top right">
       {{ snackbar.text }}
     </v-snackbar>
 
@@ -247,7 +247,7 @@ import { storeToRefs } from 'pinia';
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, startOfDay, endOfDay, isWithinInterval, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale, LineElement, LinearScale, PointElement, BarElement } from 'chart.js';
-import { supabase } from '@/api/supabase'; // Importa o Supabase
+import { supabase } from '@/api/supabase';
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LineElement, LinearScale, PointElement, BarElement);
 
@@ -267,10 +267,8 @@ const search = ref('');
 const filterType = ref('current_month');
 const mainTab = ref('list');
 
-// NOVO ESTADO PARA RE-CHECK
 const isRecheckingStock = ref(false);
 const snackbar = reactive({ show: false, text: '', color: '' });
-
 
 const dashboardStore = useDashboardStore();
 const {
@@ -295,25 +293,28 @@ const showKpiDetailModal = ref(false);
 const modalTitle = ref('');
 const modalItems = ref<any[]>([]);
 
-// --- NOVA FUNÇÃO PARA CHAMAR RPC ---
+// --- FUNÇÃO ATUALIZADA PARA CHAMAR A NOVA RPC ---
 const handleStockRecheck = async () => {
     isRecheckingStock.value = true;
-    snackbar.text = 'Verificando estoque dos itens pendentes...';
+    snackbar.text = 'Verificando estoque para pedidos pendentes...';
     snackbar.color = 'info';
     snackbar.show = true;
 
     try {
-        const { data, error } = await supabase.rpc('recheck_stock_for_pending_items');
+        // Chama a nova função RPC 'unlock_orders_with_sufficient_stock'
+        const { data, error } = await supabase.rpc('unlock_orders_with_sufficient_stock');
         if (error) throw error;
 
         if (data && data.length > 0) {
-            snackbar.text = `${data.length} item(ns) foram atualizados e retornaram para o fluxo de design.`;
+            const orderCount = data.length;
+            const totalItemsUpdated = data.reduce((sum: number, result: any) => sum + (result.items_unlocked_count || 0), 0);
+            snackbar.text = `${orderCount} pedido(s) (${totalItemsUpdated} itens) foram desbloqueados.`;
             snackbar.color = 'success';
         } else {
-            snackbar.text = 'Nenhum item pôde ser atualizado. O estoque ainda está insuficiente.';
+            snackbar.text = 'Nenhum pedido completo pôde ser desbloqueado. O estoque ainda está insuficiente.';
             snackbar.color = 'warning';
         }
-        await dashboardStore.fetchData(); // Recarrega os dados do dashboard
+        await dashboardStore.fetchData(); // Recarrega os dados do dashboard para refletir a mudança
     } catch (err: any) {
         snackbar.text = `Erro na verificação: ${err.message}`;
         snackbar.color = 'error';

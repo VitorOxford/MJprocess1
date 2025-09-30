@@ -90,7 +90,6 @@
                         :key="index"
                         :active="editedItemIndex === index"
                         @click="editItem(index)"
-                        :class="{ 'stock-warning-item': item.has_insufficient_stock }"
                       >
                         <template #prepend>
                           <v-img
@@ -120,12 +119,6 @@
                           >
                             {{ item.design_tag }}
                           </v-chip>
-                          <v-tooltip v-if="item.has_insufficient_stock" location="top">
-                            <template v-slot:activator="{ props }">
-                              <v-icon v-bind="props" color="warning" size="small" class="ml-2">mdi-information</v-icon>
-                            </template>
-                            <span>Prazo estendido! Sem estoque suficiente, foram adicionados 2 dias úteis à previsão de entrega.</span>
-                          </v-tooltip>
                         </v-list-item-title>
                         <v-list-item-subtitle>
                           {{ item.fabric_type || 'Sem tecido' }} -
@@ -274,7 +267,7 @@
                                   Atenção: Estoque ficará negativo!
                                 </span>
                                 <span v-else>Uso do estoque disponível:</span>
-                                <span>{{ selectedProductStock }}{{ selectedProductUnit }}</span>
+                                <span>{{ selectedProductStock.toLocaleString('pt-BR') }}{{ selectedProductUnit }}</span>
                               </div>
                               <v-progress-linear
                                 :model-value="((editedItem.quantity || 0) / selectedProductStock) * 100"
@@ -518,6 +511,42 @@
       @close="showClientModal = false"
       @client-created="handleClientCreated"
     />
+
+    <v-dialog v-model="showStockWarningModal" max-width="500px" persistent>
+        <v-card class="stock-alert-card" prepend-icon="mdi-alert-decagram-outline">
+            <template #title>
+            <span class="font-weight-bold text-h5">Estoque Insuficiente!</span>
+            </template>
+            <v-card-text class="py-4 text-body-1">
+            <p>Não é possível adicionar o item <strong>{{ stockWarningDetails.fabric }}</strong> ao pedido.</p>
+            <p class="mt-2">A quantidade necessária (<strong>{{ stockWarningDetails.needed.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>) é maior que o estoque disponível (<strong>{{ stockWarningDetails.available.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>).</p>
+
+            <v-alert
+                border="start"
+                border-color="white"
+                elevation="0"
+                class="mt-4 pa-3"
+                color="rgba(255,255,255,0.1)"
+            >
+                <strong class="text-white">Ação necessária:</strong> Favor avisar o gerente sobre a necessidade de reposição deste material para liberar o pedido.
+            </v-alert>
+
+            </v-card-text>
+            <v-card-actions class="pa-4">
+            <v-spacer></v-spacer>
+            <v-btn
+                color="white"
+                variant="outlined"
+                @click="showStockWarningModal = false"
+                block
+                size="large"
+            >
+                Entendido
+            </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -556,7 +585,7 @@ type OrderItem = {
   design_tag: 'Desenvolvimento' | 'Alteração' | 'Finalização' | 'Aprovado';
   new_stamp_file?: File | null;
   has_insufficient_stock: boolean;
-  status: 'design_pending' | 'pending_stock'; // NOVO: Adiciona o status ao item
+  status: 'design_pending' | 'pending_stock';
 };
 type StampLibraryItem = {
     id: number;
@@ -609,6 +638,10 @@ const isGeneratingPdf = ref(false);
 const overridePrice = ref(false);
 const tempMeters = ref<number | null>(null);
 
+// ===== NOVOS ESTADOS PARA O MODAL DE AVISO =====
+const showStockWarningModal = ref(false);
+const stockWarningDetails = reactive({ fabric: '', needed: 0, available: 0, unit: 'm' });
+// ===============================================
 
 const paymentMethods = ref<PaymentMethod[]>([]);
 const paymentDetails = reactive({
@@ -699,12 +732,14 @@ const rules = {
 };
 
 const forecastDeliveryDate = computed(() => {
-    const today = new Date();
     const hasStockIssues = orderItems.value.some(item => item.has_insufficient_stock);
-    const extraDays = hasStockIssues ? 2 : 0; // Adiciona 2 dias se houver problema
+    if (hasStockIssues) {
+        return 'Indisponível (Falta de estoque)';
+    }
+
+    const today = new Date();
     const startProductionDate = addDays(today, 1);
-    // Prazo de 3 dias (início + 2 dias úteis) + dias extras = 5 dias de produção (início + 4 dias úteis)
-    const completionDate = addBusinessDays(startProductionDate, 2 + extraDays);
+    const completionDate = addBusinessDays(startProductionDate, 2);
     const deliveryDate = getNextDeliveryDay(completionDate);
     return format(deliveryDate, "EEEE, dd/MM", { locale: ptBR });
 });
@@ -737,11 +772,18 @@ const selectedProductRendimento = computed(() => {
     if (!selectedProduct.value) return null;
     return (selectedProduct.value as StockItem).rendimento || parseFloat((selectedProduct.value as GestaoClickProduct).rendimento || '0');
 });
+
+// ===== INÍCIO DA CORREÇÃO (BUG do NaN) =====
 const selectedProductStock = computed(() => {
     if (!selectedProduct.value) return null;
     const stockItem = stockItems.value.find(s => s.gestao_click_id === (selectedProduct.value as GestaoClickProduct).id);
-    return stockItem ? stockItem.available_meters : parseFloat((selectedProduct.value as GestaoClickProduct).estoque as string);
+    const stockValue = stockItem ? stockItem.available_meters : parseFloat((selectedProduct.value as GestaoClickProduct).estoque as string);
+
+    // Garante que, se o valor não for um número (NaN), ele retorne 0 para evitar o bug.
+    return isNaN(stockValue) ? 0 : stockValue;
 });
+// ===== FIM DA CORREÇÃO =====
+
 const estimatedMeters = computed(() => {
     if (selectedProductUnit.value !== 'kg' || !selectedProductRendimento.value || !editedItem.value.quantity) return null;
     return editedItem.value.quantity * selectedProductRendimento.value;
@@ -965,28 +1007,30 @@ const removeItem = (index: number) => {
     editedItemIndex.value--;
   }
 };
+
 const saveOrUpdateItem = async () => {
   if (itemForm.value) {
     const { valid } = await itemForm.value.validate();
     if (!valid || !isItemFormValid.value) {
-      showFeedback('Por favor, preencha todos os campos obrigatórios e selecione uma estampa válida.', 'error');
+      showFeedback('Por favor, preencha todos os campos obrigatórios do item.', 'error');
       return;
     }
   }
 
-  const stockItem = stockItems.value.find(s => s.fabric_type === editedItem.value.fabric_type);
-  const availableStock = stockItem ? stockItem.available_meters : 0;
-  const requiredMeters = editedItem.value.quantity_meters || 0;
-  editedItem.value.has_insufficient_stock = requiredMeters > availableStock;
+  const availableStock = selectedProductStock.value;
+  const requiredQuantity = editedItem.value.quantity || 0;
 
-  // ===== INÍCIO DA CORREÇÃO =====
-  // Define o status inicial do item com base na disponibilidade de estoque
-  if (editedItem.value.has_insufficient_stock) {
-    editedItem.value.status = 'pending_stock';
-  } else {
-    editedItem.value.status = 'design_pending';
+  if (availableStock === null || requiredQuantity > availableStock) {
+    stockWarningDetails.fabric = editedItem.value.fabric_type || 'N/A';
+    stockWarningDetails.needed = requiredQuantity;
+    stockWarningDetails.available = availableStock || 0;
+    stockWarningDetails.unit = selectedProductUnit.value;
+    showStockWarningModal.value = true;
+    return;
   }
-  // ===== FIM DA CORREÇÃO =====
+
+  editedItem.value.has_insufficient_stock = false;
+  editedItem.value.status = 'design_pending';
 
   const rawItem = toRaw(editedItem.value);
   if (isEditing.value && editedItemIndex.value !== null) {
@@ -996,6 +1040,7 @@ const saveOrUpdateItem = async () => {
   }
   await prepareNewItem();
 };
+
 
 const generateInstallments = () => {
   paymentDetails.installments = [];
@@ -1189,15 +1234,12 @@ const submitLaunch = async () => {
 
     await syncOrderWithGestaoClick(proofPublicUrl);
 
-    // ===== INÍCIO DA CORREÇÃO =====
-    // O payload de itens agora inclui o status de cada um
     const itemsPayload = orderItems.value.map(item => ({
         fabric_type: item.fabric_type, stamp_ref: item.stamp_ref, quantity_meters: item.quantity_meters,
         stamp_image_url: item.stamp_image_url, design_tag: item.design_tag, notes: item.notes,
         quantity_unit: item.quantity, unit_of_measure: item.unit_of_measure, rendimento: item.rendimento,
-        status: item.status, // <- AQUI está a correção
+        status: item.status,
     }));
-    // ===== FIM DA CORREÇÃO =====
 
     const { data: newOrderNumber, error: rpcError } = await supabase.rpc('create_launch_order', {
       p_customer_name: selectedClient.nome, p_created_by: userStore.profile?.id, p_store_id: userStore.profile?.store_id,
@@ -1378,14 +1420,10 @@ onMounted(() => {
   border-radius: 4px;
 }
 
-@keyframes pulse-red {
-  0% { background-color: rgba(255, 82, 82, 0.1); }
-  50% { background-color: rgba(255, 82, 82, 0.25); }
-  100% { background-color: rgba(255, 82, 82, 0.1); }
-}
-
-.stock-warning-item {
-  animation: pulse-red 2s infinite;
-  border-left: 3px solid #FF5252;
+/* ===== NOVOS ESTILOS PARA O MODAL DE AVISO ===== */
+.stock-alert-card {
+    background: linear-gradient(145deg, #CF6679, #b00020);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 </style>
