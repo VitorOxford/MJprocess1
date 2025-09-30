@@ -775,11 +775,21 @@ const selectedProductRendimento = computed(() => {
 
 // ===== INÍCIO DA CORREÇÃO (BUG do NaN) =====
 const selectedProductStock = computed(() => {
-    if (!selectedProduct.value) return null;
-    const stockItem = stockItems.value.find(s => s.gestao_click_id === (selectedProduct.value as GestaoClickProduct).id);
-    const stockValue = stockItem ? stockItem.available_meters : parseFloat((selectedProduct.value as GestaoClickProduct).estoque as string);
+    // Pega o nome do produto que está sendo editado.
+    const productName = editedItem.value.fabric_type;
+    if (!productName) return null;
 
-    // Garante que, se o valor não for um número (NaN), ele retorne 0 para evitar o bug.
+    // Encontra o produto correspondente na MESMA lista que popula o dropdown.
+    const product = gestaoClickProducts.value.find(p => p.nome === productName);
+    if (!product || product.estoque === undefined) {
+        // Se não encontrar ou não tiver a propriedade de estoque, assume 0.
+        return 0;
+    }
+
+    // Extrai o valor do estoque da fonte de dados correta e atualizada.
+    const stockValue = parseFloat(product.estoque as string);
+
+    // Garante que, se o valor não for um número (NaN), ele retorne 0 para evitar bugs.
     return isNaN(stockValue) ? 0 : stockValue;
 });
 // ===== FIM DA CORREÇÃO =====
