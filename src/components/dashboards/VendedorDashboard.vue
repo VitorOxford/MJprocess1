@@ -3,8 +3,29 @@
     <v-row>
       <v-col cols="12" lg="8">
         <div class="main-content-area">
+          <v-toolbar color="transparent" class="mb-6 px-0">
+            <v-toolbar-title class="font-weight-bold">Meu Desempenho</v-toolbar-title>
+            <v-spacer></v-spacer>
+            <v-btn
+              color="secondary"
+              variant="tonal"
+              prepend-icon="mdi-image-edit-outline"
+              class="mr-4"
+              @click="openEditor"
+              :loading="loadingEditorToken"
+            >
+              Editor de Imagens
+            </v-btn>
+            <v-btn :to="{ name: 'NewOrder' }" color="primary" variant="flat" prepend-icon="mdi-plus-box-outline">
+              Lançar Pedido
+            </v-btn>
+          </v-toolbar>
+          <v-alert v-if="editorError" type="error" closable @click:close="editorError = null" class="mb-4">
+            {{ editorError }}
+          </v-alert>
+
           <div class="kpi-grid">
-            <div class="kpi-card-v4 clickable-kpi" style="--kpi-color: #FFAB40;" @click="goToApprovals">
+             <div class="kpi-card-v4 clickable-kpi" style="--kpi-color: #FFAB40;" @click="goToApprovals">
                 <div class="aurora-background"></div>
                 <v-icon class="kpi-icon">mdi-check-decagram-outline</v-icon>
                 <div class="kpi-text">
@@ -152,6 +173,8 @@ const { myThirtyDaySales } = storeToRefs(dashboardStore);
 
 const allSellers = ref<any[]>([]);
 const salesGoal = ref(25000);
+const loadingEditorToken = ref(false);
+const editorError = ref<string | null>(null);
 
 const statusDisplayMap: Record<string, string> = {
     design_pending: 'No Design', in_design: 'Em Design', changes_requested: 'Alteração Solicitada',
@@ -293,17 +316,46 @@ const chartOptions = {
 const goToApprovals = () => {
   const approvalOrder = myActiveLaunchOrders.value.find(o => o.order_items.some(item => item.status === 'customer_approval'));
   router.push(approvalOrder ? { name: 'ApproveOrder', params: { id: approvalOrder.id } } : { name: 'Approvals' });
-}
+};
 
 const formatMeters = (value: number) => {
     if (!value) return "0";
     if (value >= 1000) return `${(value / 1000).toFixed(1)}k`;
     return Number(value.toFixed(0)).toLocaleString('pt-BR');
-}
+};
+
 const formatDate = (dateString: string) => {
     if(!dateString) return '-';
     return format(parseISO(dateString), 'dd/MM/yy');
-}
+};
+
+const openEditor = async () => {
+  loadingEditorToken.value = true;
+  editorError.value = null;
+  try {
+    const { error: sessionError } = await supabase.auth.refreshSession();
+    if (sessionError) {
+      alert('Sua sessão expirou. Por favor, faça login novamente.');
+      await userStore.signOut();
+      router.push({ name: 'Login' });
+      return;
+    }
+    const { data, error } = await supabase.functions.invoke('generate-editor-token');
+    if (error) throw error;
+
+    if (data.token) {
+      const editorUrl = `https://mjmockups.onrender.com?token=${data.token}`;
+      window.open(editorUrl, '_blank');
+    } else {
+      throw new Error('Token de acesso ao editor não foi recebido.');
+    }
+  } catch (error: any) {
+    console.error('Erro ao abrir o editor:', error);
+    editorError.value = `Erro ao acessar o editor: ${error.message}`;
+  } finally {
+    loadingEditorToken.value = false;
+  }
+};
 
 onMounted(async () => {
   const { data } = await supabase.from('profiles').select('full_name, avatar_url');
@@ -327,30 +379,18 @@ onMounted(async () => {
   min-width: 0;
 }
 
-.sidebar-area {
-  width: 420px;
-  flex-shrink: 0;
-  height: 100%;
-  min-height: 450px; // Adicionado para garantir altura mínima do mapa
-
-  @media (max-width: 1400px) { width: 380px; }
-  @media (max-width: 1280px) { width: 100%; height: auto; order: -1; min-height: 450px; }
-}
-
 .sidebar-sticky-content {
   position: sticky;
   top: 80px;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  min-height: 450px; // Garante altura mínima para o mapa
   height: calc(100vh - 112px);
-  min-height: 450px; // Adicionado para garantir altura mínima do mapa
 
-  @media (max-width: 1280px) {
+  @media (max-width: 1279px) { // lg breakpoint in vuetify
     position: relative;
     top: 0;
+    margin-top: 1.5rem;
+    min-height: 450px; // Mantém altura mínima em telas menores
     height: auto;
-    min-height: 450px; // Adicionado para garantir altura mínima do mapa
   }
 }
 

@@ -108,7 +108,7 @@
           <v-btn v-if="isAdmin" :to="{ name: 'Admin' }" icon variant="text" title="Painel Admin">
             <v-icon>mdi-security</v-icon>
           </v-btn>
-          <v-btn :to="{ name: 'Chat' }" icon variant="text" title="Chat">
+          <v-btn icon variant="text" title="Chat" :disabled="true" style="pointer-events: none; opacity: 0.5;">
             <v-badge :content="chatStore.totalUnreadCount" color="error" :model-value="chatStore.totalUnreadCount > 0">
               <v-icon>mdi-forum-outline</v-icon>
             </v-badge>
@@ -259,7 +259,6 @@ const isAudioUnlocked = ref(false);
 
 const loadingFinanceToken = ref(false);
 
-// --- LÓGICA DO PLANO DE FUNDO ---
 const backgrounds = ref([
   'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//MJ%20(1).jpg',
   'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media//2.jpg',
@@ -278,7 +277,6 @@ onMounted(() => {
   const savedBg = localStorage.getItem('mjprocess-background');
   currentBackground.value = savedBg || backgrounds.value[0];
 });
-// --- FIM DA LÓGICA DO PLANO DE FUNDO ---
 
 const handleGoToFinance = async () => {
   loadingFinanceToken.value = true;
