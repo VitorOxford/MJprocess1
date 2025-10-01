@@ -890,34 +890,35 @@ const fetchInitialData = async () => {
     loadingGestaoClickProducts.value = true;
     loadingGestaoClickServices.value = true;
     try {
-        // --- INÍCIO DA CORREÇÃO ---
-        // 1. Busca os produtos (tecidos) diretamente da sua tabela 'stock' no Supabase.
+        // --- INÍCIO DA CORREÇÃO COM 'VERIFICATION' ---
+        // 1. Busca os produtos diretamente da sua tabela 'stock', usando a nova coluna de controle.
         const { data: stockData, error: stockError } = await supabase
             .from('stock')
-            .select('*');
+            .select('*')
+            .eq('verification', true); // <-- A MUDANÇA PRINCIPAL ESTÁ AQUI
+
         if (stockError) throw stockError;
 
         // 2. Busca a lista de preços para obter o valor de venda.
         const { data: priceListData, error: priceListError } = await supabase
             .from('price_list')
-            .select('name, price_se_cash'); // Usando price_se_cash como padrão
+            .select('name, price_se_cash');
         if (priceListError) throw priceListError;
 
-        // 3. Mapeia os dados para o formato que o componente espera.
+        // 3. Mapeia os dados do SEU estoque para o formato que a tela precisa.
         gestaoClickProducts.value = stockData.map(stockItem => {
             const priceInfo = priceListData.find(p => p.name === stockItem.fabric_type);
             return {
-                id: stockItem.gestao_click_id, // Mantém o ID do Gestão Click se necessário
+                id: stockItem.gestao_click_id,
                 nome: stockItem.fabric_type,
                 estoque: stockItem.available_meters,
-                valor_venda: priceInfo ? String(priceInfo.price_se_cash) : '0', // Converte para string
+                valor_venda: priceInfo ? String(priceInfo.price_se_cash) : '0',
                 unidade: stockItem.unit_of_measure,
-                rendimento: String(stockItem.rendimento || '0') // Converte para string
+                rendimento: String(stockItem.rendimento || '0')
             };
         });
         // --- FIM DA CORREÇÃO ---
 
-        // O restante da função continua igual, buscando os serviços e outros dados...
         const [services, statuses, stamps, payMethods] = await Promise.all([
             gestaoApi.buscarServicos(),
             gestaoApi.getSituacoesVenda(),

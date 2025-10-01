@@ -125,7 +125,12 @@ const getStockStatus = (item: StockItem): { text: string; color: string; icon: s
 const fetchStock = async () => {
   loading.value = true;
   try {
-    const { data, error } = await supabase.from('stock').select('*');
+    // A consulta agora usa a coluna 'verification' para filtrar os resultados.
+    const { data, error } = await supabase
+      .from('stock')
+      .select('*')
+      .eq('verification', true); // <-- A MUDANÇA PRINCIPAL ESTÁ AQUI
+
     if (error) throw error;
     stockItems.value = data || [];
   } catch (err: any) {
