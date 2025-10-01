@@ -890,22 +890,45 @@ const fetchInitialData = async () => {
     loadingGestaoClickProducts.value = true;
     loadingGestaoClickServices.value = true;
     try {
-        const [products, services, statuses, stamps, stockData, payMethods] = await Promise.all([
-            gestaoApi.buscarProdutos(),
+        // --- INÍCIO DA CORREÇÃO ---
+        // 1. Busca os produtos (tecidos) diretamente da sua tabela 'stock' no Supabase.
+        const { data: stockData, error: stockError } = await supabase
+            .from('stock')
+            .select('*');
+        if (stockError) throw stockError;
+
+        // 2. Busca a lista de preços para obter o valor de venda.
+        const { data: priceListData, error: priceListError } = await supabase
+            .from('price_list')
+            .select('name, price_se_cash'); // Usando price_se_cash como padrão
+        if (priceListError) throw priceListError;
+
+        // 3. Mapeia os dados para o formato que o componente espera.
+        gestaoClickProducts.value = stockData.map(stockItem => {
+            const priceInfo = priceListData.find(p => p.name === stockItem.fabric_type);
+            return {
+                id: stockItem.gestao_click_id, // Mantém o ID do Gestão Click se necessário
+                nome: stockItem.fabric_type,
+                estoque: stockItem.available_meters,
+                valor_venda: priceInfo ? String(priceInfo.price_se_cash) : '0', // Converte para string
+                unidade: stockItem.unit_of_measure,
+                rendimento: String(stockItem.rendimento || '0') // Converte para string
+            };
+        });
+        // --- FIM DA CORREÇÃO ---
+
+        // O restante da função continua igual, buscando os serviços e outros dados...
+        const [services, statuses, stamps, payMethods] = await Promise.all([
             gestaoApi.buscarServicos(),
             gestaoApi.getSituacoesVenda(),
             supabase.from('stamp_library').select('*').eq('is_approved_for_sale', true),
-            supabase.from('stock').select('*'),
             gestaoApi.buscarFormasDePagamento(),
         ]);
 
         if (stamps.error) throw stamps.error;
-        if (stockData.error) throw stockData.error;
 
         paymentMethods.value = payMethods;
-
         stampLibrary.value = stamps.data || [];
-        stockItems.value = stockData.data || [];
 
         const approvedStampServiceIds = new Set(stampLibrary.value.map(s => s.gestao_click_service_id));
         gestaoClickServices.value = services
@@ -915,11 +938,10 @@ const fetchInitialData = async () => {
                 return { ...service, imagem_url: matchingStamp ? matchingStamp.image_url : undefined };
             });
 
-        gestaoClickProducts.value = products;
         saleStatuses.value = statuses;
 
     } catch (error) {
-        showFeedback('Não foi possível carregar dados do Gestão Click ou do Catálogo de Estampas.', 'error');
+        showFeedback('Não foi possível carregar os dados iniciais.', 'error');
         console.error("Erro na busca de dados iniciais:", error);
     } finally {
         loadingGestaoClickProducts.value = false;
@@ -1217,6 +1239,7 @@ const submitLaunch = async () => {
   isSubmitting.value = true;
   feedback.message = '';
   try {
+    // Itera sobre os itens para lidar com o upload de novas estampas primeiro
     for (const item of orderItems.value) {
       if (item.new_stamp_file) {
         const newService = await gestaoApi.cadastrarServico(item.stamp_ref);
@@ -1231,6 +1254,22 @@ const submitLaunch = async () => {
       }
     }
 
+    // --- INÍCIO DA CORREÇÃO ---
+    // Verifica e encontra o próximo número de pedido vago antes de sincronizar
+    let availableOrderNumber = nextOrderNumber.value;
+    if (availableOrderNumber) {
+      let isTaken = await gestaoApi.verificarVendaPorCodigo(availableOrderNumber);
+      while (isTaken) {
+        availableOrderNumber++;
+        isTaken = await gestaoApi.verificarVendaPorCodigo(availableOrderNumber);
+      }
+      // Atualiza o número do pedido para o próximo vago encontrado
+      nextOrderNumber.value = availableOrderNumber;
+    } else {
+      throw new Error("Não foi possível determinar o número do próximo pedido.");
+    }
+    // --- FIM DA CORREÇÃO ---
+
     const selectedClient = clientList.value.find(c => c.id === orderHeader.customer_id);
     if (!selectedClient) throw new Error("Cliente selecionado não encontrado na lista.");
 
@@ -1242,6 +1281,7 @@ const submitLaunch = async () => {
       proofPublicUrl = await uploadFile(file, 'proofs', filePath);
     }
 
+    // Sincroniza com o Gestão Click usando o número de pedido já validado
     await syncOrderWithGestaoClick(proofPublicUrl);
 
     const itemsPayload = orderItems.value.map(item => ({
@@ -1257,6 +1297,7 @@ const submitLaunch = async () => {
     });
 
     if (rpcError) throw rpcError;
+
     const { data: orderData } = await supabase.from('orders').select('id').eq('order_number', newOrderNumber).single();
     if (orderData) createdOrderId.value = orderData.id;
     createdOrderNumber.value = newOrderNumber;
@@ -1265,7 +1306,8 @@ const submitLaunch = async () => {
   } catch (error: any) {
     console.error('Erro ao criar lançamento:', error);
     let errorMessage = error.message || 'Erro desconhecido.';
-    if (errorMessage.includes('Gestão Click')) {
+    // Melhora a mensagem de erro para o usuário
+    if (errorMessage.includes('Gestão Click') || (error.response && error.response.data)) {
         errorMessage = `Falha na integração com o sistema de gestão: ${errorMessage}`;
     }
     showFeedback(`Erro ao criar lançamento: ${errorMessage}`, 'error');
