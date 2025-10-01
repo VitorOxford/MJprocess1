@@ -887,38 +887,48 @@ watch(clientSearch, (newValue) => {
 });
 
 const fetchInitialData = async () => {
+    console.log("--- INICIANDO BUSCA DE DADOS --- CORREÇÃO FINAL ---");
     loadingGestaoClickProducts.value = true;
     loadingGestaoClickServices.value = true;
     try {
-        // --- INÍCIO DA CORREÇÃO COM 'VERIFICATION' ---
-        // 1. Busca os produtos diretamente da sua tabela 'stock', usando a nova coluna de controle.
+        // --- 1. BUSCANDO TUDO DA FONTE CORRETA: A TABELA 'stock' ---
+        console.log("Buscando produtos e preços DIRETAMENTE da tabela 'stock' onde 'verification' é true...");
         const { data: stockData, error: stockError } = await supabase
             .from('stock')
-            .select('*')
-            .eq('verification', true); // <-- A MUDANÇA PRINCIPAL ESTÁ AQUI
+            .select('*') // Pega todas as colunas, incluindo 'base_price'
+            .eq('verification', true);
 
         if (stockError) throw stockError;
 
-        // 2. Busca a lista de preços para obter o valor de venda.
-        const { data: priceListData, error: priceListError } = await supabase
-            .from('price_list')
-            .select('name, price_se_cash');
-        if (priceListError) throw priceListError;
+        console.log("DADOS BRUTOS RECEBIDOS DA TABELA 'stock':", JSON.parse(JSON.stringify(stockData)));
 
-        // 3. Mapeia os dados do SEU estoque para o formato que a tela precisa.
-        gestaoClickProducts.value = stockData.map(stockItem => {
-            const priceInfo = priceListData.find(p => p.name === stockItem.fabric_type);
+        // --- 2. MAPEANDO OS DADOS DIRETAMENTE, SEM FRESCURA ---
+        console.log("Mapeando os dados. 'valor_venda' virá da coluna 'base_price'.");
+
+        const finalProducts = stockData.map(stockItem => {
+            const unitPrice = stockItem.base_price;
+
+            if (unitPrice === null || unitPrice === undefined) {
+                console.error(`❌ ALERTA! Produto '${stockItem.fabric_type}' está sem valor na coluna 'base_price'.`);
+            } else {
+                console.log(`✅ Preço para '${stockItem.fabric_type}' encontrado na coluna 'base_price': R$ ${unitPrice}`);
+            }
+
             return {
                 id: stockItem.gestao_click_id,
                 nome: stockItem.fabric_type,
                 estoque: stockItem.available_meters,
-                valor_venda: priceInfo ? String(priceInfo.price_se_cash) : '0',
+                // AQUI ESTÁ A CORREÇÃO: Pegando o preço da coluna certa.
+                valor_venda: String(unitPrice || '0'),
                 unidade: stockItem.unit_of_measure,
                 rendimento: String(stockItem.rendimento || '0')
             };
         });
-        // --- FIM DA CORREÇÃO ---
 
+        console.log("4. RESULTADO FINAL! Estes são os produtos que serão exibidos:", JSON.parse(JSON.stringify(finalProducts)));
+        gestaoClickProducts.value = finalProducts;
+
+        // O resto do código continua como estava...
         const [services, statuses, stamps, payMethods] = await Promise.all([
             gestaoApi.buscarServicos(),
             gestaoApi.getSituacoesVenda(),
@@ -940,10 +950,11 @@ const fetchInitialData = async () => {
             });
 
         saleStatuses.value = statuses;
+        console.log("--- BUSCA DE DADOS FINALIZADA ---");
 
     } catch (error) {
         showFeedback('Não foi possível carregar os dados iniciais.', 'error');
-        console.error("Erro na busca de dados iniciais:", error);
+        console.error("ERRO CRÍTICO NA BUSCA DE DADOS INICIAIS:", error);
     } finally {
         loadingGestaoClickProducts.value = false;
         loadingGestaoClickServices.value = false;
