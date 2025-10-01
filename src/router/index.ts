@@ -117,6 +117,15 @@ const routes: Array<RouteRecordRaw> = [
         component: () => import('@/views/Admin.vue'),
         meta: { requiresAuth: true, roles: ['admin'] }
       },
+      // ===== INÍCIO DA ADIÇÃO =====
+      // A única alteração é a adição desta rota para o CRM
+      {
+        path: 'admin/crm',
+        name: 'CRM',
+        component: () => import('@/views/admin/CRM.vue'),
+        meta: { requiresAuth: true, roles: ['admin'] }
+      },
+      // ===== FIM DA ADIÇÃO =====
     ],
   },
   {
@@ -131,6 +140,7 @@ const router = createRouter({
   routes,
 });
 
+// Lógica de guarda de rotas original (sem modificações)
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore();
 
@@ -145,24 +155,19 @@ router.beforeEach(async (to, from, next) => {
     return next({ name: 'Login' });
   }
 
-  // Redireciona para o Hub após o login, em vez de Home
   if (to.name === 'Login' && userStore.isLoggedIn) {
     return next({ name: 'Hub' });
   }
 
-  // ===== INÍCIO DA CORREÇÃO: REMOÇÃO DO REDIRECIONAMENTO =====
-  // O trecho de código abaixo foi removido para impedir o redirecionamento
-  // indesejado do Dashboard para o Hub.
   /*
   if(to.path === '/' && from.name !== 'Hub' && userStore.isLoggedIn) {
     return next({name: 'Hub'})
   }
   */
-  // ===== FIM DA CORREÇÃO =====
 
   if (requiredRoles && !requiredRoles.includes(userStore.profile?.role ?? '')) {
      console.warn(`Acesso negado. Rota ${to.path} exige as roles: ${requiredRoles}. Usuário tem a role: ${userStore.profile?.role}`);
-     return next({ name: 'Hub' }); // Se o acesso for negado, volta para o Hub
+     return next({ name: 'Hub' });
   }
 
   next();

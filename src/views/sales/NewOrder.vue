@@ -586,6 +586,7 @@ type OrderItem = {
   new_stamp_file?: File | null;
   has_insufficient_stock: boolean;
   status: 'design_pending' | 'pending_stock';
+  total_value_items?: number;
 };
 type StampLibraryItem = {
     id: number;
@@ -1296,16 +1297,29 @@ const submitLaunch = async () => {
     // Sincroniza com o Gestão Click usando o número de pedido já validado
     await syncOrderWithGestaoClick(proofPublicUrl);
 
-    const itemsPayload = orderItems.value.map(item => ({
-        fabric_type: item.fabric_type, stamp_ref: item.stamp_ref, quantity_meters: item.quantity_meters,
-        stamp_image_url: item.stamp_image_url, design_tag: item.design_tag, notes: item.notes,
-        quantity_unit: item.quantity, unit_of_measure: item.unit_of_measure, rendimento: item.rendimento,
-        status: item.status,
-    }));
+    const itemsPayload = orderItems.value.map(item => {
+      const total_value_item = (item.quantity || 0) * (item.valor_unitario || 0);
+      return {
+          fabric_type: item.fabric_type,
+          stamp_ref: item.stamp_ref,
+          quantity_meters: item.quantity_meters,
+          stamp_image_url: item.stamp_image_url,
+          design_tag: item.design_tag,
+          notes: item.notes,
+          quantity_unit: item.quantity,
+          unit_of_measure: item.unit_of_measure,
+          rendimento: item.rendimento,
+          status: item.status,
+          total_value_items: total_value_item,
+      };
+    });
+
+    const totalOrderValueCalculated = itemsPayload.reduce((sum, item) => sum + item.total_value_items, 0);
 
     const { data: newOrderNumber, error: rpcError } = await supabase.rpc('create_launch_order', {
       p_customer_name: selectedClient.nome, p_created_by: userStore.profile?.id, p_store_id: userStore.profile?.store_id,
-      p_has_down_payment: orderHeader.has_down_payment, p_down_payment_proof_url: proofPublicUrl, p_order_items: itemsPayload
+      p_has_down_payment: orderHeader.has_down_payment, p_down_payment_proof_url: proofPublicUrl, p_order_items: itemsPayload,
+      p_total_value: totalOrderValueCalculated
     });
 
     if (rpcError) throw rpcError;

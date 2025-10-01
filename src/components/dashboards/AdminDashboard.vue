@@ -23,7 +23,7 @@
 
       <v-card-text>
         <v-row>
-           <v-col cols="12" sm="6" md="4" lg="2_4">
+           <v-col cols="12" sm="6" md="4" lg="2">
             <div class="kpi-stat-card clickable-kpi alert-card" @click="showApprovalModal = true">
               <div class="shine-effect"></div>
               <v-icon class="kpi-icon">mdi-check-decagram-outline</v-icon>
@@ -33,7 +33,7 @@
               </div>
             </div>
           </v-col>
-          <v-col cols="12" sm="6" md="4" lg="2_4">
+          <v-col cols="12" sm="6" md="4" lg="2">
             <div class="kpi-stat-card clickable-kpi" @click="openKpiDetailModal('delayed')" style="background: linear-gradient(45deg, #f57c00, #ff9800); color: white;">
               <v-icon class="kpi-icon">mdi-clock-alert-outline</v-icon>
               <div class="kpi-content">
@@ -42,7 +42,7 @@
               </div>
             </div>
           </v-col>
-           <v-col cols="12" sm="6" md="4" lg="2_4">
+           <v-col cols="12" sm="6" md="4" lg="2">
             <div class="kpi-stat-card clickable-kpi" @click="handleStockRecheck" style="background: linear-gradient(45deg, #c62828, #e53935); color: white;">
               <v-progress-circular v-if="isRecheckingStock" indeterminate color="white" size="24" width="2" class="kpi-loading-spinner"></v-progress-circular>
               <v-icon v-else class="kpi-icon">mdi-package-variant-closed-remove</v-icon>
@@ -53,7 +53,7 @@
                <v-tooltip activator="parent" location="bottom">Clique para desbloquear pedidos com estoque suficiente</v-tooltip>
             </div>
           </v-col>
-          <v-col cols="12" sm="6" md="6" lg="2_4">
+          <v-col cols="12" sm="6" md="6" lg="2">
             <div class="kpi-stat-card" style="background: linear-gradient(45deg, #6a1b9a, #9c27b0); color: white;">
               <v-icon class="kpi-icon">mdi-factory</v-icon>
               <div class="kpi-content">
@@ -62,7 +62,7 @@
               </div>
             </div>
           </v-col>
-          <v-col cols="12" sm="12" md="6" lg="2_4">
+          <v-col cols="12" sm="6" md="6" lg="2">
             <div class="kpi-stat-card clickable-kpi" @click="openKpiDetailModal('inDesign')" style="background: linear-gradient(45deg, #1e88e5, #42a5f5); color: white;">
               <v-icon class="kpi-icon">mdi-palette-swatch-outline</v-icon>
               <div class="kpi-content">
@@ -71,9 +71,22 @@
               </div>
             </div>
           </v-col>
+          <v-col cols="12" sm="12" md="12" lg="2">
+             <v-card
+                class="d-flex flex-column align-center justify-center text-center pa-2 fill-height"
+                to="/admin/crm"
+                hover
+                color="primary"
+                variant="elevated"
+              >
+                <v-icon size="48" class="mb-2">mdi-view-dashboard</v-icon>
+                <h4 class="text-body-1 font-weight-bold">Acessar CRM</h4>
+                <p class="text-caption">Análise de Vendas</p>
+              </v-card>
+          </v-col>
         </v-row>
-         </v-card-text>
-         <v-divider class="my-4"></v-divider>
+      </v-card-text>
+      <v-divider class="my-4"></v-divider>
 
       <v-card-text class="py-0">
         <v-row align="center" justify="center">
@@ -504,7 +517,7 @@ onMounted(async () => {
   min-height: 110px;
 
   &.clickable-kpi { cursor: pointer; &:hover { transform: translateY(-4px); box-shadow: 0 8px 15px rgba(0,0,0,0.2); } }
-  &.alert-card { background: linear-gradient(45deg, #d32f2f, #f44336); color: white; box-shadow: 0 4px 20px rgba(211, 47, 47, 0.4); }
+  &.alert-card { background: linear-gradient(45deg, #d32f2f, #f44336); color: white; box-shadow: 0 4px 20px rgba(211, 47, 47, 0.4); } /* LINHA CORRIGIDA */
   .shine-effect {
     position: absolute; top: 0; left: 0; width: 50%; height: 100%;
     background: linear-gradient(to right, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.4) 50%, rgba(255, 255, 255, 0) 100%);
@@ -542,14 +555,4 @@ onMounted(async () => {
   background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
-// Layout para 5 cards por linha em telas grandes (lg)
-.v-row {
-  .v-col-lg-2_4 {
-    @media (min-width: 1280px) {
-      width: 20%;
-      flex: 0 0 20%;
-      max-width: 20%;
-    }
-  }
-}
 </style>
