@@ -8,6 +8,25 @@
             <h1 class="text-h5 font-weight-bold">Dashboard Administrador</h1>
           </div>
           <v-spacer></v-spacer>
+
+          <v-tooltip
+            location="bottom"
+            text="CRM em desenvolvimento"
+          >
+            <template v-slot:activator="{ props }">
+              <v-btn
+                v-bind="props"
+                variant="tonal"
+                color="cyan-lighten-1"
+                class="mr-2"
+                to="/admin/crm"
+              >
+                <v-icon start>mdi-chart-donut-variant</v-icon>
+                Acessar CRM
+              </v-btn>
+            </template>
+          </v-tooltip>
+
           <v-btn
             @click="showReportModal = true"
             color="white"
@@ -17,7 +36,7 @@
              <v-tooltip activator="parent" location="bottom">Relatórios Avançados</v-tooltip>
             <v-icon>mdi-cog-outline</v-icon>
           </v-btn>
-        </div>
+          </div>
       </v-card-title>
       <v-divider></v-divider>
 
@@ -72,19 +91,15 @@
             </div>
           </v-col>
           <v-col cols="12" sm="12" md="12" lg="2">
-             <v-card
-                class="d-flex flex-column align-center justify-center text-center pa-2 fill-height"
-                to="/admin/crm"
-                hover
-                color="primary"
-                variant="elevated"
-              >
-                <v-icon size="48" class="mb-2">mdi-view-dashboard</v-icon>
-                <h4 class="text-body-1 font-weight-bold">Acessar CRM</h4>
-                <p class="text-caption">Análise de Vendas</p>
-              </v-card>
+             <div class="kpi-stat-card" style="background: linear-gradient(45deg, #0277bd, #039be5); color: white;">
+                <v-icon class="kpi-icon">mdi-chart-bar</v-icon>
+                <div class="kpi-content">
+                    <span class="kpi-value">{{ formatNumber(completedOrders.length) }}</span>
+                    <span class="kpi-title">Concluídos (Mês)</span>
+                </div>
+            </div>
           </v-col>
-        </v-row>
+           </v-row>
       </v-card-text>
       <v-divider class="my-4"></v-divider>
 

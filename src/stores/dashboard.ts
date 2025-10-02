@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { supabase } from '@/api/supabase';
-import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays, startOfMonth, endOfMonth, isWithinInterval, subDays } from 'date-fns'; // <-- CORREÇÃO APLICADA AQUI
+import { isBefore, startOfToday, parseISO, addMonths, subMonths, format, isValid, getDay, addDays, startOfMonth, endOfMonth, isWithinInterval, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useUserStore } from './user';
 
@@ -174,7 +174,13 @@ export const useDashboardStore = defineStore('dashboard', {
       return state.orders.filter(o => o.has_down_payment);
     },
     ordersPendingApproval: (state) => {
-        return state.orders.filter(o => o.status === 'customer_approval' || (o.is_launch && o.order_items.some(item => item.status === 'customer_approval')));
+        // Correção aplicada em interações anteriores para buscar itens pendentes dentro de qualquer pedido.
+        return state.orders
+            .map(order => ({
+                ...order,
+                order_items: (order.order_items || []).filter(item => item.status === 'customer_approval')
+            }))
+            .filter(order => order.order_items.length > 0);
     },
     totalMetersPendingApproval(state): number {
         return state.orders
@@ -182,15 +188,19 @@ export const useDashboardStore = defineStore('dashboard', {
             .filter(item => item.status === 'customer_approval')
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
+
+    // ===== INÍCIO DA CORREÇÃO =====
     itemsDelayedInDesign(state): { count: number, totalMeters: number } {
         const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
         const today = startOfToday();
         let count = 0;
         let totalMeters = 0;
         state.orders.forEach(order => {
-            if (order.is_launch && order.order_items) {
+            // REMOVIDA a restrição "order.is_launch" para incluir todos os tipos de pedido
+            if (order.order_items) {
                 order.order_items.forEach(item => {
-                    if (designStatuses.includes(item.status) && isBefore(parseISO(item.created_at), today)) {
+                    const itemDate = parseISO(item.created_at);
+                    if (designStatuses.includes(item.status) && isValid(itemDate) && isBefore(itemDate, today)) {
                         count++;
                         totalMeters += item.quantity_meters || 0;
                     }
@@ -199,6 +209,8 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return { count, totalMeters };
     },
+    // ===== FIM DA CORREÇÃO =====
+
     delayedDesignItemsDetails(state) {
       const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
       const today = startOfToday();
@@ -206,9 +218,10 @@ export const useDashboardStore = defineStore('dashboard', {
           .flatMap(order =>
               (order.order_items || []).map(item => ({ ...item, orderInfo: order }))
           )
-          .filter(item =>
-              designStatuses.includes(item.status) &&
-              isBefore(parseISO(item.created_at), today)
+          .filter(item => {
+              const itemDate = parseISO(item.created_at);
+              return designStatuses.includes(item.status) && isValid(itemDate) && isBefore(itemDate, today);
+            }
           )
           .map(item => ({
               item_id: item.id,
@@ -248,13 +261,18 @@ export const useDashboardStore = defineStore('dashboard', {
             })
             .reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
     },
+
+    // ===== INÍCIO DA CORREÇÃO =====
     totalMetersInDesign(state): number {
         const designStatuses = ['design_pending', 'changes_requested', 'approved_by_designer', 'finalizing'];
         return state.orders
-            .flatMap(order => order.is_launch ? order.order_items : [])
+            // REMOVIDA a restrição "order.is_launch" para incluir todos os tipos de pedido
+            .flatMap(order => order.order_items || [])
             .filter(item => designStatuses.includes(item.status))
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
+    // ===== FIM DA CORREÇÃO =====
+
     completedOrders(state): Order[] {
         const cutoffDateString = '2025-08-29';
         return state.orders
@@ -346,10 +364,11 @@ export const useDashboardStore = defineStore('dashboard', {
       let onTime = 0;
       let delayed = 0;
        state.orders.forEach(order => {
-            if (order.is_launch && order.order_items) {
+            if (order.order_items) { // Removida a restrição is_launch
                 order.order_items.forEach(item => {
                     if (designStatuses.includes(item.status)) {
-                        if (isBefore(parseISO(item.created_at), today)) {
+                        const itemDate = parseISO(item.created_at);
+                        if (isValid(itemDate) && isBefore(itemDate, today)) {
                             delayed++;
                         } else {
                             onTime++;
