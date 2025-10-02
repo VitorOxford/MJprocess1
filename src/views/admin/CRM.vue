@@ -16,6 +16,19 @@
       </v-btn>
     </v-toolbar>
 
+    <v-alert
+      v-if="showOldDataWarning"
+      type="warning"
+      variant="tonal"
+      border="start"
+      class="mb-6"
+      closable
+      @click:close="showOldDataWarning = false"
+      title="Aviso sobre o Período Selecionado"
+    >
+      As informações de valores e faturamento não estão disponíveis para períodos anteriores. Dados disponíveis somente de Outubro em diante.
+    </v-alert>
+
     <v-tabs v-model="mainTab" color="primary" class="mb-6">
       <v-tab value="overview" class="tab-item">Visão Geral</v-tab>
       <v-tab value="sellers" class="tab-item">Vendedores</v-tab>
@@ -83,13 +96,43 @@ const { filters, loading } = storeToRefs(crmStore);
 const mainTab = ref('overview');
 const showFilterModal = ref(false);
 const showReportModal = ref(false);
+const showOldDataWarning = ref(false);
+
+const formatDate = (date) => {
+  // Converte o objeto Date para o formato YYYY-MM-DD
+  return date.toISOString().split('T')[0];
+};
 
 const applyFilters = () => {
+  // A data do input vem como string 'YYYY-MM-DD'. O new Date() converte para UTC.
+  // Para evitar problemas de fuso, adicionamos 'T00:00:00' para garantir que a data seja local.
+  const endDate = new Date(`${filters.value.endDate}T00:00:00`);
+  const cutoffDate = new Date('2025-10-01T00:00:00');
+
+  if (endDate < cutoffDate) {
+    showOldDataWarning.value = true;
+  } else {
+    showOldDataWarning.value = false;
+  }
+
   crmStore.fetchCrmData();
   showFilterModal.value = false;
 };
 
 onMounted(() => {
+    // Define o filtro inicial para o mês atual
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0); // Pega o último dia do mês atual
+
+    // Atualiza o estado do filtro na store
+    filters.value.startDate = formatDate(startDate);
+    filters.value.endDate = formatDate(endDate);
+
+    // Busca os dados iniciais com o filtro do mês atual
     crmStore.fetchCrmData();
 });
 </script>

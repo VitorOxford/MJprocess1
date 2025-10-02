@@ -73,10 +73,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, onActivated } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
-import { onActivated } from 'vue';
 
 type OrderItem = {
     id: string;
@@ -106,28 +105,40 @@ const filteredOrders = computed(() => {
     );
 });
 
+// ===== INÍCIO DA CORREÇÃO =====
 const fetchPendingOrders = async () => {
   if (!userStore.profile) return;
   loading.value = true;
   try {
+    // A query agora busca pedidos onde QUALQUER item interno (order_items)
+    // tenha o status 'customer_approval'. O '.not("order_items", "is", null)'
+    // garante que apenas pedidos que realmente têm itens correspondentes sejam retornados.
     const { data, error } = await supabase
       .from('orders')
       .select('id, customer_name, created_at, designer:designer_id(full_name), order_items(*)')
-      .eq('is_launch', true)
       .eq('order_items.status', 'customer_approval')
+      .not('order_items', 'is', null) // Garante que a relação `order_items` não seja nula
       .order('created_at', { ascending: true });
 
     if (error) throw error;
-    // Garante que apenas pedidos com itens pendentes sejam mostrados.
-    orders.value = (data as Order[]).filter(o => o.order_items && o.order_items.length > 0) || [];
+
+    // O filtro secundário no frontend garante que apenas itens pendentes sejam considerados
+    // (embora a query já faça isso, é uma boa prática de segurança).
+    orders.value = (data as Order[]).map(order => ({
+        ...order,
+        order_items: order.order_items.filter(item => item.status === 'customer_approval')
+    })).filter(order => order.order_items.length > 0);
+
   } catch (e) {
     console.error('Erro ao buscar pedidos para aprovação:', e);
   } finally {
     loading.value = false;
   }
 };
+// ===== FIM DA CORREÇÃO =====
 
 const getArtPreview = (order: Order): string => {
+    // Esta função já estava correta, pois procurava o item dentro do pedido.
     const pendingItem = order.order_items.find(item => item.status === 'customer_approval');
     if (pendingItem && pendingItem.stamp_image_url) {
         return pendingItem.stamp_image_url;
@@ -143,9 +154,6 @@ const getDesignerName = (order: Order): string => {
     return order.designer?.full_name || 'N/A';
 }
 
-// *** CORREÇÃO APLICADA AQUI ***
-// onActivated é um hook do Vue Router que é chamado toda vez que a página se torna ativa.
-// Isso garante que a lista seja sempre atualizada ao navegar para esta tela.
 onActivated(() => {
     if (userStore.isLoggedIn) {
         fetchPendingOrders();
