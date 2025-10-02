@@ -7,8 +7,15 @@
           Nenhum dado para exibir no ranking.
         </div>
         <div v-for="item in rankedItems" :key="item.name" :class="`podium-item rank-${item.rank}`">
-          <v-avatar :image="item.avatar_url" size="70" class="podium-avatar">
-            <span v-if="!item.avatar_url" class="text-h5">{{ item.name.charAt(0) }}</span>
+
+          <v-avatar size="70" class="podium-avatar">
+            <img
+              v-if="item.avatar_url"
+              :src="item.avatar_url"
+              :alt="item.name"
+              style="width: 100%; height: 100%; object-fit: cover;"
+            >
+            <span v-else class="text-h5">{{ item.name.charAt(0) }}</span>
           </v-avatar>
           <div class="podium-name">{{ item.name }}</div>
           <div class="podium-value">{{ formatValue(item.value) }}</div>
@@ -31,19 +38,13 @@ const props = defineProps({
   unit: { type: String, default: 'm' }
 });
 
-// ===== INÍCIO DA CORREÇÃO =====
-// A lógica agora é simples e correta.
-// A prop 'items' já vem ordenada da store (do maior para o menor).
-// Nós apenas pegamos os 3 primeiros e atribuímos o rank (1, 2, 3) com base na sua posição no array.
-// O CSS cuida de colocar o rank 1 no meio e mais alto.
 const rankedItems = computed(() => {
   if (!props.items) return [];
   return props.items.slice(0, 3).map((item, index) => ({
     ...item,
-    rank: index + 1 // O primeiro item do array é o rank 1, o segundo é o 2, etc.
+    rank: index + 1
   }));
 });
-// ===== FIM DA CORREÇÃO =====
 
 const formatValue = (value) => {
   if (!value && value !== 0) return "0";
@@ -67,7 +68,6 @@ const formatValue = (value) => {
 .podium-item {
   display: flex; flex-direction: column; align-items: center;
   text-align: center; width: 33%; position: relative;
-  /* O CSS usa a classe 'rank-X' para posicionar os itens visualmente */
   &.rank-1 { order: 2; transform: translateY(-20px); .podium-base { height: 90px; background-color: #FFC107; } .podium-avatar { border-color: #FFC107; } }
   &.rank-2 { order: 1; .podium-base { height: 70px; background-color: #C0C0C0; } .podium-avatar { border-color: #C0C0C0; } }
   &.rank-3 { order: 3; .podium-base { height: 50px; background-color: #CD7F32; } .podium-avatar { border-color: #CD7F32; } }

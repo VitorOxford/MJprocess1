@@ -32,12 +32,13 @@ export const useCrmStore = defineStore('crm', {
   actions: {
     async fetchCrmData() {
       this.loading = true;
+      console.clear(); // Limpa o console para uma nova análise
+      console.log('CRM_DEBUG: Iniciando fetchCrmData...');
       try {
-        // CORREÇÃO: A query agora puxa a coluna 'total_value' da tabela 'orders'.
         const { data: orders, error: ordersError } = await supabase
           .from('orders')
           .select(`
-            customer_name, created_at, created_by, total_value,
+            id, customer_name, created_at, created_by, total_value,
             order_items(fabric_type, quantity_meters),
             profiles:created_by(full_name, avatar_url, id)
           `)
@@ -45,6 +46,12 @@ export const useCrmStore = defineStore('crm', {
           .lte('created_at', this.filters.endDate);
 
         if (ordersError) throw ordersError;
+
+        console.log('CRM_DEBUG: 1. DADOS BRUTOS RECEBIDOS DO SUPABASE:', orders);
+        if (orders && orders.length > 0) {
+          console.log('CRM_DEBUG: 1.1 Exemplo de perfil recebido no primeiro pedido:', orders[0].profiles);
+        }
+
 
         this.rawOrders = orders;
 
@@ -60,11 +67,11 @@ export const useCrmStore = defineStore('crm', {
         const dateInterval = eachDayOfInterval({ start: parseISO(this.filters.startDate), end: parseISO(this.filters.endDate) });
         dateInterval.forEach(day => salesByDay.set(format(day, 'yyyy-MM-dd'), 0));
 
+        console.log('CRM_DEBUG: 2. INICIANDO PROCESSAMENTO DE', orders.length, 'PEDIDOS...');
         for (const order of orders) {
-          // CORREÇÃO: O valor do pedido agora vem diretamente da coluna 'total_value'.
+          // ... (cálculos de metragem e valor)
           const orderValue = order.total_value || 0;
           let orderMeters = 0;
-
           if (order.order_items) {
             for (const item of order.order_items) {
               const itemMeters = item.quantity_meters || 0;
@@ -72,42 +79,63 @@ export const useCrmStore = defineStore('crm', {
               salesByFabric.set(item.fabric_type, (salesByFabric.get(item.fabric_type) || 0) + itemMeters);
             }
           }
-
           total_revenue += orderValue;
-
           const orderDay = format(parseISO(order.created_at), 'yyyy-MM-dd');
           if(salesByDay.has(orderDay)) salesByDay.set(orderDay, salesByDay.get(orderDay)! + orderValue);
 
-          let sellerName = order.profiles?.full_name || 'N/A';
-          let sellerAvatar = order.profiles?.avatar_url || '';
 
-          // Regra de negócio para trocar Danilo por Fernanda
+          // LÓGICA DO VENDEDOR COM LOGS DETALHADOS
+          let sellerName = order.profiles?.full_name || 'N/A';
+          let sellerAvatarFromOrder = order.profiles?.avatar_url || '';
+
+          console.log(`--- Processando Pedido ID: ${order.id} | Vendedor do Pedido: ${sellerName} ---`);
+          console.log(`   |-> Avatar URL vindo do pedido: '${sellerAvatarFromOrder}'`);
+
+
           if (sellerName === 'Danilo Martins') {
             sellerName = 'Fernanda Garcia';
-            sellerAvatar = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Fernanda_Garcia_Logo.png?v=1750964425';
+            sellerAvatarFromOrder = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Fernanda_Garcia_Logo.png?v=1750964425';
+            console.log(`   |-> REGRA DE NEGÓCIO: Trocando Danilo por Fernanda.`);
           }
 
-          const currentSellerMeters = salesBySeller.get(sellerName)?.total_meters || 0;
+          const existingSellerData = salesBySeller.get(sellerName);
+          console.log(`   |-> Dados existentes para '${sellerName}':`, existingSellerData);
+
+          const newTotalMeters = (existingSellerData?.total_meters || 0) + orderMeters;
+
+          // Lógica de preservação do avatar com LOG
+          let finalAvatar = existingSellerData?.avatar_url;
+          if (!finalAvatar && sellerAvatarFromOrder) {
+            finalAvatar = sellerAvatarFromOrder;
+            console.log(`   |-> Avatar PRESERVADO: '${finalAvatar}' (era vazio, agora usando o do pedido)`);
+          } else {
+             console.log(`   |-> Avatar PRESERVADO: '${finalAvatar}' (mantendo o que já existia)`);
+          }
+
+
           salesBySeller.set(sellerName, {
-              total_meters: currentSellerMeters + orderMeters,
-              avatar_url: sellerAvatar
+              total_meters: newTotalMeters,
+              avatar_url: finalAvatar || '' // Garante que não seja undefined
           });
+          console.log(`   |-> DADOS FINAIS para '${sellerName}':`, salesBySeller.get(sellerName));
+          console.log('----------------------------------------------------');
 
+
+          // ... (restante da lógica)
           salesByCustomer.set(order.customer_name, (salesByCustomer.get(order.customer_name) || 0) + orderMeters);
-
           const region = NORDESTE_SELLERS.includes(sellerName) ? 'Nordeste' : 'Sudoeste';
           salesByRegionCalc[region] += orderMeters;
-
           const orderDate = parseISO(order.created_at);
           if (!customerFirstOrder.has(order.customer_name) || orderDate < customerFirstOrder.get(order.customer_name)!) {
               customerFirstOrder.set(order.customer_name, orderDate);
           }
         }
+        console.log('CRM_DEBUG: 3. PROCESSAMENTO DE PEDIDOS FINALIZADO.');
 
+        // ... (cálculo de kpis)
         const new_customers = Array.from(customerFirstOrder.values()).filter(date =>
             date >= parseISO(this.filters.startDate) && date <= parseISO(this.filters.endDate)
         ).length;
-
         this.overview.kpis = {
           total_revenue: total_revenue,
           total_orders: orders.length,
@@ -115,17 +143,26 @@ export const useCrmStore = defineStore('crm', {
           avg_ticket: orders.length > 0 ? total_revenue / orders.length : 0,
         };
 
+        // FINALIZAÇÃO COM LOGS
+        console.log('CRM_DEBUG: 4. MAPA FINAL DE VENDEDORES (salesBySeller):', salesBySeller);
+
         this.overview.sales_trend = Array.from(salesByDay.entries()).map(([day, total_revenue]) => ({ day, total_revenue })).sort((a,b) => new Date(a.day).getTime() - new Date(b.day).getTime());
         this.overview.top_fabrics = Array.from(salesByFabric.entries()).map(([fabric, total_meters]) => ({ fabric, total_meters })).sort((a,b) => b.total_meters - a.total_meters).slice(0, 5);
-        this.overview.top_sellers_by_meters = Array.from(salesBySeller.entries()).map(([name, data]) => ({ name, value: data.total_meters, avatar_url: data.avatar_url })).sort((a,b) => b.value - a.value);
+
+        const finalRanking = Array.from(salesBySeller.entries()).map(([name, data]) => ({ name, value: data.total_meters, avatar_url: data.avatar_url })).sort((a,b) => b.value - a.value);
+        this.overview.top_sellers_by_meters = finalRanking;
+
+        console.log('CRM_DEBUG: 5. ARRAY FINAL DO RANKING (enviado para o componente):', this.overview.top_sellers_by_meters);
+
         this.overview.top_customers_by_meters = Array.from(salesByCustomer.entries()).map(([name, value]) => ({ name, value, avatar_url: null })).sort((a,b) => b.value - a.value);
         this.salesByRegion = salesByRegionCalc;
 
       } catch (error) {
-        console.error('Error fetching CRM data:', error);
+        console.error('CRM_DEBUG: ERRO CRÍTICO NO fetchCrmData:', error);
         this.overview.kpis = null;
       } finally {
         this.loading = false;
+        console.log('CRM_DEBUG: Finalizado fetchCrmData.');
       }
     },
   },
