@@ -839,9 +839,12 @@ watch(tempMeters, (newVal) => {
 
 watch(() => editedItem.value.quantity, (newVal) => {
   if (selectedProductUnit.value === 'kg' && selectedProductRendimento.value && newVal) {
+    // Se a unidade for KG, calcula os metros a partir do KG.
     editedItem.value.quantity_meters = parseFloat((newVal * selectedProductRendimento.value).toFixed(2));
-  } else {
-      editedItem.value.quantity_meters = newVal;
+  } else if (selectedProductUnit.value !== 'kg') {
+    // Apenas se a unidade NÃO for KG (ou seja, for 'metro'),
+    // iguala os dois campos.
+    editedItem.value.quantity_meters = newVal;
   }
 });
 const getStockUsageColor = (quantity: number | null) => {
@@ -1297,22 +1300,24 @@ const submitLaunch = async () => {
     // Sincroniza com o Gestão Click usando o número de pedido já validado
     await syncOrderWithGestaoClick(proofPublicUrl);
 
-    const itemsPayload = orderItems.value.map(item => {
-      const total_value_item = (item.quantity || 0) * (item.valor_unitario || 0);
-      return {
-          fabric_type: item.fabric_type,
-          stamp_ref: item.stamp_ref,
-          quantity_meters: item.quantity_meters,
-          stamp_image_url: item.stamp_image_url,
-          design_tag: item.design_tag,
-          notes: item.notes,
-          quantity_unit: item.quantity,
-          unit_of_measure: item.unit_of_measure,
-          rendimento: item.rendimento,
-          status: item.status,
-          total_value_items: total_value_item,
-      };
-    });
+   const itemsPayload = orderItems.value.map(item => {
+     const total_value_item = (item.quantity || 0) * (item.valor_unitario || 0);
+
+     return {
+         fabric_type: item.fabric_type,
+         stamp_ref: item.stamp_ref,
+         quantity_meters: item.quantity_meters, // Sempre envia a metragem
+         stamp_image_url: item.stamp_image_url,
+         design_tag: item.design_tag,
+         notes: item.notes,
+         quantity_unit: item.quantity, // O mais importante: envia o valor final (KG ou Metro)
+         unit_of_measure: item.unit_of_measure,
+         rendimento: item.rendimento,
+         status: item.status,
+         total_value_items: total_value_item,
+     };
+
+   });
 
     const totalOrderValueCalculated = itemsPayload.reduce((sum, item) => sum + item.total_value_items, 0);
 
