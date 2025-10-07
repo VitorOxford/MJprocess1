@@ -466,6 +466,18 @@
           <div class="d-flex w-100 pa-4">
             <v-btn v-if="step > 1" @click="step--" variant="tonal">Voltar</v-btn>
             <v-spacer></v-spacer>
+
+            <v-btn
+              v-if="step === 2"
+              @click="downloadPDF"
+              color="secondary"
+              variant="tonal"
+              class="mr-2"
+            >
+              <v-icon start>mdi-download</v-icon>
+              Baixar Resumo
+            </v-btn>
+
             <v-btn v-if="step < 3" @click="nextStep" :disabled="!isStepValid">Continuar</v-btn>
             <v-btn v-else @click="submitLaunch" :loading="isSubmitting" :disabled="!isStepValid" color="primary" variant="flat">
               <v-icon left>mdi-rocket-launch</v-icon>
@@ -1544,6 +1556,53 @@ const generateQuoteAndUploadPdf = async () => {
         isGeneratingPdf.value = false;
     }
 };
+
+// =================================================================
+// NOVA FUNÇÃO PARA BAIXAR O PDF DO RESUMO DO PEDIDO NO STEP 2
+// =================================================================
+const downloadPDF = async () => {
+  isGeneratingPdf.value = true;
+  try {
+    const selectedClient = clientList.value.find(c => c.id === orderHeader.customer_id) || { nome: 'Cliente não selecionado' };
+    const doc = new jsPDF();
+    await addHeader(doc);
+    doc.setFontSize(18).setFont('helvetica', 'bold').text(`Resumo do Pedido #${String(nextOrderNumber.value || '...').padStart(4, '0')}`, 15, 45);
+    autoTable(doc, {
+      startY: 50,
+      head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']],
+      body: [[selectedClient.nome, userStore.profile?.full_name || 'N/A', format(new Date(), 'dd/MM/yyyy', { locale: ptBR })]],
+      theme: 'striped',
+    });
+    const tableColumn = ["Base", "Estampa", "Quantidade", "Valor Unit.", "Subtotal"];
+    const tableRows = orderItems.value.map(item => [
+      item.fabric_type || 'N/A',
+      item.stamp_ref || 'N/A',
+      `${item.quantity || 0}${item.unit_of_measure}`,
+      formatCurrency(item.valor_unitario),
+      formatCurrency((item.quantity || 0) * (item.valor_unitario || 0))
+    ]);
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 10,
+      head: [tableColumn],
+      body: tableRows,
+      theme: 'grid',
+    });
+    const finalY = (doc as any).lastAutoTable.finalY;
+    doc.setFontSize(14);
+    doc.text('Total do Pedido:', 14, finalY + 15);
+    doc.setFont('helvetica', 'bold');
+    doc.text(formatCurrency(totalOrderValue.value), 200, finalY + 15, { align: 'right' });
+    addFooter(doc);
+    doc.save(`resumo_pedido_${sanitizeName(selectedClient.nome)}.pdf`);
+    showFeedback('Resumo em PDF gerado com sucesso!', 'success');
+  } catch (error: any) {
+    console.error("Erro ao gerar PDF de resumo:", error);
+    showFeedback(`Erro ao gerar PDF: ${error.message}`, 'error');
+  } finally {
+    isGeneratingPdf.value = false;
+  }
+};
+
 
 const generateStandaloneReceiptPdf = async () => {
     if (!orderHeader.has_down_payment || !orderHeader.down_payment_proof_file) {
