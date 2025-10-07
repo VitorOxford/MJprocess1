@@ -479,17 +479,27 @@
         <v-icon size="80" color="success" class="mb-4">mdi-check-circle-outline</v-icon>
         <h2 class="text-h5 font-weight-bold">Pedido #{{ String(createdOrderNumber).padStart(4, '0') }} criado com sucesso!</h2>
         <p class="mt-2 text-medium-emphasis">O pedido foi enviado para a equipe de design e para o sistema de gestão.</p>
-        <div class="mt-8">
+        <div class="mt-8 d-flex flex-wrap justify-center ga-4">
           <v-btn
             color="primary"
             size="large"
             variant="flat"
-            class="mr-4"
-            @click="generateAndUploadQuotePdf"
+            @click="generateQuoteAndUploadPdf"
             :loading="isGeneratingPdf"
           >
             <v-icon left>mdi-file-pdf-box</v-icon>
-            Gerar e Anexar Orçamento
+            Baixar Orçamento
+          </v-btn>
+           <v-btn
+            v-if="orderHeader.has_down_payment"
+            color="secondary"
+            size="large"
+            variant="outlined"
+            @click="generateStandaloneReceiptPdf"
+            :loading="isGeneratingPdf"
+          >
+            <v-icon left>mdi-receipt-text-outline</v-icon>
+            Baixar Recibo de Sinal
           </v-btn>
           <v-btn
             size="large"
@@ -562,6 +572,7 @@ import { format, addDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ClientFormModal from '@/components/ClientFormModal.vue';
 import { gestaoApi } from '@/api/gestaoClick';
+import QRCode from 'qrcode';
 
 // --- Type Definitions ---
 type OrderHeader = {
@@ -605,7 +616,7 @@ type StockItem = {
   rendimento: number | null;
 };
 type Feedback = { message: string; type: 'success' | 'error'; }
-type Client = { id: number; nome: string; }
+type Client = { id: number; nome: string; cpf_cnpj?: string; tipo_pessoa?: 'PF' | 'PJ' }
 type GestaoClickProduct = { id: string; nome: string; estoque: number | string; valor_venda: string; unidade: string | null; rendimento?: string | null; };
 type GestaoClickService = { id: string; nome: string; valor_venda: string; imagem_url?: string; };
 type SaleStatus = { id: number; nome: string; };
@@ -1377,9 +1388,9 @@ const showFeedback = (message: string, type: 'success' | 'error') => {
 const formatCurrency = (value: number | undefined | null) => {
     if (value === null || value === undefined) return 'R$ 0,00';
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-}
+};
 
-const imageToBase64 = (url: string): Promise<string> => new Promise((resolve, reject) => {
+const imageToBase64 = (urlOrFile: string | File): Promise<string> => new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
     img.onload = () => {
@@ -1387,14 +1398,83 @@ const imageToBase64 = (url: string): Promise<string> => new Promise((resolve, re
         canvas.width = img.width;
         canvas.height = img.height;
         const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/png'));
+        if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+        } else {
+            reject(new Error('Não foi possível obter o contexto do canvas'));
+        }
     };
     img.onerror = reject;
-    img.src = url;
+
+    if (typeof urlOrFile === 'string') {
+        img.src = urlOrFile;
+    } else {
+        img.src = URL.createObjectURL(urlOrFile);
+    }
 });
 
-const generateAndUploadQuotePdf = async () => {
+const addHeader = async (doc: jsPDF) => {
+    const pageWidth = doc.internal.pageSize.width;
+    try {
+        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+        const logoBase64 = await imageToBase64(logoUrl);
+        const logoProps = doc.getImageProperties(logoBase64);
+        const logoWidth = 50;
+        const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
+        doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
+    } catch (e) {
+        console.error("Não foi possível carregar o logo para o PDF", e);
+    }
+
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text([
+      "MR JACKY - 20.631.721/0001-07",
+      "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000",
+      "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"
+    ], pageWidth - 15, 15, { align: 'right' });
+
+    doc.setLineWidth(0.5);
+    doc.line(15, 35, pageWidth - 15, 35);
+};
+
+const addFooter = (doc: jsPDF) => {
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    doc.setFontSize(8).setTextColor(150);
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.text(`Gerado com MJProcess em ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 15, pageHeight - 10);
+        doc.text(`Página ${i} de ${pageCount}`, pageWidth - 15, pageHeight - 10, { align: 'right' });
+    }
+};
+
+const addWatermark = (doc: jsPDF) => {
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(72);
+        doc.setTextColor(255, 192, 203); // Light Pink
+        doc.saveGraphicsState();
+        doc.setGState(new (doc as any).GState({ opacity: 0.2 }));
+
+        // Repete a marca d'água pela página
+        for (let y = 0; y < pageHeight; y += 100) {
+            for (let x = -50; x < pageWidth; x += 150) {
+                 doc.text('RECIBO', x, y, { angle: -45, align: 'center' });
+            }
+        }
+        doc.restoreGraphicsState();
+    }
+};
+
+
+const generateQuoteAndUploadPdf = async () => {
     isGeneratingPdf.value = true;
     try {
         const selectedClient = clientList.value.find(c => c.id === orderHeader.customer_id) || { nome: 'Cliente Desconhecido' };
@@ -1412,16 +1492,12 @@ const generateAndUploadQuotePdf = async () => {
 
         const grandTotal = itemDetailsWithPrice.reduce((sum, item) => sum + parseFloat(item.valorTotal.replace('R$', '').replace(/\./g, '').replace(',', '.')), 0);
         const doc = new jsPDF();
-        const { width: pageWidth, height: pageHeight } = doc.internal.pageSize;
-        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
-        const logoBase64 = await imageToBase64(logoUrl);
-        const logoProps = doc.getImageProperties(logoBase64);
-        const logoWidth = 50;
-        const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
-        doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
-        doc.setFontSize(18).setFont('helvetica', 'bold').text(`Pedido #${String(createdOrderNumber.value).padStart(4, '0')}`, pageWidth - 15, 25, { align: 'right' });
+
+        await addHeader(doc);
+
+        doc.setFontSize(18).setFont('helvetica', 'bold').text(`Orçamento #${String(createdOrderNumber.value).padStart(4, '0')}`, 15, 45);
         autoTable(doc, {
-            startY: 40,
+            startY: 50,
             head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']],
             body: [[selectedClient.nome, userStore.profile?.full_name || 'N/A', format(new Date(), 'dd/MM/yyyy', { locale: ptBR })]],
             theme: 'striped',
@@ -1433,14 +1509,19 @@ const generateAndUploadQuotePdf = async () => {
             theme: 'grid',
             foot: [['', '', '', '', 'Total do Pedido:', formatCurrency(grandTotal)]],
             footStyles: { fontStyle: 'bold', fontSize: 11, halign: 'right' },
-            didDrawPage: () => {
-                const signatureY = pageHeight - 40;
-                doc.setLineWidth(0.5).setDrawColor(100, 100, 100).line(40, signatureY, pageWidth - 40, signatureY);
-                doc.setFontSize(10).setTextColor(100).text(`Assinatura do Cliente: ${selectedClient.nome}`, pageWidth / 2, signatureY + 5, { align: 'center' });
+            didDrawPage: (data) => {
+                const signatureY = doc.internal.pageSize.height - 40;
+                doc.setLineWidth(0.5).setDrawColor(100, 100, 100).line(40, signatureY, doc.internal.pageSize.width - 40, signatureY);
+                doc.setFontSize(10).setTextColor(100).text(`Assinatura do Cliente: ${selectedClient.nome}`, doc.internal.pageSize.width / 2, signatureY + 5, { align: 'center' });
             }
         });
+
+        addFooter(doc);
+
         const pdfBlob = doc.output('blob');
-        const pdfFileName = `Pedido_${String(createdOrderNumber.value).padStart(4, '0')}_${selectedClient.nome}.pdf`;
+        const pdfFileName = `Orcamento_${String(createdOrderNumber.value).padStart(4, '0')}_${sanitizeName(selectedClient.nome)}.pdf`;
+
+        // Download logic
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
         a.href = url;
@@ -1449,6 +1530,8 @@ const generateAndUploadQuotePdf = async () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+
+        // Upload logic
         const pdfPath = `sales_orders/${pdfFileName}`;
         const publicUrl = await uploadFile(pdfBlob, 'sales-orders', pdfPath);
         const { error: updateError } = await supabase.from('orders').update({ sales_order_pdf_url: publicUrl }).eq('id', createdOrderId.value);
@@ -1460,7 +1543,131 @@ const generateAndUploadQuotePdf = async () => {
     } finally {
         isGeneratingPdf.value = false;
     }
-}
+};
+
+const generateStandaloneReceiptPdf = async () => {
+    if (!orderHeader.has_down_payment || !orderHeader.down_payment_proof_file) {
+        showFeedback('Nenhum comprovante de sinal encontrado para gerar o recibo.', 'error');
+        return;
+    }
+    isGeneratingPdf.value = true;
+    try {
+        const selectedClient = clientList.value.find(c => c.id === orderHeader.customer_id) || { nome: 'Cliente Desconhecido', cpf_cnpj: 'Não informado' };
+
+        const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .select('down_payment_proof_url')
+            .eq('id', createdOrderId.value)
+            .single();
+
+        if (orderError || !orderData?.down_payment_proof_url) {
+            throw new Error('Não foi possível encontrar o link do comprovante de sinal.');
+        }
+
+        const proofPublicUrl = orderData.down_payment_proof_url;
+
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.width;
+        const pageHeight = doc.internal.pageSize.height;
+        const margin = 15;
+
+        // --- PÁGINA 1: cabeçalho e informações ---
+        await addHeader(doc);
+
+        doc.setFontSize(18).setFont('helvetica', 'bold').text(`Recibo de Sinal`, pageWidth / 2, 45, { align: 'center' });
+
+        const startY = 60;
+        const receiptText = `O Estúdio de Estampa MJ (CNPJ: 20.631.721/0001-07) confirma o recebimento do comprovante de sinal referente ao Pedido #${String(createdOrderNumber.value).padStart(4, '0')}.`;
+
+        const maxTextWidth = pageWidth * 0.67;
+        const splitText = doc.splitTextToSize(receiptText, maxTextWidth);
+
+        doc.setFontSize(11).setFont('helvetica', 'normal');
+        doc.text(splitText, margin, startY);
+
+        const textHeight = doc.getTextDimensions(splitText).h;
+
+        // QR Code
+        const qrSize = textHeight * 1.4;
+        const qrX = margin + maxTextWidth + 5;
+        const qrY = startY - 4;
+
+        const qrCodeDataUrl = await QRCode.toDataURL(proofPublicUrl, { width: qrSize * 5 });
+        doc.addImage(qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+
+        doc.setFontSize(7).setTextColor(100);
+        doc.text('Aponte sua câmera aqui', qrX + qrSize / 2, qrY + qrSize + 4, { align: 'center' });
+
+        let nextElementY = startY + textHeight + 10;
+
+        autoTable(doc, {
+            startY: nextElementY,
+            head: [['CLIENTE', 'CPF/CNPJ', 'DATA DE EMISSÃO']],
+            body: [[selectedClient.nome, selectedClient.cpf_cnpj || 'Não informado', format(new Date(), 'dd/MM/yyyy', { locale: ptBR })]],
+            theme: 'striped',
+        });
+
+        const orderItemsForReceipt = orderItems.value.map(item => [
+            item.fabric_type || 'N/A',
+            item.stamp_ref || 'N/A',
+            `${item.quantity || 0}${item.unit_of_measure}`,
+            item.unit_of_measure === 'kg' ? `~${item.quantity_meters?.toFixed(2) || 0}m` : '-'
+        ]);
+
+        doc.setFontSize(12).setFont('helvetica', 'bold').text('Itens do Pedido (Referência)', margin, (doc as any).lastAutoTable.finalY + 10);
+
+        autoTable(doc, {
+            startY: (doc as any).lastAutoTable.finalY + 15,
+            head: [['Base', 'Estampa', 'Quantidade', 'Rendimento Aprox.']],
+            body: orderItemsForReceipt,
+            theme: 'grid',
+        });
+
+        // --- PÁGINA 2: comprovante ---
+        doc.addPage();
+        await addHeader(doc);
+
+        let lastY = 60; // logo abaixo do cabeçalho
+        doc.setFontSize(12).setFont('helvetica', 'bold').text('Comprovante Anexado', margin, lastY);
+
+        const proofFile = orderHeader.down_payment_proof_file;
+        if (proofFile && proofFile.type.startsWith('image/')) {
+            const proofBase64 = await imageToBase64(proofFile);
+            const imgProps = doc.getImageProperties(proofBase64);
+
+            let imgWidth = imgProps.width;
+            let imgHeight = imgProps.height;
+
+            const contentWidth = pageWidth - margin * 2;
+            const contentHeight = pageHeight - lastY - 20; // deixa espaço pro footer
+
+            const widthRatio = contentWidth / imgWidth;
+            const heightRatio = contentHeight / imgHeight;
+            const ratio = Math.min(widthRatio, heightRatio, 1);
+
+            imgWidth *= ratio;
+            imgHeight *= ratio;
+
+            const x = (pageWidth - imgWidth) / 2;
+            doc.addImage(proofBase64, 'PNG', x, lastY + 10, imgWidth, imgHeight);
+        }
+
+        // --- Marca d'água e rodapé ---
+        addWatermark(doc);
+        addFooter(doc);
+
+        const pdfFileName = `Recibo_Sinal_Pedido_${String(createdOrderNumber.value).padStart(4, '0')}_${sanitizeName(selectedClient.nome)}.pdf`;
+        doc.save(pdfFileName);
+
+        showFeedback('Recibo de sinal gerado e baixado com sucesso!', 'success');
+    } catch (error) {
+        console.error("Erro ao gerar PDF do recibo:", error);
+        showFeedback(`Erro ao gerar PDF do recibo: ${error.message}`, 'error');
+    } finally {
+        isGeneratingPdf.value = false;
+    }
+};
+
 
 // --- Lifecycle Hooks ---
 onMounted(() => {
