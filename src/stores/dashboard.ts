@@ -106,15 +106,18 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
 
   getters: {
+    // ===== CORREÇÃO APLICADA AQUI =====
     productionGhosts(state) {
-      const inProgressLaunchOrders = state.orders.filter(order =>
-        order.is_launch &&
+      // Filtra todos os pedidos em andamento que ainda não foram para a entrega.
+      // A restrição `order.is_launch` foi REMOVIDA.
+      const inProgressOrders = state.orders.filter(order =>
         !order.actual_delivery_date &&
         order.status !== 'completed' &&
         order.status !== 'delivered'
       );
 
-      const finalGhosts = inProgressLaunchOrders.map(order => {
+      const finalGhosts = inProgressOrders.map(order => {
+        // A lógica de cálculo da previsão permanece a mesma
         const creationDate = parseISO(order.created_at);
         const hasStockIssues = order.order_items.some(item => item.has_insufficient_stock);
         const extraDays = hasStockIssues ? 2 : 0;
@@ -132,6 +135,7 @@ export const useDashboardStore = defineStore('dashboard', {
 
       return finalGhosts;
     },
+    // ===== FIM DA CORREÇÃO =====
 
     itemsPendingStock(state): { count: number, totalMeters: number } {
         let count = 0;
@@ -174,7 +178,6 @@ export const useDashboardStore = defineStore('dashboard', {
       return state.orders.filter(o => o.has_down_payment);
     },
     ordersPendingApproval: (state) => {
-        // Correção aplicada em interações anteriores para buscar itens pendentes dentro de qualquer pedido.
         return state.orders
             .map(order => ({
                 ...order,
@@ -189,14 +192,12 @@ export const useDashboardStore = defineStore('dashboard', {
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
 
-    // ===== INÍCIO DA CORREÇÃO =====
     itemsDelayedInDesign(state): { count: number, totalMeters: number } {
         const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
         const today = startOfToday();
         let count = 0;
         let totalMeters = 0;
         state.orders.forEach(order => {
-            // REMOVIDA a restrição "order.is_launch" para incluir todos os tipos de pedido
             if (order.order_items) {
                 order.order_items.forEach(item => {
                     const itemDate = parseISO(item.created_at);
@@ -209,10 +210,9 @@ export const useDashboardStore = defineStore('dashboard', {
         });
         return { count, totalMeters };
     },
-    // ===== FIM DA CORREÇÃO =====
 
     delayedDesignItemsDetails(state) {
-      const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller', 'finalizing'];
+      const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'finalizing'];
       const today = startOfToday();
       return state.orders
           .flatMap(order =>
@@ -262,16 +262,13 @@ export const useDashboardStore = defineStore('dashboard', {
             .reduce((sum, order) => sum + (order.quantity_meters || 0), 0);
     },
 
-    // ===== INÍCIO DA CORREÇÃO =====
     totalMetersInDesign(state): number {
         const designStatuses = ['design_pending', 'changes_requested', 'approved_by_designer', 'finalizing'];
         return state.orders
-            // REMOVIDA a restrição "order.is_launch" para incluir todos os tipos de pedido
             .flatMap(order => order.order_items || [])
             .filter(item => designStatuses.includes(item.status))
             .reduce((sum, item) => sum + (item.quantity_meters || 0), 0);
     },
-    // ===== FIM DA CORREÇÃO =====
 
     completedOrders(state): Order[] {
         const cutoffDateString = '2025-08-29';
@@ -364,7 +361,7 @@ export const useDashboardStore = defineStore('dashboard', {
       let onTime = 0;
       let delayed = 0;
        state.orders.forEach(order => {
-            if (order.order_items) { // Removida a restrição is_launch
+            if (order.order_items) {
                 order.order_items.forEach(item => {
                     if (designStatuses.includes(item.status)) {
                         const itemDate = parseISO(item.created_at);
@@ -391,7 +388,6 @@ export const useDashboardStore = defineStore('dashboard', {
 
       const salesByDay = new Map<string, number>();
 
-      // Inicializa o mapa com os últimos 30 dias
       for (let i = 29; i >= 0; i--) {
         const date = subDays(today, i);
         const dayKey = format(date, 'MM-dd');
