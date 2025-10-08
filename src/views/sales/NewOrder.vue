@@ -1,22 +1,30 @@
 <template>
   <v-container class="py-8">
     <v-expand-transition>
-      <div v-if="showDraftAlert" class="draft-alert-wrapper mb-6">
-        <div class="draft-alert">
-          <div class="draft-alert__icon">
-            <v-icon>mdi-content-save-clock-outline</v-icon>
-          </div>
-          <div class="draft-alert__text">
+      <v-alert
+        v-if="showDraftAlert"
+        class="mb-6 modern-draft-alert"
+        color="primary"
+        variant="tonal"
+        border="start"
+        elevation="2"
+        icon="mdi-content-save-clock-outline"
+      >
+        <div class="d-flex flex-wrap align-center">
+          <div class="flex-grow-1">
             <div class="font-weight-bold">Um rascunho automático foi encontrado.</div>
-            <div class="text-caption">Continue de onde você parou.</div>
+            <div class="text-caption">Continue de onde você parou ou explore outras opções.</div>
           </div>
-          <div class="draft-alert__actions">
-            <v-btn color="primary" variant="flat" @click="restoreAutoSave" class="mr-2">Restaurar</v-btn>
-            <v-btn variant="tonal" @click="openDraftsModal" class="mr-2">Ver Outros</v-btn>
-            <v-btn icon="mdi-close" variant="text" @click="clearAutoSave(true)"></v-btn>
+          <div class="mt-2 mt-sm-0">
+            <v-btn color="primary" variant="flat" @click="restoreAutoSave" class="mr-2" size="small">
+              <v-icon start>mdi-restore</v-icon>
+              Restaurar
+            </v-btn>
+            <v-btn variant="outlined" @click="openDraftsModal" class="mr-2" size="small">Ver Outros</v-btn>
+            <v-btn icon="mdi-close" variant="text" @click="clearAutoSave(true)" size="small"></v-btn>
           </div>
         </div>
-      </div>
+      </v-alert>
     </v-expand-transition>
 
     <v-card class="glassmorphism-card-order mx-auto" max-width="1200">
@@ -24,10 +32,23 @@
         <v-toolbar-title class="font-weight-bold">
           <v-icon start>mdi-plus-box-outline</v-icon>
           Lançar Novo Pedido
+          <v-chip v-if="isDraftMode" color="warning" size="small" class="ml-2" label>
+            <v-icon start>mdi-pencil-circle-outline</v-icon>
+            MODO RASCUNHO
+          </v-chip>
         </v-toolbar-title>
         <v-spacer></v-spacer>
 
-        <v-btn variant="tonal" class="mr-2" @click="openDraftsModal">
+        <v-switch
+            v-model="isDraftMode"
+            label="Modo Rascunho"
+            color="warning"
+            hide-details
+            inset
+            class="mr-2"
+        ></v-switch>
+
+        <v-btn variant="text" class="mr-2" @click="openDraftsModal">
           <v-icon start>mdi-file-document-multiple-outline</v-icon>
           Rascunhos
         </v-btn>
@@ -38,7 +59,7 @@
 
         <div class="pa-2 text-right mr-4">
           <div class="text-caption text-grey d-flex align-center">
-             <v-icon start small class="blinking-icon">mdi-truck-fast-outline</v-icon>
+              <v-icon start small class="blinking-icon">mdi-truck-fast-outline</v-icon>
             Previsão de Entrega
           </div>
           <div class="text-h6 font-weight-bold">{{ forecastDeliveryDate }}</div>
@@ -140,6 +161,16 @@
                         <v-list-item-title class="font-weight-bold d-flex align-center">
                           {{ item.stamp_ref || 'Novo Item' }}
                           <v-chip
+                              v-if="item.has_insufficient_stock"
+                              color="error"
+                              size="x-small"
+                              class="ml-2"
+                              label
+                            >
+                              <v-icon start size="x-small">mdi-alert-circle-outline</v-icon>
+                              Estoque Insuficiente
+                            </v-chip>
+                          <v-chip
                             v-if="item.design_tag"
                             :color="tagColorMap[item.design_tag]"
                             size="x-small"
@@ -214,24 +245,24 @@
                               </template>
                             </v-autocomplete>
                              <v-text-field
-                                v-else
-                                v-model="editedItem.stamp_ref"
-                                label="Nome/Referência da Nova Estampa"
-                                variant="outlined"
-                                density="compact"
-                                :rules="[rules.required]"
+                               v-else
+                               v-model="editedItem.stamp_ref"
+                               label="Nome/Referência da Nova Estampa"
+                               variant="outlined"
+                               density="compact"
+                               :rules="[rules.required]"
                               ></v-text-field>
                           </v-col>
 
                           <v-col cols="12" class="text-center">
                             <v-file-input
-                                v-if="isUploadingNewStamp"
-                                @change="handleNewStampFileChange"
-                                label="Arquivo da Imagem (.png, .jpg)"
-                                variant="outlined"
-                                accept="image/png, image/jpeg"
-                                :rules="[rules.fileRequired]"
-                                density="compact"
+                               v-if="isUploadingNewStamp"
+                               @change="handleNewStampFileChange"
+                               label="Arquivo da Imagem (.png, .jpg)"
+                               variant="outlined"
+                               accept="image/png, image/jpeg"
+                               :rules="[rules.fileRequired]"
+                               density="compact"
                               ></v-file-input>
                             <v-img
                               v-if="editedItem.stamp_image_url"
@@ -240,13 +271,14 @@
                               contain
                               class="rounded border"
                             ></v-img>
-                             <div v-else-if="!isUploadingNewStamp" class="d-flex align-center justify-center text-grey-lighten-1" style="height: 150px; border: 2px dashed #444; border-radius: 4px;">
-                              Selecione uma estampa para visualizar
-                            </div>
-                             <v-btn
+                              <div v-else-if="!isUploadingNewStamp" class="d-flex align-center justify-center text-grey-lighten-1" style="height: 150px; border: 2px dashed #444; border-radius: 4px;">
+                               Selecione uma estampa para visualizar
+                              </div>
+                              <v-btn
                                 variant="text"
                                 @click="toggleStampUpload"
                                 class="mt-2"
+                                size="small"
                               >
                                 {{ isUploadingNewStamp ? 'Cancelar e Buscar Existente' : 'Não encontrou? Cadastre uma nova estampa' }}
                               </v-btn>
@@ -254,53 +286,53 @@
 
                           <v-col cols="12">
                             <v-text-field
-                                v-if="selectedProductUnit !== 'kg'"
-                                v-model.number="editedItem.quantity"
-                                label="Quantidade (m)"
-                                type="number"
-                                variant="outlined"
-                                density="compact"
-                                :rules="[rules.required, rules.positive]"
-                                :disabled="!editedItem.fabric_type"
-                            ></v-text-field>
+                               v-if="selectedProductUnit !== 'kg'"
+                               v-model.number="editedItem.quantity"
+                               label="Quantidade (m)"
+                               type="number"
+                               variant="outlined"
+                               density="compact"
+                               :rules="[rules.required, rules.positive]"
+                               :disabled="!editedItem.fabric_type"
+                              ></v-text-field>
                             <v-row v-else>
-                                <v-col cols="6">
-                                    <v-text-field
-                                        v-model.number="editedItem.quantity"
-                                        label="Quantidade (kg)"
-                                        type="number"
-                                        variant="outlined"
-                                        density="compact"
-                                        :rules="[rules.required, rules.positive]"
-                                        :disabled="!editedItem.fabric_type"
-                                    ></v-text-field>
-                                </v-col>
-                                <v-col cols="6">
-                                     <v-text-field
-                                        v-model.number="tempMeters"
-                                        label="Converter de Metros (m)"
-                                        type="number"
-                                        variant="outlined"
-                                        density="compact"
-                                        :disabled="!editedItem.fabric_type || !selectedProductRendimento"
-                                        hint="Preencha para calcular o KG"
-                                        persistent-hint
-                                    ></v-text-field>
-                                </v-col>
+                               <v-col cols="6">
+                                  <v-text-field
+                                    v-model.number="editedItem.quantity"
+                                    label="Quantidade (kg)"
+                                    type="number"
+                                    variant="outlined"
+                                    density="compact"
+                                    :rules="[rules.required, rules.positive]"
+                                    :disabled="!editedItem.fabric_type"
+                                  ></v-text-field>
+                               </v-col>
+                               <v-col cols="6">
+                                   <v-text-field
+                                    v-model.number="tempMeters"
+                                    label="Converter de Metros (m)"
+                                    type="number"
+                                    variant="outlined"
+                                    density="compact"
+                                    :disabled="!editedItem.fabric_type || !selectedProductRendimento"
+                                    hint="Preencha para calcular o KG"
+                                    persistent-hint
+                                  ></v-text-field>
+                               </v-col>
                             </v-row>
 
 
-                            <div v-if="selectedProductStock !== null" class="mt-n2 mb-4 px-2">
-                              <div class="d-flex justify-space-between text-caption text-grey">
-                                <span v-if="editedItem.quantity > selectedProductStock" class="text-error">
-                                  Atenção: Estoque ficará negativo!
-                                </span>
-                                <span v-else>Uso do estoque disponível:</span>
-                                <span>{{ selectedProductStock.toLocaleString('pt-BR') }}{{ selectedProductUnit }}</span>
-                              </div>
+                            <div v-if="editedItem.fabric_type" class="mt-n2 mb-4 px-2">
+                               <div class="d-flex justify-space-between text-caption text-grey">
+                                 <span v-if="(editedItem.quantity || 0) > realTimeAvailableStock" class="text-error font-weight-bold">
+                                    Estoque insuficiente!
+                                  </span>
+                                 <span v-else>Estoque disponível para este pedido:</span>
+                                 <span>{{ realTimeAvailableStock.toLocaleString('pt-BR') }}{{ selectedProductUnit }}</span>
+                               </div>
                               <v-progress-linear
-                                :model-value="((editedItem.quantity || 0) / selectedProductStock) * 100"
-                                :color="getStockUsageColor(editedItem.quantity)"
+                                :model-value="((editedItem.quantity || 0) / (selectedProductStock || 1)) * 100"
+                                :color="getStockUsageColor(editedItem.quantity || 0, realTimeAvailableStock)"
                                 height="6"
                                 rounded
                               ></v-progress-linear>
@@ -365,13 +397,13 @@
             <v-card-text>
               <h3 class="text-h6 font-weight-bold mb-6 text-center">Pagamento e Finalização</h3>
               <v-form ref="step3Form">
-                 <v-textarea
-                  v-model="orderHeader.observation"
-                  label="Observações do Pedido"
-                  variant="outlined"
-                  rows="3"
-                  class="mb-4"
-                ></v-textarea>
+                   <v-textarea
+                    v-model="orderHeader.observation"
+                    label="Observações do Pedido"
+                    variant="outlined"
+                    rows="3"
+                    class="mb-4"
+                  ></v-textarea>
                 <v-radio-group v-model="paymentDetails.type" inline class="mb-4">
                   <v-radio label="À vista" value="vista"></v-radio>
                   <v-radio label="Parcelado" value="parcelado"></v-radio>
@@ -493,13 +525,47 @@
 
         <template v-slot:actions>
           <div class="d-flex w-100 pa-4">
-            <v-btn v-if="step > 1" @click="step--" variant="tonal">Voltar</v-btn>
-            <v-spacer></v-spacer>
-            <v-btn v-if="step < 3" @click="nextStep" :disabled="!isStepValid">Continuar</v-btn>
-            <v-btn v-else @click="submitLaunch" :loading="isSubmitting" :disabled="!isStepValid" color="primary" variant="flat">
-              <v-icon left>mdi-rocket-launch</v-icon>
-              Enviar Lançamento
+            <v-btn v-if="step > 1" @click="step--" variant="text">
+              <v-icon start>mdi-chevron-left</v-icon>
+              Voltar
             </v-btn>
+            <v-spacer></v-spacer>
+            <v-btn v-if="step < 3" @click="nextStep" :disabled="!isStepValid" color="primary" variant="outlined">
+              Continuar
+              <v-icon end>mdi-chevron-right</v-icon>
+            </v-btn>
+            <div v-else>
+                <v-tooltip location="top" :disabled="isCurrentDraftLaunchable">
+                  <template v-slot:activator="{ props }">
+                    <div v-bind="props">
+                      <v-btn
+                        v-if="isDraftMode"
+                        @click="convertToOrder"
+                        :disabled="!isCurrentDraftLaunchable"
+                        color="success"
+                        variant="flat"
+                        size="large"
+                      >
+                        <v-icon start>mdi-file-check-outline</v-icon>
+                        Converter para Pedido
+                      </v-btn>
+                    </div>
+                  </template>
+                  <span>Há itens com estoque insuficiente. Verifique os itens sinalizados.</span>
+                </v-tooltip>
+                <v-btn
+                    v-if="!isDraftMode"
+                    @click="submitLaunch"
+                    :loading="isSubmitting"
+                    :disabled="!isStepValid"
+                    color="primary"
+                    variant="flat"
+                    size="large"
+                >
+                    <v-icon start>mdi-rocket-launch</v-icon>
+                    Enviar Lançamento
+                </v-btn>
+            </div>
           </div>
         </template>
       </v-stepper>
@@ -516,7 +582,7 @@
             @click="generateQuoteAndUploadPdf"
             :loading="isGeneratingPdf"
           >
-            <v-icon left>mdi-file-pdf-box</v-icon>
+            <v-icon start>mdi-file-pdf-box</v-icon>
             Baixar Orçamento
           </v-btn>
            <v-btn
@@ -527,7 +593,7 @@
             @click="generateStandaloneReceiptPdf"
             :loading="isGeneratingPdf"
           >
-            <v-icon left>mdi-receipt-text-outline</v-icon>
+            <v-icon start>mdi-receipt-text-outline</v-icon>
             Baixar Recibo de Sinal
           </v-btn>
           <v-btn
@@ -535,6 +601,7 @@
             variant="tonal"
             @click="resetForm(true)"
           >
+            <v-icon start>mdi-plus-box</v-icon>
             Lançar Novo Pedido
           </v-btn>
         </div>
@@ -554,8 +621,8 @@
             <span class="font-weight-bold text-h5">Estoque Insuficiente!</span>
             </template>
             <v-card-text class="py-4 text-body-1">
-            <p>Não é possível adicionar o item <strong>{{ stockWarningDetails.fabric }}</strong> ao pedido.</p>
-            <p class="mt-2">A quantidade necessária (<strong>{{ stockWarningDetails.needed.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>) é maior que o estoque disponível (<strong>{{ stockWarningDetails.available.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>).</p>
+            <p>Não é possível adicionar ou atualizar o item <strong>{{ stockWarningDetails.fabric }}</strong>.</p>
+            <p class="mt-2">A quantidade total necessária para o pedido (<strong>{{ stockWarningDetails.needed.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>) excede o estoque disponível (<strong>{{ stockWarningDetails.available.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>).</p>
 
             <v-alert
                 border="start"
@@ -564,7 +631,7 @@
                 class="mt-4 pa-3"
                 color="rgba(255,255,255,0.1)"
             >
-                <strong class="text-white">Ação necessária:</strong> Favor avisar o gerente sobre a necessidade de reposição deste material para liberar o pedido.
+                <strong class="text-white">Ação Sugerida:</strong> Ative o "Modo Rascunho" para continuar montando o pedido ou avise o gerente sobre a necessidade de reposição.
             </v-alert>
 
             </v-card-text>
@@ -586,6 +653,7 @@
     <DraftsListModal
       :show="draftsModal"
       :drafts="drafts"
+      :products="gestaoClickProducts"
       @close="draftsModal = false"
       @load="loadDraft"
       @delete="deleteDraft"
@@ -611,11 +679,11 @@ import DraftsListModal from '@/components/DraftsListModal.vue';
 
 // --- Type Definitions ---
 type OrderHeader = {
-    customer_id: number | null;
-    customer_name: string;
-    has_down_payment: boolean;
-    down_payment_proof_file: File | null;
-    observation?: string;
+  customer_id: number | null;
+  customer_name: string;
+  has_down_payment: boolean;
+  down_payment_proof_file: File | null;
+  observation?: string;
 };
 type OrderItem = {
   fabric_type: string | null; stamp_ref_id: string | null; stamp_ref: string; quantity: number | null; quantity_meters: number | null;
@@ -631,7 +699,7 @@ type GestaoClickService = { id: string; nome: string; valor_venda: string; image
 type SaleStatus = { id: number; nome: string; };
 type PaymentMethod = { id: string; nome: string; };
 interface Installment { due_date: string; value: number; payment_method_id: number | null; }
-interface Draft { id: number; name: string; createdAt: string; data: { orderHeader: OrderHeader; orderItems: OrderItem[]; paymentDetails: any; step: number; }; }
+interface Draft { id: number; name: string; createdAt: string; data: { orderHeader: OrderHeader; orderItems: OrderItem[]; paymentDetails: any; step: number; isDraftMode?: boolean; }; }
 
 // --- Component State ---
 const userStore = useUserStore();
@@ -650,6 +718,7 @@ const createdOrderNumber = ref<number | null>(null);
 const isGeneratingPdf = ref(false);
 const overridePrice = ref(false);
 const tempMeters = ref<number | null>(null);
+const isDraftMode = ref(false);
 
 // --- RASCUNHOS (DRAFTS) ---
 const AUTO_SAVE_KEY = 'autoSaveOrder';
@@ -677,7 +746,7 @@ const loadingGestaoClickServices = ref(true);
 const saleStatuses = ref<SaleStatus[]>([]);
 const stampLibrary = ref<StampLibraryItem[]>([]);
 const isUploadingNewStamp = ref(false);
-const tagColorMap = { 'Desenvolvimento': '#40c4ff', 'Alteração': '#ffab40', 'Finalização': '#26A69A', 'Aprovado': '#4CAF50' };
+const tagColorMap = { 'Desenvolvimento': '#40c4ff', 'Alteração': '#ffab40', 'Finalização': '#26A69A'};
 const orderHeader = reactive<OrderHeader>({ customer_id: null, customer_name: '', has_down_payment: false, down_payment_proof_file: null, });
 const createNewItem = (): OrderItem => ({ fabric_type: null, stamp_ref_id: null, stamp_ref: '', quantity: null, quantity_meters: null, unit_of_measure: 'm', rendimento: null, valor_unitario: null, stamp_image_url: null, notes: '', design_tag: 'Desenvolvimento', new_stamp_file: null, has_insufficient_stock: false, status: 'design_pending', });
 const orderItems = ref<OrderItem[]>([]);
@@ -685,12 +754,13 @@ const editedItem = ref<OrderItem>(createNewItem());
 const editedItemIndex = ref<number | null>(null);
 const isEditing = computed(() => editedItemIndex.value !== null);
 
-// --- LÓGICA DE RASCUNHOS (CORRIGIDA E COMPLETA) ---
+// --- LÓGICA DE RASCUNHOS ---
 const orderState = computed(() => ({
   orderHeader: toRaw(orderHeader),
   orderItems: toRaw(orderItems.value),
   paymentDetails: toRaw(paymentDetails),
   step: step.value,
+  isDraftMode: isDraftMode.value,
 }));
 
 const getSavedDrafts = (): Draft[] => {
@@ -758,6 +828,7 @@ const restoreState = (stateToRestore: any) => {
   Object.assign(orderHeader, stateToRestore.orderHeader);
   orderItems.value = stateToRestore.orderItems;
   Object.assign(paymentDetails, stateToRestore.paymentDetails);
+  isDraftMode.value = stateToRestore.isDraftMode ?? false;
 
   if (orderHeader.customer_id && !clientList.value.some(c => c.id === orderHeader.customer_id)) {
     clientList.value.unshift({ id: orderHeader.customer_id, nome: orderHeader.customer_name });
@@ -798,10 +869,26 @@ watch(orderState, () => {
 }, { deep: true });
 
 
-// --- LÓGICA DO COMPONENTE (Continuação) ---
+// --- LÓGICA DO COMPONENTE ---
 const addBusinessDays = (startDate: Date, days: number): Date => { const newDate = new Date(startDate); let addedDays = 0; while (addedDays < days) { newDate.setDate(newDate.getDate() + 1); if (newDate.getDay() !== 0) { addedDays++; } } return newDate; };
 const getNextDeliveryDay = (date: Date): Date => { const newDate = new Date(date); newDate.setDate(newDate.getDate() + 1); while (true) { const dayOfWeek = newDate.getDay(); if ([2, 4, 6].includes(dayOfWeek)) { return newDate; } newDate.setDate(newDate.getDate() + 1); } };
-const rules = { required: (v: any) => !!v || 'Campo obrigatório.', positive: (v: number | null) => (v != null && v > 0) || 'O valor deve ser maior que zero.', fileRequired: (v: any) => !!v || 'É obrigatório selecionar um arquivo.', fileSize: (v: File[] | null) => !v || v.length === 0 || !v[0] || v[0].size < 5000000 || 'O arquivo não pode exceder 5 MB!', };
+
+const rules = {
+  required: (v: any) => !!v || 'Campo obrigatório.',
+  positive: (v: number | null) => (v != null && v > 0) || 'O valor deve ser maior que zero.',
+  fileRequired: (v: any) => !!v || 'É obrigatório selecionar um arquivo.',
+  fileSize: (v: File[] | null) => !v || v.length === 0 || !v[0] || v[0].size < 5000000 || 'O arquivo não pode exceder 5 MB!',
+};
+
+const isCurrentDraftLaunchable = computed(() => {
+    if (orderItems.value.length === 0) return false;
+    return !orderItems.value.some(item => item.has_insufficient_stock);
+});
+
+const convertToOrder = () => {
+    isDraftMode.value = false;
+};
+
 const forecastDeliveryDate = computed(() => { const hasStockIssues = orderItems.value.some(item => item.has_insufficient_stock); if (hasStockIssues) { return 'Indisponível (Falta de estoque)'; } const today = new Date(); const startProductionDate = addDays(today, 1); const completionDate = addBusinessDays(startProductionDate, 2); const deliveryDate = getNextDeliveryDay(completionDate); return format(deliveryDate, "EEEE, dd/MM", { locale: ptBR }); });
 const totalOrderValue = computed(() => orderItems.value.reduce((total, item) => total + (item.quantity || 0) * (item.valor_unitario || 0), 0));
 watch(totalOrderValue, (newValue) => { if (paymentDetails.type === 'vista' && paymentDetails.installments.length > 0) { paymentDetails.installments[0].value = newValue; } });
@@ -810,6 +897,45 @@ const selectedProduct = computed(() => { if (!editedItem.value.fabric_type) retu
 const selectedProductUnit = computed(() => { if (!selectedProduct.value) return 'm'; const unit = (selectedProduct.value as StockItem)?.unit_of_measure || (selectedProduct.value as GestaoClickProduct)?.unidade; return (unit || 'm').toLowerCase(); });
 const selectedProductRendimento = computed(() => { if (!selectedProduct.value) return null; return (selectedProduct.value as StockItem).rendimento || parseFloat((selectedProduct.value as GestaoClickProduct).rendimento || '0'); });
 const selectedProductStock = computed(() => { const productName = editedItem.value.fabric_type; if (!productName) return null; const product = gestaoClickProducts.value.find(p => p.nome === productName); if (!product || product.estoque === undefined) return 0; const stockValue = parseFloat(product.estoque as string); return isNaN(stockValue) ? 0 : stockValue; });
+
+const realTimeAvailableStock = computed(() => {
+  const totalStock = selectedProductStock.value;
+  if (totalStock === null || !editedItem.value.fabric_type) {
+    return 0;
+  }
+  const quantityAlreadyInCart = orderItems.value.reduce((total, item, index) => {
+    if (item.fabric_type === editedItem.value.fabric_type && index !== editedItemIndex.value) {
+      return total + (item.quantity || 0);
+    }
+    return total;
+  }, 0);
+
+  return totalStock - quantityAlreadyInCart;
+});
+
+watch(isDraftMode, (isDraft) => {
+    if (isDraft) {
+        appStore.showSnackbar('Modo Rascunho ativado. O estoque não será validado ao adicionar itens.', 'info');
+        const allFabrics = [...new Set(orderItems.value.map(i => i.fabric_type).filter(Boolean))];
+        allFabrics.forEach(fabric => {
+            const itemsOfSameFabric = orderItems.value.filter(i => i.fabric_type === fabric);
+            const totalQuantityForFabric = itemsOfSameFabric.reduce((sum, i) => sum + (i.quantity || 0), 0);
+            const product = gestaoClickProducts.value.find(p => p.nome === fabric);
+            const totalStock = product ? parseFloat(product.estoque as string) : 0;
+            const hasEnoughStock = totalQuantityForFabric <= totalStock;
+            itemsOfSameFabric.forEach(i => i.has_insufficient_stock = !hasEnoughStock);
+        });
+    } else {
+        if (!isCurrentDraftLaunchable.value) {
+            appStore.showSnackbar('Este rascunho não pode ser convertido para um pedido pois há itens com estoque insuficiente.', 'error');
+            nextTick(() => { isDraftMode.value = true });
+        } else {
+            appStore.showSnackbar('Modo Rascunho desativado. O pedido agora pode ser lançado.', 'success');
+            orderItems.value.forEach(item => item.has_insufficient_stock = false);
+        }
+    }
+});
+
 
 watch(() => orderHeader.customer_id, (newId) => {
   if (newId) {
@@ -826,8 +952,8 @@ watch(() => editedItem.value.stamp_ref_id, (serviceId) => { if (isUploadingNewSt
 watch(() => editedItem.value.fabric_type, (productName) => { const product = gestaoClickProducts.value.find(p => p.nome === productName); if (product) { if (!overridePrice.value) { editedItem.value.valor_unitario = parseFloat(product.valor_venda) || 0; } const stockItem = stockItems.value.find(s => s.gestao_click_id === product.id); if (stockItem) { editedItem.value.unit_of_measure = stockItem.unit_of_measure === 'kg' ? 'kg' : 'm'; editedItem.value.rendimento = stockItem.rendimento; } else { editedItem.value.unit_of_measure = (product.unidade || 'm').toLowerCase() === 'kg' ? 'kg' : 'm'; editedItem.value.rendimento = parseFloat(product.rendimento || '0'); } } else { editedItem.value.valor_unitario = null; } });
 watch(tempMeters, (newVal) => { if (selectedProductUnit.value === 'kg' && selectedProductRendimento.value && newVal) { editedItem.value.quantity = parseFloat((newVal / selectedProductRendimento.value).toFixed(2)); } });
 watch(() => editedItem.value.quantity, (newVal) => { if (selectedProductUnit.value === 'kg' && selectedProductRendimento.value && newVal) { editedItem.value.quantity_meters = parseFloat((newVal * selectedProductRendimento.value).toFixed(2)); } else if (selectedProductUnit.value !== 'kg') { editedItem.value.quantity_meters = newVal; } });
-const getStockUsageColor = (quantity: number | null) => { if (selectedProductStock.value === null || !quantity) return 'primary'; if (quantity > selectedProductStock.value) return 'error'; if (quantity > selectedProductStock.value * 0.8) return 'warning'; return 'success'; }
-const isStepValid = computed(() => { if (step.value === 1) { return !!orderHeader.customer_id; } if (step.value === 2) { return orderItems.value.length > 0; } if (step.value === 3) { if (orderHeader.has_down_payment && !orderHeader.down_payment_proof_file) return false; if (paymentDetails.installments.length === 0) return false; const totalInstallmentValue = paymentDetails.installments.reduce((sum, inst) => sum + (inst.value || 0), 0); if (Math.abs(totalInstallmentValue - totalOrderValue.value) > 0.01) return false; return paymentDetails.installments.every(inst => inst.due_date && inst.value > 0 && inst.payment_method_id); } return false; });
+const getStockUsageColor = (quantity: number, availableStock: number) => { if (availableStock <= 0) return 'error'; if (quantity > availableStock) return 'error'; if (quantity > availableStock * 0.8) return 'warning'; return 'success'; }
+const isStepValid = computed(() => { if (step.value === 1) { return !!orderHeader.customer_id; } if (step.value === 2) { return orderItems.value.length > 0; } if (step.value === 3) { if (isDraftMode.value) return true; if (orderHeader.has_down_payment && !orderHeader.down_payment_proof_file) return false; if (paymentDetails.installments.length === 0) return false; const totalInstallmentValue = paymentDetails.installments.reduce((sum, inst) => sum + (inst.value || 0), 0); if (Math.abs(totalInstallmentValue - totalOrderValue.value) > 0.01) return false; return paymentDetails.installments.every(inst => inst.due_date && inst.value > 0 && inst.payment_method_id); } return false; });
 const isItemFormValid = computed(() => { const commonValid = !!editedItem.value.fabric_type && !!editedItem.value.quantity && editedItem.value.quantity > 0; if (isUploadingNewStamp.value) { return commonValid && !!editedItem.value.stamp_ref && !!editedItem.value.new_stamp_file; } return commonValid && !!editedItem.value.stamp_ref_id; });
 watch(clientSearch, (newValue) => { if (!newValue) { return; } isSearchingClients.value = true; clearTimeout(searchTimeout); searchTimeout = setTimeout(async () => { clientList.value = await gestaoApi.buscarClientes(newValue); isSearchingClients.value = false; }, 500); });
 const fetchInitialData = async () => { loadingGestaoClickProducts.value = true; loadingGestaoClickServices.value = true; try { const { data: stockData, error: stockError } = await supabase.from('stock').select('*').eq('verification', true); if (stockError) throw stockError; const finalProducts = stockData.map(stockItem => { const unitPrice = stockItem.base_price; return { id: stockItem.gestao_click_id, nome: stockItem.fabric_type, estoque: stockItem.available_meters, valor_venda: String(unitPrice || '0'), unidade: stockItem.unit_of_measure, rendimento: String(stockItem.rendimento || '0') }; }); gestaoClickProducts.value = finalProducts; const [services, statuses, stamps, payMethods] = await Promise.all([ gestaoApi.buscarServicos(), gestaoApi.getSituacoesVenda(), supabase.from('stamp_library').select('*').eq('is_approved_for_sale', true), gestaoApi.buscarFormasDePagamento(), ]); if (stamps.error) throw stamps.error; paymentMethods.value = payMethods; stampLibrary.value = stamps.data || []; const approvedStampServiceIds = new Set(stampLibrary.value.map(s => s.gestao_click_service_id)); gestaoClickServices.value = services.filter(service => approvedStampServiceIds.has(service.id)).map(service => { const matchingStamp = stampLibrary.value.find(s => s.gestao_click_service_id === service.id); return { ...service, imagem_url: matchingStamp ? matchingStamp.image_url : undefined }; }); saleStatuses.value = statuses; } catch (error) { appStore.showSnackbar('Não foi possível carregar os dados iniciais.', 'error'); console.error("ERRO CRÍTICO NA BUSCA DE DADOS INICIAIS:", error); } finally { loadingGestaoClickProducts.value = false; loadingGestaoClickServices.value = false; } };
@@ -840,30 +966,90 @@ const toggleStampUpload = () => { isUploadingNewStamp.value = !isUploadingNewSta
 const nextStep = async () => { let formToValidate: VForm | null = null; if (step.value === 1) formToValidate = step1Form.value; if (step.value === 3) formToValidate = step3Form.value; if (formToValidate) { const { valid } = await formToValidate.validate(); if (valid && isStepValid.value) { if (step.value === 2) generateInstallments(); step.value++; } } else if (isStepValid.value) { if (step.value === 2) generateInstallments(); step.value++; } };
 const prepareNewItem = async () => { editedItem.value = createNewItem(); editedItemIndex.value = null; isUploadingNewStamp.value = false; overridePrice.value = false; tempMeters.value = null; await nextTick(); itemForm.value?.resetValidation(); };
 const editItem = (index: number) => { editedItemIndex.value = index; const itemToEdit = structuredClone(toRaw(orderItems.value[index])); editedItem.value = itemToEdit; isUploadingNewStamp.value = false; };
-const removeItem = (index: number) => { orderItems.value.splice(index, 1); if (editedItemIndex.value === index) { prepareNewItem(); } else if (editedItemIndex.value !== null && editedItemIndex.value > index) { editedItemIndex.value--; } };
-const saveOrUpdateItem = async () => { if (itemForm.value) { const { valid } = await itemForm.value.validate(); if (!valid || !isItemFormValid.value) { appStore.showSnackbar('Por favor, preencha todos os campos obrigatórios do item.', 'error'); return; } } const availableStock = selectedProductStock.value; const requiredQuantity = editedItem.value.quantity || 0; if (availableStock === null || requiredQuantity > availableStock) { stockWarningDetails.fabric = editedItem.value.fabric_type || 'N/A'; stockWarningDetails.needed = requiredQuantity; stockWarningDetails.available = availableStock || 0; stockWarningDetails.unit = selectedProductUnit.value; showStockWarningModal.value = true; return; } editedItem.value.has_insufficient_stock = false; editedItem.value.status = 'design_pending'; const rawItem = toRaw(editedItem.value); if (isEditing.value && editedItemIndex.value !== null) { orderItems.value[editedItemIndex.value] = structuredClone(rawItem); } else { orderItems.value.push(structuredClone(rawItem)); } await prepareNewItem(); };
+const removeItem = (index: number) => {
+    const removedItemFabric = orderItems.value[index].fabric_type;
+    orderItems.value.splice(index, 1);
+    if (editedItemIndex.value === index) {
+        prepareNewItem();
+    } else if (editedItemIndex.value !== null && editedItemIndex.value > index) {
+        editedItemIndex.value--;
+    }
+
+    if (isDraftMode.value && removedItemFabric) {
+        const itemsOfSameFabric = orderItems.value.filter(i => i.fabric_type === removedItemFabric);
+        if (itemsOfSameFabric.length > 0) {
+            const totalQuantityForFabric = itemsOfSameFabric.reduce((sum, i) => sum + (i.quantity || 0), 0);
+            const product = gestaoClickProducts.value.find(p => p.nome === removedItemFabric);
+            const totalStock = product ? parseFloat(product.estoque as string) : 0;
+            const hasEnoughStock = totalQuantityForFabric <= totalStock;
+            itemsOfSameFabric.forEach(i => i.has_insufficient_stock = !hasEnoughStock);
+        }
+    }
+};
+
+const saveOrUpdateItem = async () => {
+    if (itemForm.value) {
+        const { valid } = await itemForm.value.validate();
+        if (!valid) { return; }
+    }
+
+    const requiredQuantity = editedItem.value.quantity || 0;
+    const isStockSufficient = requiredQuantity <= realTimeAvailableStock.value;
+
+    if (!isDraftMode.value && !isStockSufficient) {
+        stockWarningDetails.fabric = editedItem.value.fabric_type || 'N/A';
+        stockWarningDetails.needed = requiredQuantity;
+        stockWarningDetails.available = realTimeAvailableStock.value;
+        stockWarningDetails.unit = selectedProductUnit.value;
+        showStockWarningModal.value = true;
+        return;
+    }
+
+    editedItem.value.has_insufficient_stock = !isStockSufficient;
+    editedItem.value.status = 'design_pending';
+
+    const rawItem = toRaw(editedItem.value);
+    const originalFabric = isEditing.value && editedItemIndex.value !== null ? orderItems.value[editedItemIndex.value].fabric_type : null;
+
+    if (isEditing.value && editedItemIndex.value !== null) {
+        orderItems.value[editedItemIndex.value] = structuredClone(rawItem);
+    } else {
+        orderItems.value.push(structuredClone(rawItem));
+    }
+
+    if (isDraftMode.value) {
+        const fabricsToUpdate = new Set<string | null>([editedItem.value.fabric_type, originalFabric].filter(Boolean));
+        fabricsToUpdate.forEach(fabric => {
+            const itemsOfSameFabric = orderItems.value.filter(i => i.fabric_type === fabric);
+            const totalQuantityForFabric = itemsOfSameFabric.reduce((sum, i) => sum + (i.quantity || 0), 0);
+            const product = gestaoClickProducts.value.find(p => p.nome === fabric);
+            const totalStock = product ? parseFloat(product.estoque as string) : 0;
+            const hasEnoughStock = totalQuantityForFabric <= totalStock;
+            itemsOfSameFabric.forEach(i => i.has_insufficient_stock = !hasEnoughStock);
+        });
+    }
+
+    await prepareNewItem();
+};
+
 const generateInstallments = () => { paymentDetails.installments = []; const total = totalOrderValue.value; if (total <= 0) return; if (paymentDetails.type === 'vista') { paymentDetails.installments.push({ due_date: paymentDetails.first_due_date, value: total, payment_method_id: paymentDetails.installment_payment_method_id, }); return; } const count = paymentDetails.installments_count; if (count <= 0) return; const valuePerInstallment = parseFloat((total / count).toFixed(2)); let remainder = total - (valuePerInstallment * count); for (let i = 0; i < count; i++) { const dueDate = addDays(new Date(paymentDetails.first_due_date), i * paymentDetails.installments_interval); let value = valuePerInstallment; if (i === 0) { value = parseFloat((value + remainder).toFixed(2)); } paymentDetails.installments.push({ due_date: format(dueDate, 'yyyy-MM-dd'), value: value, payment_method_id: paymentDetails.installment_payment_method_id, }); } };
 const handleInstallmentValueChange = (changedIndex: number, newValue: string | number) => { const numericValue = typeof newValue === 'string' ? parseFloat(newValue) : newValue; if (isNaN(numericValue) || paymentDetails.installments.length <= 1) return; const changedValue = numericValue; const total = totalOrderValue.value; let filledTotal = 0; paymentDetails.installments.forEach((inst, index) => { if (index !== changedIndex) { filledTotal += inst.value || 0; } }); const remainingValue = total - changedValue; const remainingInstallments = paymentDetails.installments.length - 1; if (remainingInstallments > 0) { const valuePerInstallment = parseFloat((remainingValue / remainingInstallments).toFixed(2)); let remainder = remainingValue - (valuePerInstallment * remainingInstallments); let firstUnchangedFound = false; paymentDetails.installments.forEach((inst, index) => { if (index !== changedIndex) { let newValue = valuePerInstallment; if (!firstUnchangedFound) { newValue = parseFloat((newValue + remainder).toFixed(2)); firstUnchangedFound = true; } inst.value = newValue; } }); } };
 const sanitizeName = (name: string) => name.replace(/\s/g, '_').replace(/[^\w.\-]/g, '');
 const syncOrderWithGestaoClick = async (proofPublicUrl: string | null) => { if (!orderHeader.customer_id) throw new Error("ID do cliente não encontrado."); const situacao = saleStatuses.value.find(s => s.nome.toLowerCase() === 'em aberto') || saleStatuses.value[0]; if (!situacao) throw new Error("Situação de venda 'em aberto' não encontrada."); let observations = orderHeader.observation || ''; if (proofPublicUrl) { observations += `\n\nComprovante de entrada disponível em: ${proofPublicUrl}`; } const salePayload: any = { codigo: String(nextOrderNumber.value), tipo: "produto", data: new Date().toISOString().split('T')[0], cliente_id: String(orderHeader.customer_id), vendedor_id: String(userStore.profile?.gestao_click_id), situacao_id: String(situacao.id), condicao_pagamento: paymentDetails.type === 'vista' ? 'a_vista' : paymentDetails.type, observacoes: observations.trim(), produtos: orderItems.value.map(item => { const product = gestaoClickProducts.value.find(p => p.nome === item.fabric_type); if (!product) throw new Error(`Produto ${item.fabric_type} não encontrado no Gestão Click.`); return { produto: { produto_id: product.id, variacao_id: null, quantidade: String(item.quantity || 0), valor_venda: (item.valor_unitario || 0).toFixed(2), detalhes: item.notes || "", tipo_desconto: "R$", desconto_valor: "0.00", desconto_porcentagem: "0.00" } }; }), servicos: orderItems.value.map(item => ({ servico: { servico_id: item.stamp_ref_id!, nome_servico: item.stamp_ref, detalhes: `Estampa para o item ${item.fabric_type}`, quantidade: "1.00", valor_venda: (0.00).toFixed(2), tipo_desconto: "R$", desconto_valor: "0.00", desconto_porcentagem: "0.00" } })), pagamentos: paymentDetails.installments.map(inst => ({ pagamento: { data_vencimento: inst.due_date, valor: inst.value.toFixed(2), forma_pagamento_id: String(inst.payment_method_id), plano_contas_id: "32651675", observacao: `Parcela referente ao pedido do cliente.` } })) }; if (!salePayload.vendedor_id) { throw new Error("ID do vendedor no Gestão Click não encontrado no perfil do usuário."); } await gestaoApi.cadastrarVenda(salePayload); for (const item of orderItems.value) { const product = gestaoClickProducts.value.find(p => p.nome === item.fabric_type); if (product) { const currentStock = parseFloat(product.estoque as string); const quantityUsed = item.quantity || 0; const newStock = currentStock - quantityUsed; await gestaoApi.atualizarEstoqueProduto(product.id, newStock); const stockItem = stockItems.value.find(s => s.gestao_click_id === product.id); if (stockItem) { const { error } = await supabase.rpc('increment', { table_name: 'stock', row_id: stockItem.id, x: -quantityUsed }); if (error) console.error(`Falha ao debitar estoque de ${stockItem.fabric_type} no Supabase:`, error); if (stockItem.low_stock_threshold && newStock < stockItem.low_stock_threshold) { appStore.triggerLowStockAlert(stockItem.fabric_type, newStock); } } } } };
 
-const submitLaunch = async () => { if (orderItems.value.length === 0) { appStore.showSnackbar('Adicione pelo menos um item ao lançamento.', 'error'); return; } isSubmitting.value = true; try { for (const item of orderItems.value) { if (item.new_stamp_file) { const newService = await gestaoApi.cadastrarServico(item.stamp_ref); const filePath = `${Date.now()}-${sanitizeName(item.new_stamp_file.name)}`; const imageUrl = await uploadFile(item.new_stamp_file, 'stamp-library', filePath); const { error: stampError } = await supabase.from('stamp_library').insert({ gestao_click_service_id: newService.id, name: item.stamp_ref, image_url: imageUrl, is_approved_for_sale: false, }); if (stampError) throw stampError; item.stamp_ref_id = newService.id; item.stamp_image_url = imageUrl; } } let availableOrderNumber = nextOrderNumber.value; if (availableOrderNumber) { let isTaken = await gestaoApi.verificarVendaPorCodigo(availableOrderNumber); while (isTaken) { availableOrderNumber++; isTaken = await gestaoApi.verificarVendaPorCodigo(availableOrderNumber); } nextOrderNumber.value = availableOrderNumber; } else { throw new Error("Não foi possível determinar o número do próximo pedido."); }
+const submitLaunch = async () => { if (orderItems.value.length === 0) { appStore.showSnackbar('Adicione pelo menos um item ao lançamento.', 'error'); return; } if(isDraftMode.value) { appStore.showSnackbar('Converta o rascunho para um pedido antes de lançar.', 'warning'); return; } isSubmitting.value = true; try { for (const item of orderItems.value) { if (item.new_stamp_file) { const newService = await gestaoApi.cadastrarServico(item.stamp_ref); const filePath = `${Date.now()}-${sanitizeName(item.new_stamp_file.name)}`; const imageUrl = await uploadFile(item.new_stamp_file, 'stamp-library', filePath); const { error: stampError } = await supabase.from('stamp_library').insert({ gestao_click_service_id: newService.id, name: item.stamp_ref, image_url: imageUrl, is_approved_for_sale: false, }); if (stampError) throw stampError; item.stamp_ref_id = newService.id; item.stamp_image_url = imageUrl; } } let availableOrderNumber = nextOrderNumber.value; if (availableOrderNumber) { let isTaken = await gestaoApi.verificarVendaPorCodigo(availableOrderNumber); while (isTaken) { availableOrderNumber++; isTaken = await gestaoApi.verificarVendaPorCodigo(availableOrderNumber); } nextOrderNumber.value = availableOrderNumber; } else { throw new Error("Não foi possível determinar o número do próximo pedido."); }
 
-    // ****** A CORREÇÃO ESTÁ AQUI ******
     const customerNameToSave = orderHeader.customer_name;
     if (!customerNameToSave) throw new Error("Nome do cliente não encontrado para salvar no Supabase.");
-    // **********************************
 
     let proofPublicUrl: string | null = null; if (orderHeader.has_down_payment && orderHeader.down_payment_proof_file) { const file = orderHeader.down_payment_proof_file; const baseName = sanitizeName(file.name); const filePath = `proofs/${Date.now()}-${baseName}`; proofPublicUrl = await uploadFile(file, 'proofs', filePath); } await syncOrderWithGestaoClick(proofPublicUrl); const itemsPayload = orderItems.value.map(item => { const total_value_item = (item.quantity || 0) * (item.valor_unitario || 0); return { fabric_type: item.fabric_type, stamp_ref: item.stamp_ref, quantity_meters: item.quantity_meters, stamp_image_url: item.stamp_image_url, design_tag: item.design_tag, notes: item.notes, quantity_unit: item.quantity, unit_of_measure: item.unit_of_measure, rendimento: item.rendimento, status: item.status, total_value_items: total_value_item, }; }); const totalOrderValueCalculated = itemsPayload.reduce((sum, item) => sum + item.total_value_items, 0);
 
-    // ****** USANDO A VARIÁVEL CORRETA ******
     const { data: newOrderNumber, error: rpcError } = await supabase.rpc('create_launch_order', {
-      p_customer_name: customerNameToSave, // <-- MUDANÇA APLICADA
+      p_customer_name: customerNameToSave,
       p_created_by: userStore.profile?.id, p_store_id: userStore.profile?.store_id,
       p_has_down_payment: orderHeader.has_down_payment, p_down_payment_proof_url: proofPublicUrl, p_order_items: itemsPayload,
       p_total_value: totalOrderValueCalculated
     });
-    // ***************************************
 
     if (rpcError) throw rpcError; const { data: orderData } = await supabase.from('orders').select('id').eq('order_number', newOrderNumber).single(); if (orderData) createdOrderId.value = orderData.id; createdOrderNumber.value = newOrderNumber; orderCreatedSuccess.value = true; appStore.showSnackbar("Pedido criado e sincronizado com sucesso!", "success"); clearAutoSave(); } catch (error: any) { console.error('Erro ao criar lançamento:', error); let errorMessage = error.message || 'Erro desconhecido.'; if (errorMessage.includes('Gestão Click') || (error.response && error.response.data)) { errorMessage = `Falha na integração com o sistema de gestão: ${errorMessage}`; } appStore.showSnackbar(`Erro ao criar lançamento: ${errorMessage}`, 'error'); } finally { isSubmitting.value = false; } };
 
@@ -878,6 +1064,7 @@ const resetForm = (clearDrafts = true) => {
   orderCreatedSuccess.value = false;
   createdOrderId.value = null;
   createdOrderNumber.value = null;
+  isDraftMode.value = false;
   fetchNextOrderNumber();
   if (clearDrafts) {
     clearAutoSave();
@@ -907,43 +1094,18 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
-// NOVO LAYOUT DO ALERTA DE RASCUNHO
-.draft-alert-wrapper {
-  border-radius: 16px;
-  padding: 4px;
-  background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.2);
-}
-.draft-alert {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 16px;
-  background-color: #2a2a3e;
-  border-radius: 12px;
-  flex-wrap: wrap;
-}
-.draft-alert__icon {
-  background-color: rgba(37, 117, 252, 0.2);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #2575fc;
-}
-.draft-alert__text {
-  flex-grow: 1;
-}
-.draft-alert__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
+.modern-draft-alert {
+  background-color: rgba(var(--v-theme-primary), 0.1) !important;
+  border-left-width: 4px !important;
+  border-radius: 8px !important;
+  &.v-alert {
+    :deep(.v-alert__prepend) {
+      align-self: center;
+      margin-right: 16px;
+    }
+  }
 }
 
-// Estilos existentes
 .blinking-icon { animation: blink 1.5s infinite ease-in-out; }
 @keyframes blink { 50% { opacity: 0.5; } }
 .glassmorphism-card-order {
