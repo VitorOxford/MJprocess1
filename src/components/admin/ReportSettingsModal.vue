@@ -130,7 +130,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { format, subDays, startOfDay, endOfDay, parseISO, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, parseISO, startOfMonth } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -172,7 +172,6 @@ const dateRangeText = computed(() => {
     return 'Período não selecionado';
 });
 
-// --- INÍCIO DA CORREÇÃO ---
 const imageToBase64 = (url: string): Promise<string> =>
   new Promise((resolve, reject) => {
     const img = new Image();
@@ -271,8 +270,6 @@ const generatePdf = async () => {
     isGeneratingPdf.value = false;
   }
 };
-// --- FIM DA CORREÇÃO ---
-
 
 const setPeriod = (value: string) => {
   const end = new Date();
@@ -292,27 +289,38 @@ watch(periodSelection, (newVal) => {
     if(newVal !== 'custom') setPeriod(newVal);
 }, { immediate: true });
 
+// ===== INÍCIO DA CORREÇÃO =====
+// Lógica de filtragem mais robusta que ignora espaços em branco.
 const filteredReportItems = computed(() => {
   const [start, end] = dates.value;
   if (!start || !end) return [];
+
+  // Limpa os filtros removendo espaços em branco
+  const trimmedSellers = selectedSellers.value.map(s => s?.trim());
+  const trimmedClients = selectedClients.value.map(c => c?.trim());
+  const trimmedFabrics = selectedFabrics.value.map(f => f?.trim());
+  const trimmedStatus = selectedStatus.value?.trim();
 
   return props.orders.filter(order => {
     const orderDate = parseISO(order.created_at);
     const dateMatch = orderDate >= start && orderDate <= end;
     if (!dateMatch) return false;
 
-    const sellerMatch = selectedSellers.value.length === 0 || selectedSellers.value.includes(order.creator?.full_name);
-    const clientMatch = selectedClients.value.length === 0 || selectedClients.value.includes(order.customer_name);
-    const statusMatch = !selectedStatus.value || order.status === selectedStatus.value;
+    // Compara os dados do pedido também sem espaços em branco
+    const sellerMatch = trimmedSellers.length === 0 || trimmedSellers.includes(order.creator?.full_name?.trim());
+    const clientMatch = trimmedClients.length === 0 || trimmedClients.includes(order.customer_name?.trim());
+    const statusMatch = !trimmedStatus || order.status?.trim() === trimmedStatus;
 
-    const fabricMatch = selectedFabrics.value.length === 0 || (order.is_launch
-      ? order.order_items.some((item: any) => selectedFabrics.value.includes(item.fabric_type))
-      : selectedFabrics.value.includes(order.details?.fabric_type));
+    // A lógica de tecido precisa verificar todos os itens do pedido
+    const fabricMatch = trimmedFabrics.length === 0 ||
+      (order.order_items && order.order_items.some((item: any) =>
+        trimmedFabrics.includes(item.fabric_type?.trim())
+      ));
 
     return sellerMatch && clientMatch && statusMatch && fabricMatch;
   });
 });
-
+// ===== FIM DA CORREÇÃO =====
 </script>
 
 <style scoped lang="scss">
