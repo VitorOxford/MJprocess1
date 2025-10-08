@@ -195,7 +195,7 @@ const imageToBase64 = (url: string): Promise<string> =>
 const addHeader = async (doc: jsPDF) => {
     const pageWidth = doc.internal.pageSize.width;
     try {
-        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+        const logoUrl = 'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media/logo-mj-dark.png';
         const logoBase64 = await imageToBase64(logoUrl);
         const logoProps = doc.getImageProperties(logoBase64);
         const logoWidth = 40;
@@ -229,40 +229,106 @@ const addFooter = (doc: jsPDF) => {
     }
 };
 
+// ===== INÍCIO DA CORREÇÃO GERAL DO PDF =====
 const generatePdf = async () => {
-  if (filteredReportItems.value.length === 0) {
+  const items = filteredReportItems.value;
+  if (items.length === 0) {
     alert("Nenhum pedido encontrado para os filtros selecionados.");
     return;
   }
   isGeneratingPdf.value = true;
+
   try {
+    // --- 1. Calcular as Métricas ---
+    let totalRevenue = 0;
+    let totalMeters = 0;
+    const clientSales: { [key: string]: { meters: number, revenue: number } } = {};
+    const sellerSales: { [key: string]: { meters: number, revenue: number } } = {};
+
+    items.forEach(order => {
+      totalRevenue += order.total_value || 0;
+      const orderMeters = order.order_items.reduce((sum: number, item: any) => sum + (item.quantity_meters || 0), 0);
+      totalMeters += orderMeters;
+
+      const clientName = order.customer_name?.trim() || 'Desconhecido';
+      if (!clientSales[clientName]) clientSales[clientName] = { meters: 0, revenue: 0 };
+      clientSales[clientName].meters += orderMeters;
+      clientSales[clientName].revenue += order.total_value || 0;
+
+      const sellerName = order.creator?.full_name?.trim() || 'N/A';
+      if (!sellerSales[sellerName]) sellerSales[sellerName] = { meters: 0, revenue: 0 };
+      sellerSales[sellerName].meters += orderMeters;
+      sellerSales[sellerName].revenue += order.total_value || 0;
+    });
+
+    const findTopEntry = (sales: { [key: string]: { meters: number, revenue: number } }, metric: 'meters' | 'revenue') => {
+      return Object.entries(sales).reduce((top, [name, values]) =>
+        values[metric] > top[1] ? [name, values[metric]] : top,
+        ["Nenhum", 0]
+      );
+    };
+
+    const [topClient] = findTopEntry(clientSales, 'revenue');
+    const [topSeller] = findTopEntry(sellerSales, 'revenue');
+
+    // --- 2. Gerar o PDF com Novo Layout ---
     const doc = new jsPDF({ orientation: 'landscape' });
+    const pageWidth = doc.internal.pageSize.width;
+    const margin = 15;
+
     await addHeader(doc);
 
-    doc.setFontSize(14).setFont('helvetica', 'bold').setTextColor(0);
-    doc.text(`Relatório Detalhado de Pedidos`, 15, 45);
-    doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(80);
-    doc.text(`Período: ${dateRangeText.value}`, 15, 51);
+    // Títulos (com fontes menores)
+    doc.setFontSize(14).setFont('helvetica', 'bold').setTextColor(0, 0, 0);
+    doc.text('Relatório Detalhado de Pedidos', margin, 45);
+    doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(80, 80, 80);
+    doc.text(`Período: ${dateRangeText.value}`, margin, 51);
 
-    const headers = [['Nº', 'Cliente', 'Vendedor', 'Data', 'Status', 'Metragem (m)']];
-    const body = filteredReportItems.value.map(item => [
-      `#${String(item.order_number || 0).padStart(4, '0')}`,
-      item.customer_name,
-      item.creator?.full_name || 'N/A',
-      format(parseISO(item.created_at), 'dd/MM/yyyy'),
-      item.status,
-      item.quantity_meters.toLocaleString('pt-BR'),
+    // Seção de KPIs (acima da tabela)
+    const kpiY = 58;
+    const kpiWidth = (pageWidth - (margin * 2) - (10 * 3)) / 4; // 4 KPIs
+
+    const drawKpi = (x: number, title: string, value: string) => {
+      doc.setFillColor(245, 248, 250);
+      doc.roundedRect(x, kpiY, kpiWidth, 22, 3, 3, 'F');
+      doc.setFontSize(8).setTextColor(100).text(title, x + 5, kpiY + 7);
+      doc.setFontSize(12).setFont('helvetica', 'bold').setTextColor(0).text(value, x + 5, kpiY + 16);
+    };
+
+    drawKpi(margin, 'Faturamento Total', `R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+    drawKpi(margin + kpiWidth + 10, 'Metragem Total', `${totalMeters.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}m`);
+    drawKpi(margin + (kpiWidth + 10) * 2, 'Principal Cliente', topClient);
+    drawKpi(margin + (kpiWidth + 10) * 3, 'Principal Vendedor', topSeller);
+
+    // Tabela de Dados
+    const headers = [['Nº', 'Cliente', 'Vendedor', 'Data', 'Itens', 'Metragem (m)', 'Valor Total']];
+    const body = items.map(order => [
+      `#${String(order.order_number || 0).padStart(4, '0')}`,
+      order.customer_name,
+      order.creator?.full_name || 'N/A',
+      format(parseISO(order.created_at), 'dd/MM/yy'),
+      order.order_items.length,
+      order.order_items.reduce((sum: number, item: any) => sum + (item.quantity_meters || 0), 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 }),
+      (order.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     ]);
 
     autoTable(doc, {
         head: headers,
         body: body,
-        startY: 58,
-        headStyles: { fillColor: [41, 128, 185] }
+        startY: kpiY + 32, // Posição abaixo dos KPIs
+        margin: { left: margin, right: margin },
+        headStyles: { fillColor: [41, 128, 185], fontSize: 9 },
+        bodyStyles: { fontSize: 8, cellPadding: 2 },
+        columnStyles: {
+            4: { halign: 'center' },
+            5: { halign: 'right' },
+            6: { halign: 'right' }
+        }
     });
 
     addFooter(doc);
-    doc.save(`relatorio_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    doc.save(`relatorio_avancado_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+
   } catch(e) {
     console.error("Erro ao gerar PDF: ", e);
     alert("Ocorreu um erro ao gerar o PDF.");
@@ -270,6 +336,7 @@ const generatePdf = async () => {
     isGeneratingPdf.value = false;
   }
 };
+// ===== FIM DA CORREÇÃO GERAL DO PDF =====
 
 const setPeriod = (value: string) => {
   const end = new Date();
@@ -289,13 +356,10 @@ watch(periodSelection, (newVal) => {
     if(newVal !== 'custom') setPeriod(newVal);
 }, { immediate: true });
 
-// ===== INÍCIO DA CORREÇÃO =====
-// Lógica de filtragem mais robusta que ignora espaços em branco.
 const filteredReportItems = computed(() => {
   const [start, end] = dates.value;
   if (!start || !end) return [];
 
-  // Limpa os filtros removendo espaços em branco
   const trimmedSellers = selectedSellers.value.map(s => s?.trim());
   const trimmedClients = selectedClients.value.map(c => c?.trim());
   const trimmedFabrics = selectedFabrics.value.map(f => f?.trim());
@@ -306,12 +370,10 @@ const filteredReportItems = computed(() => {
     const dateMatch = orderDate >= start && orderDate <= end;
     if (!dateMatch) return false;
 
-    // Compara os dados do pedido também sem espaços em branco
     const sellerMatch = trimmedSellers.length === 0 || trimmedSellers.includes(order.creator?.full_name?.trim());
     const clientMatch = trimmedClients.length === 0 || trimmedClients.includes(order.customer_name?.trim());
     const statusMatch = !trimmedStatus || order.status?.trim() === trimmedStatus;
 
-    // A lógica de tecido precisa verificar todos os itens do pedido
     const fabricMatch = trimmedFabrics.length === 0 ||
       (order.order_items && order.order_items.some((item: any) =>
         trimmedFabrics.includes(item.fabric_type?.trim())
@@ -320,7 +382,7 @@ const filteredReportItems = computed(() => {
     return sellerMatch && clientMatch && statusMatch && fabricMatch;
   });
 });
-// ===== FIM DA CORREÇÃO =====
+
 </script>
 
 <style scoped lang="scss">
