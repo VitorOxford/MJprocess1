@@ -291,7 +291,7 @@
                                   ></v-text-field>
                                </v-col>
                                <v-col cols="6">
-                                   <v-text-field
+                                  <v-text-field
                                     v-model.number="tempMeters"
                                     label="Converter de Metros (m)"
                                     type="number"
@@ -308,8 +308,8 @@
                             <div v-if="editedItem.fabric_type" class="mt-n2 mb-4 px-2">
                                <div class="d-flex justify-space-between text-caption text-grey">
                                  <span v-if="(editedItem.quantity || 0) > realTimeAvailableStock" class="text-error font-weight-bold">
-                                    Estoque insuficiente!
-                                  </span>
+                                   Estoque insuficiente!
+                                 </span>
                                  <span v-else>Estoque disponível para este pedido:</span>
                                  <span>{{ realTimeAvailableStock.toLocaleString('pt-BR') }}{{ selectedProductUnit }}</span>
                                </div>
@@ -365,36 +365,36 @@
             <v-card-text>
               <h3 class="text-h6 font-weight-bold mb-6 text-center">Pagamento e Finalização</h3>
               <v-form ref="step3Form">
-                   <v-textarea
-                    v-model="orderHeader.observation"
-                    label="Observações do Pedido"
-                    variant="outlined"
-                    rows="3"
-                    class="mb-4"
-                  ></v-textarea>
+                       <v-textarea
+                        v-model="orderHeader.observation"
+                        label="Observações do Pedido"
+                        variant="outlined"
+                        rows="3"
+                        class="mb-4"
+                      ></v-textarea>
 
-                  <v-text-field
-                    v-model.number="downPaymentForReceipt"
-                    label="Valor do Sinal Recebido (para recibo)"
-                    type="number"
-                    variant="outlined"
-                    prefix="R$"
-                    class="mb-4"
-                    :disabled="!orderHeader.customer_id"
-                  ></v-text-field>
+                      <v-text-field
+                        v-model.number="downPaymentForReceipt"
+                        label="Valor do Sinal Recebido (para recibo)"
+                        type="number"
+                        variant="outlined"
+                        prefix="R$"
+                        class="mb-4"
+                        :disabled="!orderHeader.customer_id"
+                      ></v-text-field>
 
-                  <v-btn
-                    color="info"
-                    variant="outlined"
-                    block
-                    class="mb-6"
-                    @click="generateDraftReceiptPdf"
-                    :loading="isGeneratingPdf"
-                    :disabled="!downPaymentForReceipt || downPaymentForReceipt <= 0"
-                  >
-                    <v-icon start>mdi-receipt-text-outline</v-icon>
-                    Gerar Recibo de Sinal
-                  </v-btn>
+                      <v-btn
+                        color="info"
+                        variant="outlined"
+                        block
+                        class="mb-6"
+                        @click="generateDraftReceiptPdf"
+                        :loading="isGeneratingPdf"
+                        :disabled="!downPaymentForReceipt || downPaymentForReceipt <= 0"
+                      >
+                        <v-icon start>mdi-receipt-text-outline</v-icon>
+                        Gerar Recibo de Sinal
+                      </v-btn>
 
                 <v-radio-group v-model="paymentDetails.type" inline class="mb-4">
                   <v-radio label="À vista" value="vista"></v-radio>
@@ -525,42 +525,42 @@
               <v-icon end>mdi-chevron-right</v-icon>
             </v-btn>
             <div v-else>
-                <v-tooltip location="top" :disabled="isCurrentDraftLaunchable">
-                  <template v-slot:activator="{ props }">
-                    <div v-bind="props">
-                      <v-btn
-                        v-if="isDraftMode"
-                        @click="convertToOrder"
-                        :disabled="!isCurrentDraftLaunchable"
-                        color="success"
-                        variant="flat"
-                        size="large"
-                      >
-                        <v-icon start>mdi-file-check-outline</v-icon>
-                        Converter para Pedido
-                      </v-btn>
-                    </div>
-                  </template>
-                  <span>Há itens com estoque insuficiente. Verifique os itens sinalizados.</span>
-                </v-tooltip>
-                <v-tooltip location="top" :disabled="!hasGrossOrderProduct">
-    <template v-slot:activator="{ props }">
-        <div v-bind="props"> <v-btn
-                v-if="!isDraftMode"
-                @click="submitLaunch"
-                :loading="isSubmitting"
-                :disabled="!isStepValid || hasGrossOrderProduct"
-                color="primary"
-                variant="flat"
-                size="large"
-            >
-                <v-icon start>mdi-rocket-launch</v-icon>
-                Enviar Lançamento
-            </v-btn>
-        </div>
-    </template>
-    <span>Não é possível lançar pedidos com "PEDIDO BRUTO". Salve como rascunho ou remova o item.</span>
-</v-tooltip>
+               <v-tooltip location="top" :disabled="isCurrentDraftLaunchable">
+                 <template v-slot:activator="{ props }">
+                   <div v-bind="props">
+                     <v-btn
+                       v-if="isDraftMode"
+                       @click="convertToOrder"
+                       :disabled="!isCurrentDraftLaunchable"
+                       color="success"
+                       variant="flat"
+                       size="large"
+                     >
+                       <v-icon start>mdi-file-check-outline</v-icon>
+                       Converter para Pedido
+                     </v-btn>
+                   </div>
+                 </template>
+                 <span>Há itens com estoque insuficiente. Verifique os itens sinalizados.</span>
+               </v-tooltip>
+               <v-tooltip location="top" :disabled="!hasGrossOrderProduct">
+                 <template v-slot:activator="{ props }">
+                   <div v-bind="props"> <v-btn
+                       v-if="!isDraftMode"
+                       @click="submitLaunch"
+                       :loading="isSubmitting"
+                       :disabled="!isStepValid || hasGrossOrderProduct"
+                       color="primary"
+                       variant="flat"
+                       size="large"
+                     >
+                       <v-icon start>mdi-rocket-launch</v-icon>
+                       Enviar Lançamento
+                     </v-btn>
+                   </div>
+                 </template>
+                 <span>Não é possível lançar pedidos com "PEDIDO BRUTO". Salve como rascunho ou remova o item.</span>
+               </v-tooltip>
             </div>
           </div>
         </template>
@@ -1000,7 +1000,20 @@ const submitLaunch = async () => {
             console.log(`Comprovante enviado para: ${proofPublicUrl}`);
         }
 
-        const itemsPayload = orderItems.value.map(item => ({ ...item, total_value_items: (item.quantity || 0) * (item.valor_unitario || 0) }));
+        // ======================= ALTERAÇÃO PRINCIPAL AQUI =======================
+        // Mapeia os itens para o payload final, garantindo que ambos os campos de quantidade
+        // estejam presentes quando necessário.
+        const itemsPayload = orderItems.value.map(item => {
+            const isKg = item.unit_of_measure === 'kg';
+
+            return {
+                ...item, // O 'item' já tem 'quantity_meters' calculado pelo watcher.
+                quantity_unit: isKg ? item.quantity : null, // Adicionamos 'quantity_kg' se for KG.
+                total_value_items: (item.quantity || 0) * (item.valor_unitario || 0)
+            };
+        });
+        // =======================================================================
+
         const totalOrderValueCalculated = itemsPayload.reduce((sum, item) => sum + (item.total_value_items || 0), 0);
         const rpcPayload = { p_customer_name: customerNameToSave, p_created_by: userStore.profile?.id, p_store_id: userStore.profile?.store_id, p_has_down_payment: orderHeader.has_down_payment, p_down_payment_proof_url: proofPublicUrl, p_order_items: itemsPayload, p_total_value: totalOrderValueCalculated, };
 
