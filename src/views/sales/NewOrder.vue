@@ -162,6 +162,16 @@
                               <v-icon start size="x-small">mdi-alert-circle-outline</v-icon>
                               Estoque Insuficiente
                             </v-chip>
+
+                          <v-chip
+                            v-if="item.design_tag"
+                            :color="tagColorMap[item.design_tag]"
+                            size="x-small"
+                            class="ml-2"
+                            label
+                          >
+                            {{ item.design_tag }}
+                          </v-chip>
                         </v-list-item-title>
                         <v-list-item-subtitle>
                           {{ item.fabric_type || 'Sem tecido' }} -
@@ -228,24 +238,24 @@
                               </template>
                             </v-autocomplete>
                              <v-text-field
-                               v-else
-                               v-model="editedItem.stamp_ref"
-                               label="Nome/Referência da Nova Estampa"
-                               variant="outlined"
-                               density="compact"
-                               :rules="[rules.required]"
+                                v-else
+                                v-model="editedItem.stamp_ref"
+                                label="Nome/Referência da Nova Estampa"
+                                variant="outlined"
+                                density="compact"
+                                :rules="[rules.required]"
                               ></v-text-field>
                           </v-col>
 
                           <v-col cols="12" class="text-center">
                             <v-file-input
-                               v-if="isUploadingNewStamp"
-                               @change="handleNewStampFileChange"
-                               label="Arquivo da Imagem (.png, .jpg)"
-                               variant="outlined"
-                               accept="image/png, image/jpeg"
-                               :rules="[rules.fileRequired]"
-                               density="compact"
+                                v-if="isUploadingNewStamp"
+                                @change="handleNewStampFileChange"
+                                label="Arquivo da Imagem (.png, .jpg)"
+                                variant="outlined"
+                                accept="image/png, image/jpeg"
+                                :rules="[rules.fileRequired]"
+                                density="compact"
                               ></v-file-input>
                             <v-img
                               v-if="editedItem.stamp_image_url"
@@ -255,28 +265,28 @@
                               class="rounded border"
                             ></v-img>
                               <div v-else-if="!isUploadingNewStamp" class="d-flex align-center justify-center text-grey-lighten-1" style="height: 150px; border: 2px dashed #444; border-radius: 4px;">
-                               Selecione uma estampa para visualizar
+                                Selecione uma estampa para visualizar
                               </div>
                               <v-btn
-                                variant="text"
-                                @click="toggleStampUpload"
-                                class="mt-2"
-                                size="small"
-                              >
-                                {{ isUploadingNewStamp ? 'Cancelar e Buscar Existente' : 'Não encontrou? Cadastre uma nova estampa' }}
-                              </v-btn>
+                                 variant="text"
+                                 @click="toggleStampUpload"
+                                 class="mt-2"
+                                 size="small"
+                               >
+                                 {{ isUploadingNewStamp ? 'Cancelar e Buscar Existente' : 'Não encontrou? Cadastre uma nova estampa' }}
+                               </v-btn>
                           </v-col>
 
                           <v-col cols="12">
                             <v-text-field
-                               v-if="selectedProductUnit !== 'kg'"
-                               v-model.number="editedItem.quantity"
-                               label="Quantidade (m)"
-                               type="number"
-                               variant="outlined"
-                               density="compact"
-                               :rules="[rules.required, rules.positive]"
-                               :disabled="!editedItem.fabric_type"
+                                v-if="selectedProductUnit !== 'kg'"
+                                v-model.number="editedItem.quantity"
+                                label="Quantidade (m)"
+                                type="number"
+                                variant="outlined"
+                                density="compact"
+                                :rules="[rules.required, rules.positive]"
+                                :disabled="!editedItem.fabric_type"
                               ></v-text-field>
                             <v-row v-else>
                                <v-col cols="6">
@@ -314,11 +324,11 @@
                                  <span>{{ realTimeAvailableStock.toLocaleString('pt-BR') }}{{ selectedProductUnit }}</span>
                                </div>
                               <v-progress-linear
-                                :model-value="((editedItem.quantity || 0) / (selectedProductStock || 1)) * 100"
-                                :color="getStockUsageColor(editedItem.quantity || 0, realTimeAvailableStock)"
-                                height="6"
-                                rounded
-                              ></v-progress-linear>
+                                 :model-value="((editedItem.quantity || 0) / (selectedProductStock || 1)) * 100"
+                                 :color="getStockUsageColor(editedItem.quantity || 0, realTimeAvailableStock)"
+                                 height="6"
+                                 rounded
+                               ></v-progress-linear>
                             </div>
                           </v-col>
 
@@ -343,7 +353,23 @@
                               density="compact"
                             ></v-textarea>
                           </v-col>
-                        </v-row>
+
+                          <v-col cols="12">
+                            <label class="v-label text-caption mb-2 d-block">Destino no Design</label>
+                            <div class="d-flex ga-2 flex-wrap">
+                              <v-btn
+                                v-for="tag in (Object.keys(tagColorMap) as Array<keyof typeof tagColorMap>)"
+                                :key="tag"
+                                :color="tagColorMap[tag]"
+                                :variant="editedItem.design_tag === tag ? 'flat' : 'outlined'"
+                                size="small"
+                                @click="editedItem.design_tag = tag"
+                              >
+                                {{ tag }}
+                              </v-btn>
+                            </div>
+                          </v-col>
+                          </v-row>
                       </v-form>
                     </v-card-text>
                     <v-card-actions>
@@ -365,36 +391,36 @@
             <v-card-text>
               <h3 class="text-h6 font-weight-bold mb-6 text-center">Pagamento e Finalização</h3>
               <v-form ref="step3Form">
-                       <v-textarea
-                        v-model="orderHeader.observation"
-                        label="Observações do Pedido"
-                        variant="outlined"
-                        rows="3"
-                        class="mb-4"
-                      ></v-textarea>
+                         <v-textarea
+                          v-model="orderHeader.observation"
+                          label="Observações do Pedido"
+                          variant="outlined"
+                          rows="3"
+                          class="mb-4"
+                        ></v-textarea>
 
-                      <v-text-field
-                        v-model.number="downPaymentForReceipt"
-                        label="Valor do Sinal Recebido (para recibo)"
-                        type="number"
-                        variant="outlined"
-                        prefix="R$"
-                        class="mb-4"
-                        :disabled="!orderHeader.customer_id"
-                      ></v-text-field>
+                        <v-text-field
+                          v-model.number="downPaymentForReceipt"
+                          label="Valor do Sinal Recebido (para recibo)"
+                          type="number"
+                          variant="outlined"
+                          prefix="R$"
+                          class="mb-4"
+                          :disabled="!orderHeader.customer_id"
+                        ></v-text-field>
 
-                      <v-btn
-                        color="info"
-                        variant="outlined"
-                        block
-                        class="mb-6"
-                        @click="generateDraftReceiptPdf"
-                        :loading="isGeneratingPdf"
-                        :disabled="!downPaymentForReceipt || downPaymentForReceipt <= 0"
-                      >
-                        <v-icon start>mdi-receipt-text-outline</v-icon>
-                        Gerar Recibo de Sinal
-                      </v-btn>
+                        <v-btn
+                          color="info"
+                          variant="outlined"
+                          block
+                          class="mb-6"
+                          @click="generateDraftReceiptPdf"
+                          :loading="isGeneratingPdf"
+                          :disabled="!downPaymentForReceipt || downPaymentForReceipt <= 0"
+                        >
+                          <v-icon start>mdi-receipt-text-outline</v-icon>
+                          Gerar Recibo de Sinal
+                        </v-btn>
 
                 <v-radio-group v-model="paymentDetails.type" inline class="mb-4">
                   <v-radio label="À vista" value="vista"></v-radio>
@@ -602,36 +628,36 @@
 
     <v-dialog v-model="showStockWarningModal" max-width="500px" persistent>
         <v-card class="stock-alert-card" prepend-icon="mdi-alert-decagram-outline">
-            <template #title>
-            <span class="font-weight-bold text-h5">Estoque Insuficiente!</span>
-            </template>
-            <v-card-text class="py-4 text-body-1">
-            <p>Não é possível adicionar ou atualizar o item <strong>{{ stockWarningDetails.fabric }}</strong>.</p>
-            <p class="mt-2">A quantidade total necessária para o pedido (<strong>{{ stockWarningDetails.needed.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>) excede o estoque disponível (<strong>{{ stockWarningDetails.available.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>).</p>
+          <template #title>
+          <span class="font-weight-bold text-h5">Estoque Insuficiente!</span>
+          </template>
+          <v-card-text class="py-4 text-body-1">
+          <p>Não é possível adicionar ou atualizar o item <strong>{{ stockWarningDetails.fabric }}</strong>.</p>
+          <p class="mt-2">A quantidade total necessária para o pedido (<strong>{{ stockWarningDetails.needed.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>) excede o estoque disponível (<strong>{{ stockWarningDetails.available.toLocaleString('pt-BR') }}{{ stockWarningDetails.unit }}</strong>).</p>
 
-            <v-alert
-                border="start"
-                border-color="white"
-                elevation="0"
-                class="mt-4 pa-3"
-                color="rgba(255,255,255,0.1)"
-            >
-                <strong class="text-white">Ação Sugerida:</strong> Ative o "Modo Rascunho" para continuar montando o pedido ou avise o gerente sobre a necessidade de reposição.
-            </v-alert>
+          <v-alert
+              border="start"
+              border-color="white"
+              elevation="0"
+              class="mt-4 pa-3"
+              color="rgba(255,255,255,0.1)"
+          >
+              <strong class="text-white">Ação Sugerida:</strong> Ative o "Modo Rascunho" para continuar montando o pedido ou avise o gerente sobre a necessidade de reposição.
+          </v-alert>
 
-            </v-card-text>
-            <v-card-actions class="pa-4">
-            <v-spacer></v-spacer>
-            <v-btn
-                color="white"
-                variant="outlined"
-                @click="showStockWarningModal = false"
-                block
-                size="large"
-            >
-                Entendido
-            </v-btn>
-            </v-card-actions>
+          </v-card-text>
+          <v-card-actions class="pa-4">
+          <v-spacer></v-spacer>
+          <v-btn
+              color="white"
+              variant="outlined"
+              @click="showStockWarningModal = false"
+              block
+              size="large"
+          >
+              Entendido
+          </v-btn>
+          </v-card-actions>
         </v-card>
     </v-dialog>
 
