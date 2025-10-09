@@ -370,7 +370,7 @@ const imageToBase64 = (urlOrFile: string | File): Promise<string> => new Promise
 const addHeader = async (doc: jsPDF) => {
     const pageWidth = doc.internal.pageSize.width;
     try {
-        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+        const logoUrl = 'https://sgspnoxsqdwbdqsvjdei.supabase.co/storage/v1/object/public/media/logo-mj-dark.png';
         const logoBase64 = await imageToBase64(logoUrl);
         const logoProps = doc.getImageProperties(logoBase64);
         const logoWidth = 40;
