@@ -674,7 +674,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, reactive, nextTick, toRaw, watch, onBeforeUnmount } from 'vue';
+import { ref, onMounted, computed, reactive, nextTick, toRaw, watch, onUnmounted } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
 import { useAppStore } from '@/stores/app';
@@ -687,6 +687,7 @@ import QRCode from 'qrcode';
 import ClientFormModal from '@/components/ClientFormModal.vue';
 import { gestaoApi } from '@/api/gestaoClick';
 import DraftsListModal from '@/components/DraftsListModal.vue';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // --- Constantes ---
 const GROSS_ORDER_PRODUCT_NAME = 'PEDIDO BRUTO';
@@ -745,7 +746,7 @@ const createdOrderNumber = ref<number | null>(null);
 const isGeneratingPdf = ref(false);
 const overridePrice = ref(false);
 const tempMeters = ref<number | null>(null);
-const isDraftMode = ref(false); // CORRIGIDO: Inicia como 'false' por padrão.
+const isDraftMode = ref(false);
 const downPaymentForReceipt = ref<number | null>(null);
 const AUTO_RECOVERY_KEY = 'autoRecoveryOrder';
 const showDraftAlert = ref(false);
@@ -753,6 +754,7 @@ const draftsModal = ref(false);
 const isSavingDraft = ref(false);
 const drafts = ref<Draft[]>([]);
 let autoSaveTimeout: NodeJS.Timeout;
+let realtimeChannel: RealtimeChannel;
 const currentDraftId = ref<string | null>(null);
 const showStockWarningModal = ref(false);
 const stockWarningDetails = reactive({ fabric: '', needed: 0, available: 0, unit: 'm' });
@@ -779,8 +781,23 @@ const editedItem = ref<OrderItem>(createNewItem());
 const editedItemIndex = ref<number | null>(null);
 const isEditing = computed(() => editedItemIndex.value !== null);
 
-// --- LÓGICA DE RASCUNHOS (BACKEND) ---
+// --- LÓGICA DE NÚMERO DE PEDIDO E RASCUNHOS ---
 const orderState = computed(() => ({ orderHeader: toRaw(orderHeader), orderItems: toRaw(orderItems.value), paymentDetails: toRaw(paymentDetails), step: step.value, isDraftMode: isDraftMode.value, }));
+
+const fetchNextOrderNumber = async () => {
+  loadingNextOrderNumber.value = true;
+  try {
+    const { data, error } = await supabase.rpc('get_next_order_number');
+    if (error) throw error;
+    currentOrderNumber.value = data;
+  } catch (e: any) {
+    console.error("Erro ao buscar número do pedido:", e);
+    appStore.showSnackbar(`Falha ao obter número do pedido: ${e.message}`, 'error');
+    currentOrderNumber.value = 0; // Fallback
+  } finally {
+    loadingNextOrderNumber.value = false;
+  }
+};
 
 const saveDraftAs = async () => {
   const clientName = orderHeader.customer_name || 'Rascunho';
@@ -789,16 +806,15 @@ const saveDraftAs = async () => {
   if (draftName && userStore.profile?.id) {
     isSavingDraft.value = true;
     try {
-      const { data: reservedNumber, error: rpcError } = await supabase.rpc('get_and_increment_order_number');
+      // 1. Pega o próximo número disponível para reservar
+      const { data: reservedNumber, error: rpcError } = await supabase.rpc('get_next_order_number');
       if (rpcError) throw rpcError;
-
-      currentOrderNumber.value = reservedNumber;
 
       const draftPayload = {
         user_id: userStore.profile.id,
         name: draftName,
         draft_data: orderState.value,
-        reserved_order_number: reservedNumber,
+        reserved_order_number: reservedNumber, // 2. Salva o número reservado
       };
 
       const { data, error } = await supabase
@@ -809,12 +825,12 @@ const saveDraftAs = async () => {
 
       if (error) throw error;
 
-      currentDraftId.value = data.id;
-      appStore.showSnackbar(`Rascunho "${draftName}" salvo com o pedido #${reservedNumber}!`, 'success');
-      resetForm(true);
+      currentDraftId.value = data.id; // Guarda o ID do rascunho salvo
+      appStore.showSnackbar(`Rascunho "${draftName}" salvo! Pedido reservado #${reservedNumber}.`, 'success');
+      resetForm(true); // Reseta o form para um novo pedido
 
     } catch (error: any) {
-      console.error("Erro ao salvar rascunho no banco de dados:", error);
+      console.error("Erro ao salvar rascunho:", error);
       appStore.showSnackbar(`Falha ao salvar rascunho: ${error.message}`, 'error');
     } finally {
       isSavingDraft.value = false;
@@ -822,8 +838,10 @@ const saveDraftAs = async () => {
   }
 };
 
+
 const loadDraft = (draft: Draft) => {
   restoreState(draft.draft_data);
+  // Ao carregar um rascunho, usamos o número que foi reservado para ele.
   currentOrderNumber.value = draft.reserved_order_number;
   currentDraftId.value = draft.id;
   draftsModal.value = false;
@@ -833,13 +851,15 @@ const loadDraft = (draft: Draft) => {
 };
 
 const deleteDraft = async (draftId: string) => {
-  if (confirm('Tem certeza que deseja excluir este rascunho do banco de dados?')) {
+  if (confirm('Tem certeza que deseja excluir este rascunho? Esta ação não pode ser desfeita.')) {
     const { error } = await supabase.from('order_drafts').delete().match({ id: draftId });
     if (error) {
       appStore.showSnackbar(`Erro ao excluir rascunho: ${error.message}`, 'error');
     } else {
       drafts.value = drafts.value.filter(d => d.id !== draftId);
-      appStore.showSnackbar('Rascunho excluído.', 'success');
+      appStore.showSnackbar('Rascunho excluído com sucesso.', 'success');
+      // Após excluir, é bom buscar o próximo número vago, caso o excluído seja o mais recente.
+      fetchNextOrderNumber();
     }
   }
 };
@@ -856,28 +876,23 @@ const openDraftsModal = async () => {
   draftsModal.value = true;
 };
 
+// --- AUTOSAVE LOCAL ---
 const autoSave = () => {
   if (!orderHeader.customer_id && orderItems.value.length === 0) {
     clearAutoSave(); return;
   }
   localStorage.setItem(AUTO_RECOVERY_KEY, JSON.stringify(orderState.value));
 };
-
 const restoreState = (stateToRestore: any) => {
   Object.assign(orderHeader, stateToRestore.orderHeader);
   orderItems.value = stateToRestore.orderItems;
   Object.assign(paymentDetails, stateToRestore.paymentDetails);
   isDraftMode.value = stateToRestore.isDraftMode ?? false;
-
   if (orderHeader.customer_id && !clientList.value.some(c => c.id === orderHeader.customer_id)) {
     clientList.value.unshift({ id: orderHeader.customer_id, nome: orderHeader.customer_name });
   }
-
-  nextTick(() => {
-    step.value = stateToRestore.step;
-  });
+  nextTick(() => { step.value = stateToRestore.step; });
 };
-
 const restoreAutoSave = () => {
   try {
     const savedState = localStorage.getItem(AUTO_RECOVERY_KEY);
@@ -892,7 +907,6 @@ const restoreAutoSave = () => {
     clearAutoSave();
   }
 };
-
 const clearAutoSave = (showSnack = false) => {
   localStorage.removeItem(AUTO_RECOVERY_KEY);
   showDraftAlert.value = false;
@@ -901,16 +915,12 @@ const clearAutoSave = (showSnack = false) => {
     resetForm(false);
   }
 };
-
 watch(orderState, () => { clearTimeout(autoSaveTimeout); autoSaveTimeout = setTimeout(autoSave, 2000); }, { deep: true });
-
 
 // --- LÓGICA DO COMPONENTE ---
 const hasGrossOrderProduct = computed(() =>
   orderItems.value.some(item => item.fabric_type?.trim() === GROSS_ORDER_PRODUCT_NAME)
 );
-
-const addBusinessDays = (startDate: Date, days: number): Date => { const newDate = new Date(startDate); let addedDays = 0; while (addedDays < days) { newDate.setDate(newDate.getDate() + 1); if (newDate.getDay() !== 0) { addedDays++; } } return newDate; };
 const rules = { required: (v: any) => !!v || 'Campo obrigatório.', positive: (v: number | null) => (v != null && v > 0) || 'O valor deve ser maior que zero.', fileRequired: (v: any) => !!v || 'É obrigatório selecionar um arquivo.', };
 const isCurrentDraftLaunchable = computed(() => { if (orderItems.value.length === 0) return false; return !orderItems.value.some(item => item.has_insufficient_stock); });
 
@@ -928,7 +938,7 @@ const convertToOrder = () => {
 
 const totalOrderValue = computed(() => orderItems.value.reduce((total, item) => total + (item.quantity || 0) * (item.valor_unitario || 0), 0));
 watch(totalOrderValue, (newValue) => { if (paymentDetails.type === 'vista' && paymentDetails.installments.length > 0) { paymentDetails.installments[0].value = newValue; } });
-watch(() => paymentDetails.type, (newType) => { generateInstallments(); });
+watch(() => paymentDetails.type, () => { generateInstallments(); });
 const selectedProduct = computed(() => { if (!editedItem.value.fabric_type) return null; const product = stockItems.value.find(p => p.fabric_type === editedItem.value.fabric_type); return product || gestaoClickProducts.value.find(p => p.nome === editedItem.value.fabric_type); });
 const selectedProductUnit = computed(() => { if (!selectedProduct.value) return 'm'; const unit = (selectedProduct.value as StockItem)?.unit_of_measure || (selectedProduct.value as GestaoClickProduct)?.unidade; return (unit || 'm').toLowerCase(); });
 const selectedProductRendimento = computed(() => { if (!selectedProduct.value) return null; return (selectedProduct.value as StockItem).rendimento || parseFloat((selectedProduct.value as GestaoClickProduct).rendimento || '0'); });
@@ -967,7 +977,6 @@ const isItemFormValid = computed(() => { const commonValid = !!editedItem.value.
 watch(clientSearch, (newValue) => { if (!newValue) { return; } isSearchingClients.value = true; clearTimeout(searchTimeout); searchTimeout = setTimeout(async () => { clientList.value = await gestaoApi.buscarClientes(newValue); isSearchingClients.value = false; }, 500); });
 const fetchInitialData = async () => { loadingGestaoClickProducts.value = true; loadingGestaoClickServices.value = true; try { const { data: stockData, error: stockError } = await supabase.from('stock').select('*').eq('verification', true); if (stockError) throw stockError; const finalProducts = stockData.map(stockItem => { const unitPrice = stockItem.base_price; return { id: stockItem.gestao_click_id, nome: stockItem.fabric_type, estoque: stockItem.available_meters, valor_venda: String(unitPrice || '0'), unidade: stockItem.unit_of_measure, rendimento: String(stockItem.rendimento || '0') }; }); gestaoClickProducts.value = finalProducts; const [services, statuses, stamps, payMethods] = await Promise.all([ gestaoApi.buscarServicos(), gestaoApi.getSituacoesVenda(), supabase.from('stamp_library').select('*').eq('is_approved_for_sale', true), gestaoApi.buscarFormasDePagamento(), ]); if (stamps.error) throw stamps.error; paymentMethods.value = payMethods; stampLibrary.value = stamps.data || []; const approvedStampServiceIds = new Set(stampLibrary.value.map(s => s.gestao_click_service_id)); gestaoClickServices.value = services.filter(service => approvedStampServiceIds.has(service.id)).map(service => { const matchingStamp = stampLibrary.value.find(s => s.gestao_click_service_id === service.id); return { ...service, imagem_url: matchingStamp ? matchingStamp.image_url : undefined }; }); saleStatuses.value = statuses; } catch (error) { appStore.showSnackbar('Não foi possível carregar os dados iniciais.', 'error'); console.error("ERRO CRÍTICO NA BUSCA DE DADOS INICIAIS:", error); } finally { loadingGestaoClickProducts.value = false; loadingGestaoClickServices.value = false; } };
 const handleClientCreated = (newClient: Client) => { clientList.value.unshift(newClient); orderHeader.customer_id = newClient.id; showClientModal.value = false; appStore.showSnackbar(`Cliente "${newClient.nome}" cadastrado com sucesso!`, 'success'); };
-const fetchNextOrderNumber = async () => { loadingNextOrderNumber.value = true; try { const { data, error } = await supabase.rpc('get_next_order_number'); if (error) throw error; currentOrderNumber.value = data; } catch (e) { console.error("Erro ao buscar número do pedido:", e); currentOrderNumber.value = 0; } finally { loadingNextOrderNumber.value = false; } };
 const uploadFile = async (file: File | Blob, bucket: string, path: string): Promise<string> => { const { data, error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true }); if (error) throw error; return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl; };
 const handleProofFileChange = (event: Event) => { const target = event.target as HTMLInputElement; if (target.files && target.files[0]) { orderHeader.down_payment_proof_file = target.files[0]; } else { orderHeader.down_payment_proof_file = null; } };
 const handleNewStampFileChange = (event: Event) => { const target = event.target as HTMLInputElement; const file = target.files ? target.files[0] : null; editedItem.value.new_stamp_file = file; if (file) { editedItem.value.stamp_image_url = URL.createObjectURL(file); } else { editedItem.value.stamp_image_url = null; } };
@@ -980,22 +989,67 @@ const saveOrUpdateItem = async () => { if (itemForm.value) { const { valid } = a
 const generateInstallments = () => { paymentDetails.installments = []; const total = totalOrderValue.value; if (total <= 0) return; if (paymentDetails.type === 'vista') { paymentDetails.installments.push({ due_date: paymentDetails.first_due_date, value: total, payment_method_id: paymentDetails.installment_payment_method_id, }); return; } const count = paymentDetails.installments_count; if (count <= 0) return; const valuePerInstallment = parseFloat((total / count).toFixed(2)); let remainder = total - (valuePerInstallment * count); for (let i = 0; i < count; i++) { const dueDate = addDays(new Date(paymentDetails.first_due_date), i * paymentDetails.installments_interval); let value = valuePerInstallment; if (i === 0) { value = parseFloat((value + remainder).toFixed(2)); } paymentDetails.installments.push({ due_date: format(dueDate, 'yyyy-MM-dd'), value: value, payment_method_id: paymentDetails.installment_payment_method_id, }); } };
 const handleInstallmentValueChange = (changedIndex: number, newValue: string | number) => { const numericValue = typeof newValue === 'string' ? parseFloat(newValue) : newValue; if (isNaN(numericValue) || paymentDetails.installments.length <= 1) return; const changedValue = numericValue; const total = totalOrderValue.value; let filledTotal = 0; paymentDetails.installments.forEach((inst, index) => { if (index !== changedIndex) { filledTotal += inst.value || 0; } }); const remainingValue = total - changedValue; const remainingInstallments = paymentDetails.installments.length - 1; if (remainingInstallments > 0) { const valuePerInstallment = parseFloat((remainingValue / remainingInstallments).toFixed(2)); let remainder = remainingValue - (valuePerInstallment * remainingInstallments); let firstUnchangedFound = false; paymentDetails.installments.forEach((inst, index) => { if (index !== changedIndex) { let newValue = valuePerInstallment; if (!firstUnchangedFound) { newValue = parseFloat((newValue + remainder).toFixed(2)); firstUnchangedFound = true; } inst.value = newValue; } }); } };
 const sanitizeName = (name: string) => name.replace(/\s/g, '_').replace(/[^\w.\-]/g, '');
-const syncOrderWithGestaoClick = async () => { if (!orderHeader.customer_id) throw new Error("ID do cliente não encontrado."); const situacao = saleStatuses.value.find(s => s.nome.toLowerCase() === 'em aberto') || saleStatuses.value[0]; if (!situacao) throw new Error("Situação de venda 'em aberto' não encontrada."); const salePayload: any = { codigo: String(currentOrderNumber.value), tipo: "produto", data: new Date().toISOString().split('T')[0], cliente_id: String(orderHeader.customer_id), vendedor_id: String(userStore.profile?.gestao_click_id), situacao_id: String(situacao.id), condicao_pagamento: paymentDetails.type === 'vista' ? 'a_vista' : paymentDetails.type, observacoes: orderHeader.observation || '', produtos: orderItems.value.map(item => { const product = gestaoClickProducts.value.find(p => p.nome === item.fabric_type); if (!product) throw new Error(`Produto ${item.fabric_type} não encontrado no Gestão Click.`); return { produto: { produto_id: product.id, variacao_id: null, quantidade: String(item.quantity || 0), valor_venda: (item.valor_unitario || 0).toFixed(2), detalhes: item.notes || "", tipo_desconto: "R$", desconto_valor: "0.00", desconto_porcentagem: "0.00" } }; }), servicos: orderItems.value.map(item => ({ servico: { servico_id: item.stamp_ref_id!, nome_servico: item.stamp_ref, detalhes: `Estampa para o item ${item.fabric_type}`, quantidade: "1.00", valor_venda: (0.00).toFixed(2), tipo_desconto: "R$", desconto_valor: "0.00", desconto_porcentagem: "0.00" } })), pagamentos: paymentDetails.installments.map(inst => ({ pagamento: { data_vencimento: inst.due_date, valor: inst.value.toFixed(2), forma_pagamento_id: String(inst.payment_method_id), plano_contas_id: "32651675", observacao: `Parcela referente ao pedido do cliente.` } })) }; if (!salePayload.vendedor_id) { throw new Error("ID do vendedor no Gestão Click não encontrado no perfil do usuário."); } await gestaoApi.cadastrarVenda(salePayload); for (const item of orderItems.value) { const product = gestaoClickProducts.value.find(p => p.nome === item.fabric_type); if (product) { const currentStock = parseFloat(product.estoque as string); const quantityUsed = item.quantity || 0; const newStock = currentStock - quantityUsed; await gestaoApi.atualizarEstoqueProduto(product.id, newStock); const stockItem = stockItems.value.find(s => s.gestao_click_id === product.id); if (stockItem) { const { error } = await supabase.rpc('increment', { table_name: 'stock', row_id: stockItem.id, x: -quantityUsed }); if (error) console.error(`Falha ao debitar estoque de ${stockItem.fabric_type} no Supabase:`, error); if (stockItem.low_stock_threshold && newStock < stockItem.low_stock_threshold) { appStore.triggerLowStockAlert(stockItem.fabric_type, newStock); } } } } };
+
+// --- SUBMISSÃO E SINCRONIZAÇÃO ---
+const syncOrderWithGestaoClick = async (orderNumber: number) => {
+    if (!orderHeader.customer_id) throw new Error("ID do cliente não encontrado.");
+    const situacao = saleStatuses.value.find(s => s.nome.toLowerCase() === 'em aberto') || saleStatuses.value[0];
+    if (!situacao) throw new Error("Situação de venda 'em aberto' não encontrada.");
+
+    const salePayload: any = {
+        codigo: String(orderNumber), // USA O NÚMERO PASSADO COMO PARÂMETRO
+        tipo: "produto",
+        data: new Date().toISOString().split('T')[0],
+        cliente_id: String(orderHeader.customer_id),
+        vendedor_id: String(userStore.profile?.gestao_click_id),
+        situacao_id: String(situacao.id),
+        condicao_pagamento: paymentDetails.type === 'vista' ? 'a_vista' : paymentDetails.type,
+        observacoes: orderHeader.observation || '',
+        produtos: orderItems.value.map(item => { const product = gestaoClickProducts.value.find(p => p.nome === item.fabric_type); if (!product) throw new Error(`Produto ${item.fabric_type} não encontrado no Gestão Click.`); return { produto: { produto_id: product.id, variacao_id: null, quantidade: String(item.quantity || 0), valor_venda: (item.valor_unitario || 0).toFixed(2), detalhes: item.notes || "", tipo_desconto: "R$", desconto_valor: "0.00", desconto_porcentagem: "0.00" } }; }),
+        servicos: orderItems.value.map(item => ({ servico: { servico_id: item.stamp_ref_id!, nome_servico: item.stamp_ref, detalhes: `Estampa para o item ${item.fabric_type}`, quantidade: "1.00", valor_venda: (0.00).toFixed(2), tipo_desconto: "R$", desconto_valor: "0.00", desconto_porcentagem: "0.00" } })),
+        pagamentos: paymentDetails.installments.map(inst => ({ pagamento: { data_vencimento: inst.due_date, valor: inst.value.toFixed(2), forma_pagamento_id: String(inst.payment_method_id), plano_contas_id: "32651675", observacao: `Parcela referente ao pedido do cliente.` } }))
+    };
+    if (!salePayload.vendedor_id) { throw new Error("ID do vendedor no Gestão Click não encontrado no perfil do usuário."); }
+
+    await gestaoApi.cadastrarVenda(salePayload);
+    // Atualização de estoque
+    for (const item of orderItems.value) {
+        const product = gestaoClickProducts.value.find(p => p.nome === item.fabric_type);
+        if (product) {
+            const currentStock = parseFloat(product.estoque as string);
+            const quantityUsed = item.quantity || 0;
+            const newStock = currentStock - quantityUsed;
+            await gestaoApi.atualizarEstoqueProduto(product.id, newStock);
+            const stockItem = stockItems.value.find(s => s.gestao_click_id === product.id);
+            if (stockItem) {
+                const { error } = await supabase.rpc('increment', { table_name: 'stock', row_id: stockItem.id, x: -quantityUsed });
+                if (error) console.error(`Falha ao debitar estoque de ${stockItem.fabric_type} no Supabase:`, error);
+                if (stockItem.low_stock_threshold && newStock < stockItem.low_stock_threshold) {
+                    appStore.triggerLowStockAlert(stockItem.fabric_type, newStock);
+                }
+            }
+        }
+    }
+};
 
 const submitLaunch = async () => {
-    if (hasGrossOrderProduct.value) {
-      appStore.showSnackbar('Não é possível lançar pedidos com "PEDIDO BRUTO". Salve como rascunho ou remova/altere o item.', 'error');
-      return;
-    }
+    if (hasGrossOrderProduct.value) { appStore.showSnackbar('Não é possível lançar pedidos com "PEDIDO BRUTO".', 'error'); return; }
     if (orderItems.value.length === 0) { appStore.showSnackbar('Adicione pelo menos um item ao lançamento.', 'error'); return; }
     if(isDraftMode.value) { appStore.showSnackbar('Converta o rascunho para um pedido antes de lançar.', 'warning'); return; }
 
     isSubmitting.value = true;
-    console.log("--- INICIANDO LANÇAMENTO ---");
     try {
+        // Usa o número que está na tela. Este é o ponto chave.
+        const orderNumberToUse = currentOrderNumber.value;
+        if (!orderNumberToUse) {
+            throw new Error("Não foi possível obter um número de pedido válido.");
+        }
+
+        console.log(`--- INICIANDO LANÇAMENTO PARA PEDIDO #${orderNumberToUse} ---`);
+
+        // Upload de novas estampas
         for (const item of orderItems.value) {
             if (item.new_stamp_file) {
-                console.log(`Fazendo upload de nova estampa: ${item.stamp_ref}`);
                 const newService = await gestaoApi.cadastrarServico(item.stamp_ref);
                 const filePath = `${Date.now()}-${sanitizeName(item.new_stamp_file.name)}`;
                 const imageUrl = await uploadFile(item.new_stamp_file, 'stamp-library', filePath);
@@ -1003,76 +1057,67 @@ const submitLaunch = async () => {
                 if (stampError) throw stampError;
                 item.stamp_ref_id = newService.id;
                 item.stamp_image_url = imageUrl;
-                console.log(`Estampa ${item.stamp_ref} enviada com sucesso.`);
             }
         }
-        if (!currentOrderNumber.value || currentDraftId.value === null) {
-            console.log("Nenhum número reservado, buscando e reservando um novo...");
-            const { data: newNumber, error: rpcError } = await supabase.rpc('get_and_increment_order_number');
-            if (rpcError) throw rpcError;
-            currentOrderNumber.value = newNumber;
-            console.log(`Número reservado: ${currentOrderNumber.value}`);
-        }
-        const customerNameToSave = orderHeader.customer_name;
-        if (!customerNameToSave) throw new Error("Nome do cliente não encontrado para salvar no Supabase.");
 
+        const customerNameToSave = orderHeader.customer_name;
+        if (!customerNameToSave) throw new Error("Nome do cliente não encontrado.");
+
+        // Upload de comprovante de sinal
         let proofPublicUrl: string | null = null;
         if (orderHeader.has_down_payment && orderHeader.down_payment_proof_file) {
-            console.log("Fazendo upload do comprovante...");
             const file = orderHeader.down_payment_proof_file;
-            const baseName = sanitizeName(file.name);
-            const filePath = `proofs/${currentOrderNumber.value}-${baseName}`;
+            const filePath = `proofs/${orderNumberToUse}-${sanitizeName(file.name)}`;
             proofPublicUrl = await uploadFile(file, 'proofs', filePath);
-            console.log(`Comprovante enviado para: ${proofPublicUrl}`);
         }
 
-        // ======================= ALTERAÇÃO PRINCIPAL AQUI =======================
-        // Mapeia os itens para o payload final, garantindo que ambos os campos de quantidade
-        // estejam presentes quando necessário.
-        const itemsPayload = orderItems.value.map(item => {
-            const isKg = item.unit_of_measure === 'kg';
-
-            return {
-                ...item, // O 'item' já tem 'quantity_meters' calculado pelo watcher.
-                quantity_unit: isKg ? item.quantity : null, // Adicionamos 'quantity_kg' se for KG.
-                total_value_items: (item.quantity || 0) * (item.valor_unitario || 0)
-            };
-        });
-        // =======================================================================
-
+        // Payload para a função RPC no Supabase
+        const itemsPayload = orderItems.value.map(item => ({
+            ...item,
+            quantity_unit: item.unit_of_measure === 'kg' ? item.quantity : null,
+            total_value_items: (item.quantity || 0) * (item.valor_unitario || 0)
+        }));
         const totalOrderValueCalculated = itemsPayload.reduce((sum, item) => sum + (item.total_value_items || 0), 0);
-        const rpcPayload = { p_customer_name: customerNameToSave, p_created_by: userStore.profile?.id, p_store_id: userStore.profile?.store_id, p_has_down_payment: orderHeader.has_down_payment, p_down_payment_proof_url: proofPublicUrl, p_order_items: itemsPayload, p_total_value: totalOrderValueCalculated, };
+        const rpcPayload = {
+            p_order_number: orderNumberToUse, // Envia o número do pedido para a função
+            p_customer_name: customerNameToSave,
+            p_created_by: userStore.profile?.id,
+            p_store_id: userStore.profile?.store_id,
+            p_has_down_payment: orderHeader.has_down_payment,
+            p_down_payment_proof_url: proofPublicUrl,
+            p_order_items: itemsPayload,
+            p_total_value: totalOrderValueCalculated,
+        };
 
-        console.log("Payload para a função 'create_launch_order':", JSON.stringify(rpcPayload, null, 2));
-
-        const { data: newOrderNumber, error: rpcError } = await supabase.rpc('create_launch_order', rpcPayload);
+        // 1. CHAMA A FUNÇÃO DO SUPABASE PARA CRIAR O PEDIDO
+        console.log("Chamando 'create_launch_order' no Supabase...");
+        const { data: newOrderId, error: rpcError } = await supabase.rpc('create_launch_order', rpcPayload);
         if (rpcError) { console.error("ERRO DETALHADO DO SUPABASE RPC:", rpcError); throw rpcError; }
+        console.log("Pedido criado no Supabase com sucesso. ID:", newOrderId);
 
+        // 2. SINCRONIZA COM GESTÃOCLICK USANDO O MESMO NÚMERO
         console.log("Sincronizando com Gestão Click...");
-        await syncOrderWithGestaoClick();
+        await syncOrderWithGestaoClick(orderNumberToUse);
         console.log("Sincronização com Gestão Click completa.");
 
+        // Se o pedido foi originado de um rascunho, exclui o rascunho
         if (currentDraftId.value) {
             await supabase.from('order_drafts').delete().match({ id: currentDraftId.value });
         }
 
-        const { data: orderData } = await supabase.from('orders').select('id').eq('order_number', newOrderNumber).single();
-        if (orderData) createdOrderId.value = orderData.id;
-        createdOrderNumber.value = newOrderNumber;
+        createdOrderId.value = newOrderId;
+        createdOrderNumber.value = orderNumberToUse;
         orderCreatedSuccess.value = true;
-        appStore.showSnackbar("Pedido criado e sincronizado com sucesso!", "success");
+        appStore.showSnackbar(`Pedido #${orderNumberToUse} criado e sincronizado com sucesso!`, "success");
         clearAutoSave();
     } catch (error: any) {
         console.error('Erro ao criar lançamento:', error);
-        let errorMessage = error.message || 'Erro desconhecido.';
-        if (errorMessage.includes('Gestão Click') || (error.response && error.response.data)) {
-            errorMessage = `Falha na integração com o sistema de gestão: ${errorMessage}`;
-        }
-        appStore.showSnackbar(`Erro ao criar lançamento: ${errorMessage}`, 'error');
+        appStore.showSnackbar(`Erro ao criar lançamento: ${error.message || 'Erro desconhecido.'}`, 'error');
     } finally {
         isSubmitting.value = false;
     }
 };
+
 
 const resetForm = (clearRecovery = true) => {
   Object.assign(orderHeader, { customer_id: null, customer_name: '', has_down_payment: false, down_payment_proof_file: null, observation: '' });
@@ -1085,111 +1130,56 @@ const resetForm = (clearRecovery = true) => {
   orderCreatedSuccess.value = false;
   createdOrderId.value = null;
   createdOrderNumber.value = null;
-  isDraftMode.value = false; // Garante que um novo formulário comece como um pedido normal
+  isDraftMode.value = false;
   downPaymentForReceipt.value = null;
   currentDraftId.value = null;
-  fetchNextOrderNumber();
+  fetchNextOrderNumber(); // Busca o próximo número para o novo formulário
   if (clearRecovery) {
     clearAutoSave();
   }
 };
 
+// --- Funções Utilitárias ---
 const formatCurrency = (value: number | undefined | null) => { if (value === null || value === undefined) return 'R$ 0,00'; return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value); };
 const imageToBase64 = (urlOrFile: string | File): Promise<string> => new Promise((resolve, reject) => { const img = new Image(); img.crossOrigin = 'Anonymous'; img.onload = () => { const canvas = document.createElement('canvas'); canvas.width = img.width; canvas.height = img.height; const ctx = canvas.getContext('2d'); if (ctx) { ctx.drawImage(img, 0, 0); resolve(canvas.toDataURL('image/png')); } else { reject(new Error('Canvas context not available')); } }; img.onerror = reject; if (typeof urlOrFile === 'string') { img.src = urlOrFile; } else { img.src = URL.createObjectURL(urlOrFile); } });
 const addHeader = async (doc: jsPDF) => { const pageWidth = doc.internal.pageSize.width; try { const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713'; const logoBase64 = await imageToBase64(logoUrl); const logoProps = doc.getImageProperties(logoBase64); const logoWidth = 50; const logoHeight = (logoProps.height * logoWidth) / logoProps.width; doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight); } catch (e) { console.error("Não foi possível carregar o logo para o PDF", e); } doc.setFontSize(9); doc.setTextColor(100); doc.text([ "MR JACKY - 20.631.721/0001-07", "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000", "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com" ], pageWidth - 15, 15, { align: 'right' }); doc.setLineWidth(0.5); doc.line(15, 35, pageWidth - 15, 35); };
 const addFooter = (doc: jsPDF) => { const pageCount = (doc as any).internal.getNumberOfPages(); const pageWidth = doc.internal.pageSize.width; const pageHeight = doc.internal.pageSize.height; doc.setFontSize(8).setTextColor(150); for (let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.text(`Gerado com MJProcess em ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 15, pageHeight - 10); doc.text(`Página ${i} de ${pageCount}`, pageWidth - 15, pageHeight - 10, { align: 'right' }); } };
 const addWatermark = (doc: jsPDF) => { const totalPages = (doc as any).internal.getNumberOfPages(); const pageWidth = doc.internal.pageSize.getWidth(); const pageHeight = doc.internal.pageSize.getHeight(); for (let i = 1; i <= totalPages; i++) { doc.setPage(i); doc.setFontSize(72); doc.setTextColor(255, 0, 0); doc.saveGraphicsState(); doc.setGState(new (doc as any).GState({ opacity: 0.15 })); for (let y = 0; y < pageHeight; y += 100) { for (let x = -50; x < pageWidth; x += 180) { doc.text('RECIBO', x, y, { angle: -45, align: 'center' }); } } doc.restoreGraphicsState(); } };
-
-const generateDraftReceiptPdf = async () => {
-    if (!downPaymentForReceipt.value || downPaymentForReceipt.value <= 0 || !orderHeader.customer_id) {
-        appStore.showSnackbar('Preencha o cliente e o valor do sinal para gerar o recibo.', 'error');
-        return;
-    }
-    isGeneratingPdf.value = true;
-    try {
-        const selectedClient = clientList.value.find(c => c.id === orderHeader.customer_id) || { nome: 'Cliente Desconhecido', cpf_cnpj: 'Não informado' };
-        const doc = new jsPDF();
-        const pageWidth = doc.internal.pageSize.width;
-        const margin = 15;
-
-        await addHeader(doc);
-        doc.setFontSize(18).setFont('helvetica', 'bold').text(`Recibo de Sinal`, pageWidth / 2, 45, { align: 'center' });
-
-        const startY = 60;
-        const receiptText = `Recebemos de ${selectedClient.nome} (CPF/CNPJ: ${selectedClient.cpf_cnpj || 'Não informado'}) a importância de ${formatCurrency(downPaymentForReceipt.value)} como sinal e princípio de pagamento para o Pedido de Venda #${String(currentOrderNumber.value).padStart(4, '0')}.`;
-
-        const maxTextWidth = pageWidth * 0.67;
-        const splitText = doc.splitTextToSize(receiptText, maxTextWidth);
-        doc.setFontSize(11).setFont('helvetica', 'normal');
-        doc.text(splitText, margin, startY);
-
-        const textHeight = doc.getTextDimensions(splitText).h;
-        const qrSize = textHeight * 1.3;
-        const qrX = margin + maxTextWidth + 5;
-        const qrY = startY - 4;
-        const qrCodeContent = `Pedido: ${currentOrderNumber.value}\nCliente: ${selectedClient.nome}\nValor Sinal: ${formatCurrency(downPaymentForReceipt.value)}`;
-        const qrCodeDataUrl = await QRCode.toDataURL(qrCodeContent, { width: qrSize * 5 });
-        doc.addImage(qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize);
-        doc.setFontSize(7).setTextColor(100);
-        doc.text('Dados do Pedido', qrX + qrSize / 2, qrY + qrSize + 4, { align: 'center' });
-        let nextElementY = startY + textHeight + 10;
-
-        const itemsForPdf = orderItems.value.filter(item => item.fabric_type !== GROSS_ORDER_PRODUCT_NAME);
-
-        let finalY;
-
-        if (itemsForPdf.length > 0) {
-            const orderItemsForReceipt = itemsForPdf.map(item => [
-                item.fabric_type || 'N/A',
-                item.stamp_ref || 'N/A',
-                `${item.quantity || 0}${item.unit_of_measure}`,
-                formatCurrency(item.valor_unitario)
-            ]);
-            doc.setFontSize(12).setFont('helvetica', 'bold').text('Itens do Pedido (Referência)', margin, nextElementY);
-            autoTable(doc, {
-                startY: nextElementY + 5,
-                head: [['Base', 'Estampa', 'Quantidade', 'Valor Unit.']],
-                body: orderItemsForReceipt,
-                theme: 'grid',
-            });
-            finalY = (doc as any).lastAutoTable.finalY + 20;
-        } else {
-            finalY = nextElementY + 10;
-        }
-
-        doc.setFontSize(10).text(`Tiete, ${format(new Date(), 'dd \'de\' MMMM \'de\' yyyy', { locale: ptBR })}.`, margin, finalY);
-
-        const signatureY = doc.internal.pageSize.height - 40;
-        doc.setLineWidth(0.5).setDrawColor(100, 100, 100).line(margin + 20, signatureY, pageWidth - margin - 20, signatureY);
-        doc.setFontSize(10).setTextColor(100).text(selectedClient.nome, pageWidth / 2, signatureY + 5, { align: 'center' });
-        doc.setFontSize(8).setTextColor(150).text('Assinatura do Cliente', pageWidth / 2, signatureY + 9, { align: 'center' });
-
-        addWatermark(doc);
-        addFooter(doc);
-
-        const pdfFileName = `Recibo_Sinal_${String(currentOrderNumber.value).padStart(4, '0')}_${sanitizeName(selectedClient.nome)}.pdf`;
-        doc.save(pdfFileName);
-        appStore.showSnackbar('Recibo de sinal gerado com sucesso!', 'success');
-
-    } catch (error: any) {
-        console.error("Erro ao gerar PDF do recibo:", error);
-        appStore.showSnackbar(`Erro ao gerar PDF do recibo: ${error.message}`, 'error');
-    } finally {
-        isGeneratingPdf.value = false;
-    }
-};
-
+const generateDraftReceiptPdf = async () => { if (!downPaymentForReceipt.value || downPaymentForReceipt.value <= 0 || !orderHeader.customer_id) { appStore.showSnackbar('Preencha o cliente e o valor do sinal para gerar o recibo.', 'error'); return; } isGeneratingPdf.value = true; try { const selectedClient = clientList.value.find(c => c.id === orderHeader.customer_id) || { nome: 'Cliente Desconhecido', cpf_cnpj: 'Não informado' }; const doc = new jsPDF(); const pageWidth = doc.internal.pageSize.width; const margin = 15; await addHeader(doc); doc.setFontSize(18).setFont('helvetica', 'bold').text(`Recibo de Sinal`, pageWidth / 2, 45, { align: 'center' }); const startY = 60; const receiptText = `Recebemos de ${selectedClient.nome} (CPF/CNPJ: ${selectedClient.cpf_cnpj || 'Não informado'}) a importância de ${formatCurrency(downPaymentForReceipt.value)} como sinal e princípio de pagamento para o Pedido de Venda #${String(currentOrderNumber.value).padStart(4, '0')}.`; const maxTextWidth = pageWidth * 0.67; const splitText = doc.splitTextToSize(receiptText, maxTextWidth); doc.setFontSize(11).setFont('helvetica', 'normal'); doc.text(splitText, margin, startY); const textHeight = doc.getTextDimensions(splitText).h; const qrSize = textHeight * 1.3; const qrX = margin + maxTextWidth + 5; const qrY = startY - 4; const qrCodeContent = `Pedido: ${currentOrderNumber.value}\nCliente: ${selectedClient.nome}\nValor Sinal: ${formatCurrency(downPaymentForReceipt.value)}`; const qrCodeDataUrl = await QRCode.toDataURL(qrCodeContent, { width: qrSize * 5 }); doc.addImage(qrCodeDataUrl, 'PNG', qrX, qrY, qrSize, qrSize); doc.setFontSize(7).setTextColor(100); doc.text('Dados do Pedido', qrX + qrSize / 2, qrY + qrSize + 4, { align: 'center' }); let nextElementY = startY + textHeight + 10; const itemsForPdf = orderItems.value.filter(item => item.fabric_type !== GROSS_ORDER_PRODUCT_NAME); let finalY; if (itemsForPdf.length > 0) { const orderItemsForReceipt = itemsForPdf.map(item => [ item.fabric_type || 'N/A', item.stamp_ref || 'N/A', `${item.quantity || 0}${item.unit_of_measure}`, formatCurrency(item.valor_unitario) ]); doc.setFontSize(12).setFont('helvetica', 'bold').text('Itens do Pedido (Referência)', margin, nextElementY); autoTable(doc, { startY: nextElementY + 5, head: [['Base', 'Estampa', 'Quantidade', 'Valor Unit.']], body: orderItemsForReceipt, theme: 'grid', }); finalY = (doc as any).lastAutoTable.finalY + 20; } else { finalY = nextElementY + 10; } doc.setFontSize(10).text(`Tiete, ${format(new Date(), 'dd \'de\' MMMM \'de\' yyyy', { locale: ptBR })}.`, margin, finalY); const signatureY = doc.internal.pageSize.height - 40; doc.setLineWidth(0.5).setDrawColor(100, 100, 100).line(margin + 20, signatureY, pageWidth - margin - 20, signatureY); doc.setFontSize(10).setTextColor(100).text(selectedClient.nome, pageWidth / 2, signatureY + 5, { align: 'center' }); doc.setFontSize(8).setTextColor(150).text('Assinatura do Cliente', pageWidth / 2, signatureY + 9, { align: 'center' }); addWatermark(doc); addFooter(doc); const pdfFileName = `Recibo_Sinal_${String(currentOrderNumber.value).padStart(4, '0')}_${sanitizeName(selectedClient.nome)}.pdf`; doc.save(pdfFileName); appStore.showSnackbar('Recibo de sinal gerado com sucesso!', 'success'); } catch (error: any) { console.error("Erro ao gerar PDF do recibo:", error); appStore.showSnackbar(`Erro ao gerar PDF do recibo: ${error.message}`, 'error'); } finally { isGeneratingPdf.value = false; } };
 const generateQuoteAndUploadPdf = async () => { isGeneratingPdf.value = true; try { const selectedClient = clientList.value.find(c => c.id === orderHeader.customer_id) || { nome: 'Cliente Desconhecido' }; const itemDetailsWithPrice = orderItems.value.map(item => { const price = item.valor_unitario || 0; const quantityForCalc = item.quantity || 0; const total = quantityForCalc * price; return { base: item.fabric_type, estampa: item.stamp_ref, quantidade: `${item.quantity}${item.unit_of_measure}`, rendimento: item.unit_of_measure === 'kg' ? `~ ${item.quantity_meters?.toFixed(2)}m` : '-', valorUnit: formatCurrency(price), valorTotal: formatCurrency(total) }; }); const grandTotal = itemDetailsWithPrice.reduce((sum, item) => sum + parseFloat(item.valorTotal.replace('R$', '').replace(/\./g, '').replace(',', '.')), 0); const doc = new jsPDF(); await addHeader(doc); doc.setFontSize(18).setFont('helvetica', 'bold').text(`Orçamento #${String(createdOrderNumber.value).padStart(4, '0')}`, 15, 45); autoTable(doc, { startY: 50, head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']], body: [[selectedClient.nome, userStore.profile?.full_name || 'N/A', format(new Date(), 'dd/MM/yyyy', { locale: ptBR })]], theme: 'striped', }); autoTable(doc, { startY: (doc as any).lastAutoTable.finalY + 10, head: [['Base', 'Estampa', 'Quantidade', 'Rendimento', 'Valor Unit.', 'Valor Total']], body: itemDetailsWithPrice.map(i => [i.base, i.estampa, i.quantidade, i.rendimento, i.valorUnit, i.valorTotal]), theme: 'grid', foot: [['', '', '', '', 'Total do Pedido:', formatCurrency(grandTotal)]], footStyles: { fontStyle: 'bold', fontSize: 11, halign: 'right' }, didDrawPage: (data) => { const signatureY = doc.internal.pageSize.height - 40; doc.setLineWidth(0.5).setDrawColor(100, 100, 100).line(40, signatureY, doc.internal.pageSize.width - 40, signatureY); doc.setFontSize(10).setTextColor(100).text(`Assinatura do Cliente: ${selectedClient.nome}`, doc.internal.pageSize.width / 2, signatureY + 5, { align: 'center' }); } }); addFooter(doc); const pdfBlob = doc.output('blob'); const pdfFileName = `Orcamento_${String(createdOrderNumber.value).padStart(4, '0')}_${sanitizeName(selectedClient.nome)}.pdf`; const url = URL.createObjectURL(pdfBlob); const a = document.createElement('a'); a.href = url; a.download = pdfFileName; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); const pdfPath = `sales_orders/${pdfFileName}`; const publicUrl = await uploadFile(pdfBlob, 'sales-orders', pdfPath); const { error: updateError } = await supabase.from('orders').update({ sales_order_pdf_url: publicUrl }).eq('id', createdOrderId.value); if (updateError) throw updateError; appStore.showSnackbar('Orçamento em PDF gerado, baixado e anexado com sucesso!', 'success'); } catch (error: any) { console.error("Erro ao gerar PDF do orçamento:", error); appStore.showSnackbar(`Erro ao gerar PDF: ${error.message}`, 'error'); } finally { isGeneratingPdf.value = false; } };
 
-onMounted(() => {
-  fetchNextOrderNumber();
-  fetchInitialData();
+// --- Ciclo de Vida do Componente ---
+onMounted(async () => {
+  await fetchInitialData();
+  await fetchNextOrderNumber(); // Busca o número inicial
+
+  // Se inscreve para ouvir alterações em tempo real
+  realtimeChannel = supabase
+    .channel('order_drafts_changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'order_drafts' },
+      (payload) => {
+        console.log('Alteração na tabela de rascunhos detectada, buscando novo número...', payload);
+        // Quando qualquer rascunho é criado ou deletado, busca o próximo número
+        // para garantir que a tela esteja sempre atualizada.
+        fetchNextOrderNumber();
+      }
+    )
+    .subscribe();
+
   if (localStorage.getItem(AUTO_RECOVERY_KEY)) {
     showDraftAlert.value = true;
   }
 });
 
-onBeforeUnmount(() => { clearTimeout(autoSaveTimeout); });
+onUnmounted(() => {
+  // Limpa a inscrição em tempo real e o timeout ao sair da página
+  if (realtimeChannel) {
+    supabase.removeChannel(realtimeChannel);
+  }
+  clearTimeout(autoSaveTimeout);
+});
 
 </script>
 
