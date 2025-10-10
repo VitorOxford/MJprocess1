@@ -6,7 +6,17 @@
           <v-icon start size="32">mdi-cog-sync-outline</v-icon>
           Kanban de Produção
         </v-toolbar-title>
-      </v-toolbar>
+        <v-spacer></v-spacer>
+        <v-btn
+          icon="mdi-refresh"
+          variant="text"
+          @click="forceRefresh"
+          :loading="loading"
+          :disabled="loading"
+        >
+          <v-tooltip activator="parent" location="bottom">Atualizar Kanban</v-tooltip>
+        </v-btn>
+        </v-toolbar>
 
       <div class="d-flex flex-column flex-sm-row justify-space-between align-center ga-4 px-4 pb-4">
         <div class="d-flex align-center">
@@ -499,8 +509,12 @@ const rescheduleItem = async (itemId: string, newDate: string) => {
   }
 };
 
-// ===== INÍCIO DA CORREÇÃO =====
-// As chamadas agora usam a nova função `fetchProductionSchedule`
+// ===== INÍCIO DA CORREÇÃO: Função para forçar a atualização =====
+const forceRefresh = async () => {
+  await dashboardStore.fetchProductionSchedule();
+};
+// ===== FIM DA CORREÇÃO =====
+
 onActivated(async () => {
   await dashboardStore.fetchProductionSchedule();
 });
@@ -508,7 +522,6 @@ onActivated(async () => {
 onMounted(async () => {
   await dashboardStore.fetchProductionSchedule();
 });
-// ===== FIM DA CORREÇÃO =====
 </script>
 
 <style scoped lang="scss">

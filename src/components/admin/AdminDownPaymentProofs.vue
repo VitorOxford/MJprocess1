@@ -34,7 +34,7 @@
         md="4"
         lg="3"
       >
-        <v-card class="proof-card" variant="flat">
+        <v-card class="proof-card" variant="flat" @click="showOrderDetails(proof)">
           <div class="proof-preview-container">
             <v-img
               v-if="isImage(proof.down_payment_proof_url)"
@@ -42,7 +42,6 @@
               height="200"
               cover
               class="proof-image"
-              @click="openImageModal(proof.down_payment_proof_url, proof.customer_name)"
             >
               <template v-slot:placeholder>
                 <div class="d-flex align-center justify-center fill-height">
@@ -76,15 +75,14 @@
           </v-card-text>
 
           <v-card-actions class="pa-3">
-            <v-btn
-              :href="proof.down_payment_proof_url"
-              target="_blank"
-              color="primary"
+             <v-btn
+              @click.stop="openImageModal(proof.down_payment_proof_url, proof.customer_name)"
+              color="secondary"
               variant="tonal"
               block
             >
-              <v-icon start>mdi-file-download-outline</v-icon>
-              Ver / Baixar
+              <v-icon start>mdi-image-search-outline</v-icon>
+              Ver Comprovante
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -98,10 +96,16 @@
     </div>
 
     <ImageModal
-      :show="showModal"
+      :show="showImagePreviewModal"
       :image-url="selectedImageUrl"
       :file-name="selectedImageName"
-      @close="showModal = false"
+      @close="showImagePreviewModal = false"
+    />
+
+    <OrderDetailModal
+      :show="showDetailsModal"
+      :order-id="selectedOrderId"
+      @close="showDetailsModal = false"
     />
   </v-container>
 </template>
@@ -112,6 +116,8 @@ import { supabase } from '@/api/supabase';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import ImageModal from '@/components/ImageModal.vue';
+// Importando o modal de detalhes do pedido
+import OrderDetailModal from '@/components/OrderDetailModal.vue';
 
 type Proof = {
   order_id: string;
@@ -127,26 +133,25 @@ const search = ref('');
 const proofs = ref<Proof[]>([]);
 const error = ref<string | null>(null);
 
-const showModal = ref(false);
+// Estados para o modal de imagem
+const showImagePreviewModal = ref(false);
 const selectedImageUrl = ref('');
 const selectedImageName = ref('');
 
-// --- INÍCIO DAS CORREÇÕES ---
+// --- NOVOS ESTADOS PARA O MODAL DE DETALHES DO PEDIDO ---
+const showDetailsModal = ref(false);
+const selectedOrderId = ref<string | null>(null);
+// ---------------------------------------------------------
 
-// Função para verificar se a URL é de uma imagem
 const isImage = (url: string) => {
     if (!url) return false;
     return /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
 };
 
-// Função para retornar um ícone apropriado para o tipo de arquivo
 const getFileIcon = (url: string) => {
     if (/\.pdf$/i.test(url)) return 'mdi-file-pdf-box';
     return 'mdi-file-document-outline';
 };
-
-// --- FIM DAS CORREÇÕES ---
-
 
 const filteredProofs = computed(() => {
     if (!search.value) return proofs.value;
@@ -157,11 +162,19 @@ const filteredProofs = computed(() => {
     );
 });
 
+// Abre o modal com a imagem do comprovante
 const openImageModal = (url: string, name: string) => {
   selectedImageUrl.value = url;
   selectedImageName.value = `Comprovante de ${name}`;
-  showModal.value = true;
+  showImagePreviewModal.value = true;
 };
+
+// --- NOVA FUNÇÃO PARA ABRIR O MODAL DE DETALHES DO PEDIDO ---
+const showOrderDetails = (proof: Proof) => {
+  selectedOrderId.value = proof.order_id;
+  showDetailsModal.value = true;
+};
+// -------------------------------------------------------------
 
 const fetchProofs = async () => {
   loading.value = true;
@@ -207,6 +220,7 @@ onMounted(fetchProofs);
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: all 0.3s ease;
   overflow: hidden;
+  cursor: pointer; /* Adicionado para indicar que o card é clicável */
 
   &:hover {
     transform: translateY(-8px);
@@ -221,7 +235,6 @@ onMounted(fetchProofs);
 }
 
 .proof-image {
-  cursor: pointer;
   position: relative;
 }
 

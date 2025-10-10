@@ -4,184 +4,147 @@
       <v-card-title class="dialog-header">
         <span class="text-h5">Finalizar e Enviar para Aprovação</span>
       </v-card-title>
+      <v-divider></v-divider>
 
-      <v-card-text class="py-4">
-        <p class="mb-4">
-          Anexe a arte final para o pedido de
-          <strong>{{ order?.customer_name || 'Cliente' }}</strong>.
-          O vendedor será notificado para obter a aprovação final.
-        </p>
-
-        <v-file-input
-          v-model="artFile"
-          label="Anexar arte final"
-          accept="image/*,.pdf,.cdr,.ai"
-          variant="outlined"
-          prepend-icon="mdi-image-plus"
-          :rules="[fileRule]"
-        ></v-file-input>
-
-        <div v-if="imagePreview" class="my-3 text-center">
-            <v-img :src="imagePreview" max-height="200" contain></v-img>
-            <p class="text-caption mt-1">{{ artFile[0]?.name }}</p>
+      <v-card-text v-if="item" class="dialog-content">
+        <div class="mb-4">
+          <p class="text-caption text-medium-emphasis">Cliente</p>
+          <p class="text-body-1 font-weight-bold">{{ item.order.customer_name }}</p>
         </div>
-
-      </v-card-text>
-
-      <v-card-actions class="dialog-footer">
+        <div class="mb-4">
+          <p class="text-caption text-medium-emphasis">Referência da Estampa</p>
+          <p class="text-body-1">{{ item.stamp_ref }}</p>
+        </div>
+        <div class="mb-4">
+          <p class="text-caption text-medium-emphasis">Arte Final do Designer</p>
+          <v-img
+            v-if="item.final_art_url"
+            :src="item.final_art_url"
+            class="art-preview-image"
+            max-height="300"
+            @click="openImage(item.final_art_url)"
+          ></v-img>
+           <p v-else class="text-body-2 text-red">Nenhuma arte final anexada.</p>
+        </div>
+        <div>
+          <p class="text-caption text-medium-emphasis">Observações do Vendedor (Opcional)</p>
+          <v-textarea
+            v-model="sellerNotes"
+            placeholder="Adicione observações para o cliente, se necessário."
+            variant="outlined"
+            rows="2"
+            hide-details
+          ></v-textarea>
+        </div>
+      </v-card-text> <v-card-actions class="dialog-actions">
+        <v-btn color="error" variant="text" @click="openChangesModal">
+          Solicitar Alteração
+        </v-btn>
         <v-spacer></v-spacer>
-        <v-btn text @click="close">Cancelar</v-btn>
+        <v-btn variant="text" @click="close">Cancelar</v-btn>
         <v-btn
-          color="primary"
-          variant="flat"
-          @click="submitForApproval"
-          :loading="isUploading"
-          :disabled="!artFile.length"
+          color="success"
+          variant="elevated"
+          @click="approve"
+          :loading="loading"
         >
-          <v-icon start>mdi-send-check</v-icon>
-          Enviar para Aprovação
+          Aprovar e Liberar
         </v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <ImageModal :show="showImageModal" :image-url="imageUrl" @close="showImageModal = false"/>
+  <RequestChangesModal :show="showRequestChangesModal" :item="item" @close="showRequestChangesModal = false" @sent="handleChangesSent" />
 </template>
 
 <script setup lang="ts">
-import { ref, watch, defineProps, defineEmits } from 'vue';
+import { ref } from 'vue';
 import { supabase } from '@/api/supabase';
 import { useUserStore } from '@/stores/user';
+import ImageModal from '@/components/ImageModal.vue';
+import RequestChangesModal from '@/components/RequestChangesModal.vue';
 
-<<<<<<< HEAD
 // ---- PROPS E EMITS ----
-=======
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
 const props = defineProps({
   show: Boolean,
-  order: Object as () => any | null,
+  item: {
+    type: Object,
+    default: null
+  },
 });
-const emit = defineEmits(['close', 'approved']);
+const emit = defineEmits(['close', 'approved', 'changes-requested']);
 
-<<<<<<< HEAD
 // ---- ESTADO ----
-=======
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
 const userStore = useUserStore();
-const artFile = ref<File[]>([]);
-const imagePreview = ref<string | null>(null);
-const isUploading = ref(false);
+const loading = ref(false);
+const sellerNotes = ref('');
+const showImageModal = ref(false);
+const imageUrl = ref('');
+const showRequestChangesModal = ref(false);
 
-<<<<<<< HEAD
-// ---- REGRAS E WATCHERS ----
-=======
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
-const fileRule = (value: File[]) => !!value.length || 'A arte final é obrigatória.';
 
-watch(artFile, (newFile) => {
-  if (newFile && newFile.length > 0) {
-    const file = newFile[0];
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        imagePreview.value = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    } else {
-        imagePreview.value = null;
-    }
-  } else {
-    imagePreview.value = null;
-  }
-});
-
-<<<<<<< HEAD
-// ---- FUNÇÕES ----
-=======
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
+// ---- MÉTODOS ----
 const close = () => {
-    artFile.value = [];
-    imagePreview.value = null;
-    emit('close');
+  sellerNotes.value = '';
+  emit('close');
+};
+
+const approve = async () => {
+  if (!props.item || !userStore.profile) return;
+  loading.value = true;
+  try {
+    const { error } = await supabase.rpc('approve_and_schedule_item', {
+      p_item_id: props.item.id,
+      p_seller_id: userStore.profile.id,
+      p_seller_notes: sellerNotes.value
+    });
+    if (error) throw error;
+    emit('approved');
+    close();
+  } catch (error: any) {
+    console.error("Erro ao aprovar item:", error);
+    alert(`Falha ao aprovar: ${error.message}`);
+  } finally {
+    loading.value = false;
+  }
+};
+
+const openChangesModal = () => {
+  showRequestChangesModal.value = true;
+};
+
+const handleChangesSent = () => {
+  emit('changes-requested');
+  close();
 }
 
-const submitForApproval = async () => {
-  if (!artFile.value.length || !props.order || !userStore.profile) return;
-  isUploading.value = true;
-  const file = artFile.value[0];
-  const filePath = `final_arts/${props.order.id}/${file.name}`;
-
-  try {
-<<<<<<< HEAD
-    // 1. Upload da arte
-=======
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
-    const { error: uploadError } = await supabase.storage
-        .from('media')
-        .upload(filePath, file, { upsert: true });
-    if (uploadError) throw uploadError;
-
-    const { data: urlData } = supabase.storage.from('media').getPublicUrl(filePath);
-
-<<<<<<< HEAD
-    // 2. Atualizar o pedido
-    const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-            // --- MUDANÇA IMPORTANTE AQUI ---
-            status: 'production_queue', // Em vez de 'customer_approval' ou 'production_scheduled'
-=======
-    const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-            status: 'production_queue',
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
-            details: { ...props.order.details, final_art_url: urlData.publicUrl }
-        })
-        .eq('id', props.order.id);
-    if (updateError) throw updateError;
-
-<<<<<<< HEAD
-    // 3. Enviar notificação para o criador do pedido (vendedor)
-    // Vamos simplificar a notificação por agora.
-=======
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
-     const { error: notificationError } = await supabase
-      .from('notifications')
-      .insert({
-          recipient_id: props.order.created_by,
-          sender_id: userStore.profile.id,
-          content: `A arte para o pedido de "${props.order.customer_name}" foi aprovada e enviada para a fila de produção.`,
-<<<<<<< HEAD
-          redirect_url: `/producao` // Link para o Kanban de produção
-=======
-          redirect_url: `/producao`
->>>>>>> 167a6d9 (Refatora interface de aprovações e otimiza fluxo de produção)
-      });
-    if (notificationError) console.error("Erro ao notificar, mas o fluxo continua:", notificationError);
-
-
-    emit('approved', props.order.id);
-    close();
-
-  } catch (error: any) {
-      console.error('Erro ao enviar para aprovação:', error);
-      alert(`Erro: ${error.message}`);
-  } finally {
-      isUploading.value = false;
-  }
+const openImage = (url: string) => {
+  imageUrl.value = url;
+  showImageModal.value = true;
 };
 </script>
 
 <style scoped>
 .glassmorphism-card {
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  background-color: rgba(30, 30, 30, 0.75) !important;
-  border-radius: 12px !important;
+  background: rgba(40, 40, 40, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px !important;
 }
 .dialog-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 24px;
 }
-.dialog-footer {
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+.dialog-content {
+  padding: 24px;
+}
+.art-preview-image {
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.dialog-actions {
+  padding: 16px 24px;
+  background-color: rgba(0,0,0,0.2);
 }
 </style>

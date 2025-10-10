@@ -202,23 +202,43 @@ const productionByMachineChart = computed(() => {
     return { labels, datasets: [{ backgroundColor: ['#00BCD4', '#FFC107'], data }]};
 });
 
+// ===== INÍCIO DA CORREÇÃO =====
+// Lógica de filtragem mais robusta que ignora espaços em branco e evita duplicatas.
 const sellerList = computed(() => {
     if (!reportData.value?.all_items_table) return [];
-    return [...new Set(reportData.value.all_items_table.map((item: any) => item.creator_name))];
+    const names = reportData.value.all_items_table
+        .map((item: any) => item.creator_name?.trim())
+        .filter(Boolean); // Remove nomes nulos ou vazios
+    return [...new Set(names)];
 });
+
 const statusList = computed(() => {
     if (!reportData.value?.all_items_table) return [];
-    return [...new Set(reportData.value.all_items_table.map((item: any) => item.status))];
+    const statuses = reportData.value.all_items_table
+        .map((item: any) => item.status?.trim())
+        .filter(Boolean); // Remove status nulos ou vazios
+    return [...new Set(statuses)];
 });
 
 const filteredDetailedItems = computed(() => {
     if (!reportData.value?.all_items_table) return [];
+
+    // Converte os valores do filtro para strings sem espaços para garantir a comparação
+    const trimmedSellerFilter = sellerFilter.value?.trim();
+    const trimmedStatusFilter = statusFilter.value?.trim();
+
     return reportData.value.all_items_table.filter((item: any) => {
-        const sellerMatch = !sellerFilter.value || item.creator_name === sellerFilter.value;
-        const statusMatch = !statusFilter.value || item.status === statusFilter.value;
+        // Compara os valores dos itens também sem espaços
+        const itemSeller = item.creator_name?.trim();
+        const itemStatus = item.status?.trim();
+
+        const sellerMatch = !trimmedSellerFilter || itemSeller === trimmedSellerFilter;
+        const statusMatch = !trimmedStatusFilter || itemStatus === trimmedStatusFilter;
+
         return sellerMatch && statusMatch;
     });
 });
+// ===== FIM DA CORREÇÃO =====
 
 const fetchReportData = async () => {
   loading.value = true;

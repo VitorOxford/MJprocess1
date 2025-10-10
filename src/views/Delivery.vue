@@ -61,21 +61,26 @@
                     <v-icon start size="x-small">mdi-package-variant-closed</v-icon>
                     Lançamento com {{ order.order_items.length }} itens
                   </v-chip>
-                  <p v-else class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details.fabric_type }}</p>
+                  <p v-else class="info-line"><v-icon size="small">mdi-layers-triple-outline</v-icon> {{ order.details?.fabric_type }}</p>
                   <p class="info-line"><v-icon size="small">mdi-ruler-square</v-icon> {{ getOrderDisplayMeters(order) }}m</p>
                 </v-card-text>
-                <v-card-actions v-if="isReadyForBilling(order) && !order.billed_at" class="justify-center">
-                    <v-btn color="success" variant="flat" block @click.stop="openBillingModal(order)">
+
+                <v-card-actions class="justify-center">
+                    <v-btn v-if="isReadyForBilling(order) && !order.billed_at" color="success" variant="flat" block @click.stop="openBillingModal(order)">
                         <v-icon start>mdi-cash-register</v-icon>
                         Faturar Pedido
                     </v-btn>
+
+                    <v-btn v-else-if="!isReadyForBilling(order)" color="primary" variant="outlined" block @click.stop="openCompleteAllItemsModal(order)">
+                        <v-icon start>mdi-check-all</v-icon>
+                        Concluir Itens
+                    </v-btn>
                 </v-card-actions>
-                <div v-else-if="!isReadyForBilling(order)" class="text-center pa-2 text-caption text-amber">
-                    Aguardando todos os itens serem finalizados na produção.
-                </div>
-                 <div v-else-if="order.billed_at" class="text-center pa-2 text-caption text-success">
+
+                 <div v-if="order.billed_at" class="text-center pa-2 text-caption text-success">
                     Pronto para agendar. Arraste para um dia.
                 </div>
+
               </v-card>
             </template>
           </draggable>
@@ -143,7 +148,6 @@
             </template>
             <template #footer>
                 <div v-for="ghost in getGhostEntriesForDay(day.date)" :key="ghost.id">
-                    {{ console.log(`[DELIVERY.VUE] Renderizando card fantasma para o dia ${format(day.date, 'dd/MM')}:`, ghost) }}
                     <v-card class="order-card ghost-card production-ghost mb-4" elevation="4">
                         <v-card-text @click="openDetailModal(ghost.id)">
                             <p class="font-weight-bold text-subtitle-1">{{ ghost.customer_name }}</p>
@@ -247,6 +251,29 @@
         </v-card>
     </v-dialog>
 
+    <v-dialog v-model="showCompleteAllItemsModal" max-width="500px" persistent>
+        <v-card class="glassmorphism-card-dialog">
+            <v-card-title class="dialog-header">
+                <span class="text-h5">Concluir Todos os Itens?</span>
+            </v-card-title>
+            <v-card-text class="py-4">
+                <p>
+                    Você está prestes a marcar todos os itens do pedido de <strong>{{ selectedOrderForCompletion?.customer_name }}</strong> como 'Concluído'.
+                </p>
+                <p class="mt-2 text-medium-emphasis">
+                    Esta ação não pode ser desfeita. O pedido ficará pronto para ser faturado. Deseja continuar?
+                </p>
+            </v-card-text>
+            <v-card-actions class="dialog-footer">
+                <v-spacer></v-spacer>
+                <v-btn text @click="closeCompleteAllItemsModal">Cancelar</v-btn>
+                <v-btn color="primary" variant="flat" @click="confirmCompleteAllItems" :loading="isCompletingAllItems">
+                    Confirmar e Concluir
+                </v-btn>
+            </v-card-actions>
+        </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -266,20 +293,19 @@ import { ptBR } from 'date-fns/locale';
 type OrderItem = { id: string; status: string; fabric_type: string; quantity_meters: number; billed_quantity: number | null; };
 type Order = {
   id: string; customer_name: string; quantity_meters: number; status: string;
-  is_launch: boolean; details: { fabric_type: string; };
+  is_launch: boolean; details: { fabric_type: string; } | null; // Adicionado | null
   actual_delivery_date: Date | null; delivery_confirmed_at: string | null;
   production_date: string | null;
   billed_at: string | null;
   order_number: number;
   order_items: OrderItem[];
   creator: { full_name: string; } | null;
-  forecast_delivery_date?: string | null; // Adicionado para consistência
+  forecast_delivery_date?: string | null;
 };
 
 // State
 const userStore = useUserStore();
 const dashboardStore = useDashboardStore();
-// LOG: Desestruturando o getter productionGhosts para ser usado no template
 const { productionGhosts, loading } = storeToRefs(dashboardStore);
 
 const showDetailModal = ref(false);
@@ -297,7 +323,12 @@ const showForceCompleteModal = ref(false);
 const isForcingComplete = ref(false);
 const selectedOrderForForceComplete = ref<Order | null>(null);
 
-// LOG: Observando a propriedade productionGhosts para depuração
+// State para a nova funcionalidade
+const showCompleteAllItemsModal = ref(false);
+const isCompletingAllItems = ref(false);
+const selectedOrderForCompletion = ref<Order | null>(null);
+
+
 watch(productionGhosts, (newGhosts) => {
     console.log('[DELIVERY.VUE] A propriedade `productionGhosts` foi atualizada. Novos fantasmas:', newGhosts);
 }, { deep: true });
@@ -333,15 +364,13 @@ const getOrderDisplayMeters = (order: any) => {
     return order.quantity_meters;
 };
 
-// LOG: Função para buscar os fantasmas para um dia específico
 const getGhostEntriesForDay = (date: Date) => {
-    console.log(`[getGhostEntriesForDay] Buscando fantasmas para o dia: ${format(date, 'dd/MM')}`);
     const ghostsForDay = productionGhosts.value.filter(ghost =>
-        ghost.forecast_delivery_date && isValid(ghost.forecast_delivery_date) && isSameDay(ghost.forecast_delivery_date, date)
+        // A data já é um objeto Date, então `parseISO` não é mais necessário aqui
+        ghost.forecast_delivery_date &&
+        isValid(ghost.forecast_delivery_date) &&
+        isSameDay(ghost.forecast_delivery_date, date)
     );
-    if (ghostsForDay.length > 0) {
-      console.log(`[getGhostEntriesForDay] ENCONTRADOS ${ghostsForDay.length} FANTASMAS para ${format(date, 'dd/MM')}:`, ghostsForDay);
-    }
     return ghostsForDay;
 };
 
@@ -357,9 +386,12 @@ const weekDeliveryDays = computed(() => {
     const days = [ { name: 'Terça-feira', dayOfWeek: 2 }, { name: 'Quinta-feira', dayOfWeek: 4 }, { name: 'Sábado', dayOfWeek: 6 }, ];
     return days.map(dayInfo => {
         let currentDate = new Date(weekStart);
-        while (getDay(currentDate) !== dayInfo.dayOfWeek) {
-            currentDate = addDays(currentDate, 1);
-        }
+        const targetDay = dayInfo.dayOfWeek === 6 ? 6 : dayInfo.dayOfWeek % 7;
+        let currentDay = getDay(currentDate) === 0 ? 7 : getDay(currentDate);
+
+        let dateOffset = targetDay - currentDay;
+        currentDate = addDays(weekStart, dateOffset);
+
         return {
             name: dayInfo.name, date: currentDate,
             orders: scheduledOrders.value.filter(o => o.actual_delivery_date && isSameDay(o.actual_delivery_date, currentDate))
@@ -379,9 +411,9 @@ const onDragEnd = async (event: any) => {
     const newDateStr = to.dataset.date;
     if (!orderId) return;
 
-    const order = allOrders.value.find(o => o.id === orderId);
-    if (order) {
-      order.actual_delivery_date = newDateStr ? parseISO(newDateStr) : null;
+    const orderIndex = allOrders.value.findIndex(o => o.id === orderId);
+    if (orderIndex !== -1) {
+        allOrders.value[orderIndex].actual_delivery_date = newDateStr ? parseISO(newDateStr) : null;
     }
 
     try {
@@ -439,7 +471,6 @@ const openBillingModal = (order: Order) => {
 const handleBilled = async () => {
     showBillingModal.value = false;
     await fetchDeliveryOrders();
-    // LOG: Forçar uma nova busca no dashboard para atualizar o estado
     await dashboardStore.fetchData();
 };
 
@@ -447,7 +478,6 @@ const handleBilled = async () => {
 const formatDate = (date: Date | string | null | undefined, formatString: string) => {
   if (!date) return '';
   const dateObj = typeof date === 'string' ? parseISO(date) : new Date(date);
-  // LOG: Verificando se a data é válida antes de formatar
   if (!isValid(dateObj)) {
     console.error(`[formatDate] Data inválida recebida:`, date);
     return 'Data Inválida';
@@ -493,13 +523,42 @@ const confirmForceComplete = async () => {
         });
         if (error) throw error;
         await fetchDeliveryOrders();
-        // LOG: Forçar uma nova busca no dashboard para atualizar o estado
         await dashboardStore.fetchData();
         closeForceCompleteModal();
     } catch (err: any) {
         console.error("Erro ao forçar conclusão do pedido:", err);
     } finally {
         isForcingComplete.value = false;
+    }
+};
+
+const openCompleteAllItemsModal = (order: Order) => {
+    selectedOrderForCompletion.value = order;
+    showCompleteAllItemsModal.value = true;
+};
+
+const closeCompleteAllItemsModal = () => {
+    showCompleteAllItemsModal.value = false;
+    selectedOrderForCompletion.value = null;
+};
+
+const confirmCompleteAllItems = async () => {
+    if (!selectedOrderForCompletion.value || !userStore.profile?.id) return;
+    isCompletingAllItems.value = true;
+    try {
+        const { error } = await supabase.rpc('concluir_todos_itens_pedido', {
+            p_order_id: selectedOrderForCompletion.value.id,
+            p_user_id: userStore.profile.id
+        });
+        if (error) throw error;
+
+        await fetchDeliveryOrders();
+        await dashboardStore.fetchData();
+        closeCompleteAllItemsModal();
+    } catch (err: any) {
+        console.error("Erro ao concluir todos os itens do pedido:", err);
+    } finally {
+        isCompletingAllItems.value = false;
     }
 };
 
@@ -533,7 +592,7 @@ const filteredDeliveredOrders = computed(() => {
             if (o.is_launch) {
                 return o.order_items.some(item => selectedFabrics.value.includes(item.fabric_type));
             } else {
-                return o.details?.fabric_type && selectedFabrics.value.includes(o.details.fabric_type);
+                return !!o.details?.fabric_type && selectedFabrics.value.includes(o.details.fabric_type);
             }
         });
     }
@@ -544,13 +603,11 @@ const filteredDeliveredOrders = computed(() => {
 
 onActivated(async () => {
     await fetchDeliveryOrders();
-    // LOG: Forçar uma nova busca no dashboard para atualizar o estado
     await dashboardStore.fetchData();
 });
 
 onMounted(async () => {
     await fetchDeliveryOrders();
-    // LOG: Forçar uma nova busca no dashboard para atualizar o estado
     await dashboardStore.fetchData();
 });
 
@@ -594,10 +651,11 @@ onMounted(async () => {
 :deep(.v-data-table__wrapper tbody tr) {
   cursor: pointer;
 }
-.dialog-header, .dialog-footer {
+.dialog-header {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 .dialog-footer {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 1rem;
 }
 </style>

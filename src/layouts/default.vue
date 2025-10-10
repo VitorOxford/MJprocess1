@@ -341,6 +341,12 @@ const unreadNotifications = computed(() => notifications.value.filter(n => !n.is
 const allNavItems = [
   { icon: 'mdi-view-dashboard-outline', title: 'Dashboard', value: 'home', to: { name: 'Home' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
   { icon: 'mdi-check-decagram-outline', title: 'Aprovar Pedidos', value: 'approvals', to: { name: 'Approvals' }, roles: ['vendedor', 'designer', 'admin'] },
+  {
+    title: 'Sol. de Desenvolvimento',
+    icon: 'mdi-flask-outline',
+    to: '/development/new',
+    roles: ['admin', 'vendedor'],
+  },
   { icon: 'mdi-plus-box-outline', title: 'Novo Pedido', value: 'new-order', to: { name: 'NewOrder' }, roles: ['vendedor', 'admin'] },
   { icon: 'mdi-rocket-launch-outline', title: 'Lançamentos', value: 'orders-calendar', to: { name: 'Orders' }, roles: ['vendedor', 'designer', 'producao', 'admin'] },
   { icon: 'mdi-clipboard-check-outline', title: 'Liberação', value: 'liberacao', to: { name: 'Liberacao' }, roles: ['producao', 'admin'] },

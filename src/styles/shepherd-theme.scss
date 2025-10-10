@@ -1,0 +1,123 @@
+// src/styles/shepherd-theme.scss
+
+@import 'shepherd.js/dist/css/shepherd.css';
+
+// Animação de entrada
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.shepherd-mj-theme {
+  // Glassmorphism delicado
+  background: rgba(28, 28, 38, 0.55); // fundo escuro translúcido
+  backdrop-filter: blur(24px) saturate(150%) contrast(1.05);
+  -webkit-backdrop-filter: blur(24px) saturate(150%) contrast(1.05);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  max-width: 450px;
+  animation: fadeInScale 0.3s ease-out forwards;
+
+  // Cabeçalho
+  .shepherd-header {
+    background: linear-gradient(145deg, rgba(255,255,255,0.05), rgba(255,255,255,0.1));
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px 18px 0 0;
+
+    .shepherd-title {
+      color: #3d3d3d; // azul clarinho suave
+      font-weight: 700;
+      font-size: 1.2rem;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    }
+
+    .shepherd-cancel-icon {
+      color: rgba(243, 4, 4, 0.6);
+      transition: color 0.2s ease;
+      &:hover {
+        color: #ff0000;
+      }
+    }
+  }
+
+  // Conteúdo
+  .shepherd-text {
+    color: rgba(240, 240, 250, 0.85);
+    padding: 1.25rem 1.5rem;
+    font-size: 1rem;
+    line-height: 1.7;
+
+    strong {
+      color: #ffffff;
+      font-weight: 600;
+    }
+    
+    i {
+      color: #c0c0c0;
+    }
+  }
+
+  // Rodapé com botões
+  .shepherd-footer {
+    padding: 0 1.5rem 1.25rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+
+    .shepherd-button {
+      border: none;
+      border-radius: 12px;
+      padding: 0.7rem 1.4rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+      &.shepherd-button-secondary {
+        background: rgba(255,255,255,0.08);
+        color: rgba(255,255,255,0.75);
+        &:hover {
+          background: rgba(255,255,255,0.15);
+          color: #ffffff;
+        }
+      }
+
+      &.shepherd-button-primary {
+        background: linear-gradient(135deg, rgba(130, 90, 250, 0.85), rgba(60, 0, 200, 0.85));
+        color: #ffffff;
+        box-shadow: 0 5px 18px rgba(60, 0, 200, 0.35);
+        &:hover {
+          transform: translateY(-2px) scale(1.05);
+          box-shadow: 0 8px 25px rgba(60, 0, 200, 0.5);
+        }
+      }
+    }
+  }
+
+  // Seta do popper
+  &[data-popper-placement^='top'] > .shepherd-arrow::before {
+    border-top-color: rgba(28,28,38,0.55);
+  }
+  &[data-popper-placement^='bottom'] > .shepherd-arrow::before {
+    border-bottom-color: rgba(28,28,38,0.55);
+  }
+  &[data-popper-placement^='left'] > .shepherd-arrow::before {
+    border-left-color: rgba(28,28,38,0.55);
+  }
+  &[data-popper-placement^='right'] > .shepherd-arrow::before {
+    border-right-color: rgba(28,28,38,0.55);
+  }
+}
+
+// Overlay
+.shepherd-modal-overlay {
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px) saturate(120%);
+}

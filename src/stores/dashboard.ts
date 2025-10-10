@@ -448,20 +448,28 @@ export const useDashboardStore = defineStore('dashboard', {
     },
 
     async fetchProductionSchedule() {
+      if (this.loading) return; // Evita múltiplas chamadas
       this.loading = true;
+      this.error = null;
       try {
+        // Agora a query busca os status 'in_printing' e 'in_cutting'
         const { data, error } = await supabase
           .from('production_schedule')
           .select(`
             scheduled_date,
             order:orders!inner(id, customer_name, order_number, creator:created_by(full_name)),
             item:order_items!inner(id, status, quantity_meters, fabric_type, stamp_ref, stamp_image_url)
-          `);
+          `)
+          .in('item.status', ['in_printing', 'in_cutting']); // O FILTRO ANTERIOR ESTAVA ERRADO AQUI
 
         if (error) throw error;
-        this.productionScheduleItems = (data as any[]) || [];
-      } catch (e: any) {
-        console.error('Erro ao buscar a agenda de produção:', e);
+
+        // Garante que o estado seja atualizado com os novos dados
+        this.productionScheduleItems = data || [];
+
+      } catch (err: any) {
+        console.error('Erro crítico ao buscar agendamento de produção:', err);
+        this.error = 'Falha ao carregar os dados da produção. Tente atualizar a página.';
       } finally {
         this.loading = false;
       }

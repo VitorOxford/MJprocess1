@@ -114,14 +114,25 @@
           </v-row>
 
           <v-card class="main-panel-card mt-6" variant="flat">
-            <v-card-title class="font-weight-bold">Meus Lançamentos Ativos</v-card-title>
+            <v-card-title class="d-flex align-center justify-space-between">
+              <span class="font-weight-bold">Meus Pedidos</span>
+              <v-btn-toggle
+                v-model="orderFilter"
+                variant="outlined"
+                density="compact"
+                divided
+              >
+                <v-btn value="ativos">Ativos</v-btn>
+                <v-btn value="todos">Todos</v-btn>
+              </v-btn-toggle>
+            </v-card-title>
             <v-data-table
               :headers="headers"
-              :items="myActiveLaunchOrders"
+              :items="filteredOrders"
               class="bg-transparent"
               item-value="id"
               density="compact"
-              no-data-text="Nenhum lançamento ativo."
+              no-data-text="Nenhum pedido encontrado."
             >
               <template v-slot:item.order_number="{ item }">
                 <span class="font-weight-bold">#{{ String(item.order_number).padStart(4, '0') }}</span>
@@ -137,6 +148,23 @@
               </template>
               <template v-slot:item.quantity_meters="{ value }">
                 <v-chip color="blue-grey" variant="tonal" size="small">{{ formatMeters(value) }}m</v-chip>
+              </template>
+              <template v-slot:item.actions="{ item }">
+                <div class="d-flex ga-1">
+                  <v-btn icon="mdi-file-pdf-box" size="small" variant="text" color="primary" @click="generateOrderSummaryPdf(item)">
+                    <v-tooltip activator="parent" location="top">Gerar Resumo</v-tooltip>
+                  </v-btn>
+                  <v-btn
+                    v-if="item.has_down_payment && item.down_payment_proof_url"
+                    icon="mdi-receipt-text-outline"
+                    size="small"
+                    variant="text"
+                    color="secondary"
+                    @click="generateDownPaymentReceiptPdf(item)"
+                  >
+                    <v-tooltip activator="parent" location="top">Gerar Recibo de Sinal</v-tooltip>
+                  </v-btn>
+                </div>
               </template>
             </v-data-table>
           </v-card>
@@ -162,6 +190,10 @@ import { supabase } from '@/api/supabase';
 import { startOfMonth, isWithinInterval, parseISO, format } from 'date-fns';
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale } from 'chart.js';
 import SalesMapBrazil from './SalesMapBrazil.vue';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import QRCode from 'qrcode';
+import { ptBR } from 'date-fns/locale';
 
 const Bar = defineAsyncComponent(() => import('vue-chartjs').then(c => c.Bar));
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
@@ -175,6 +207,9 @@ const allSellers = ref<any[]>([]);
 const salesGoal = ref(25000);
 const loadingEditorToken = ref(false);
 const editorError = ref<string | null>(null);
+
+// --- NOVO ESTADO PARA O FILTRO DE PEDIDOS ---
+const orderFilter = ref<'ativos' | 'todos'>('ativos');
 
 const statusDisplayMap: Record<string, string> = {
     design_pending: 'No Design', in_design: 'Em Design', changes_requested: 'Alteração Solicitada',
@@ -193,7 +228,8 @@ const headers = [
   { title: 'Cliente', key: 'customer_name' },
   { title: 'Data', key: 'created_at' },
   { title: 'Metragem', key: 'quantity_meters', align: 'end' },
-  { title: 'Status', key: 'status', align: 'end' },
+  { title: 'Status', key: 'status', align: 'start' },
+  { title: 'Ações', key: 'actions', align: 'center', sortable: false, width: '100px' },
 ];
 
 const myOrders = computed((): Order[] => {
@@ -214,7 +250,6 @@ const itemsPendingSellerApprovalCount = computed(() => {
     return myOrders.value.filter(order => order.is_launch && order.order_items.some(item => item.status === 'customer_approval')).length;
 });
 
-
 const monthlyMetrics = computed(() => {
   const now = new Date();
   const orders = monthlyOrders.value;
@@ -234,7 +269,15 @@ const monthlyMetrics = computed(() => {
   return { totalMeters, totalOrders, averageMeters, goalPercentage, newClients };
 });
 
-const myActiveLaunchOrders = computed(() => myOrders.value.filter(order => order.is_launch && !['completed', 'delivered'].includes(order.status)));
+// --- NOVA PROPRIEDADE COMPUTADA PARA OS PEDIDOS FILTRADOS ---
+const filteredOrders = computed(() => {
+  if (orderFilter.value === 'todos') {
+    return myOrders.value;
+  }
+  // 'ativos' é o padrão
+  return myOrders.value.filter(order => !['completed', 'delivered', 'billed'].includes(order.status));
+});
+// ------------------------------------------------------------
 
 const sellerRanking = computed(() => {
   const salesMap = new Map<string, number>();
@@ -314,7 +357,7 @@ const chartOptions = {
 };
 
 const goToApprovals = () => {
-  const approvalOrder = myActiveLaunchOrders.value.find(o => o.order_items.some(item => item.status === 'customer_approval'));
+  const approvalOrder = filteredOrders.value.find(o => o.order_items.some(item => item.status === 'customer_approval'));
   router.push(approvalOrder ? { name: 'ApproveOrder', params: { id: approvalOrder.id } } : { name: 'Approvals' });
 };
 
@@ -327,6 +370,11 @@ const formatMeters = (value: number) => {
 const formatDate = (dateString: string) => {
     if(!dateString) return '-';
     return format(parseISO(dateString), 'dd/MM/yy');
+};
+
+const formatCurrency = (value: number | undefined | null) => {
+    if (value === null || value === undefined) return 'R$ 0,00';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 };
 
 const openEditor = async () => {
@@ -357,6 +405,115 @@ const openEditor = async () => {
   }
 };
 
+// --- FUNÇÕES DE GERAÇÃO DE PDF ---
+const imageToBase64 = (url: string): Promise<string> => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL('image/png'));
+        } else {
+            reject(new Error('Canvas context not available'));
+        }
+    };
+    img.onerror = reject;
+    img.src = url;
+});
+
+const addHeaderAndFooter = async (doc: jsPDF) => {
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+
+    try {
+        const logoUrl = 'https://cdn.shopify.com/s/files/1/0661/4574/6991/files/Sem_nome_1080_x_800_px_1080_x_500_px_1080_x_400_px_1000_x_380_px_da020cf2-2bb9-4dac-8dd3-4548cfd2e5ae.png?v=1756811713';
+        const logoBase64 = await imageToBase64(logoUrl);
+        const logoProps = doc.getImageProperties(logoBase64);
+        const logoWidth = 50;
+        const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
+        doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
+    } catch (e) {
+        console.error("Não foi possível carregar o logo para o PDF", e);
+    }
+
+    doc.setFontSize(9).setTextColor(100);
+    doc.text(["MR JACKY - 20.631.721/0001-07", "RUA LUIZ MONTANHAN, 1302, TIETE - SP", "Fone: (15) 99847-8789"], pageWidth - 15, 15, { align: 'right' });
+    doc.setLineWidth(0.5).line(15, 35, pageWidth - 15, 35);
+
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8).setTextColor(150);
+        doc.text(`Gerado com MJProcess em ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 15, pageHeight - 10);
+        doc.text(`Página ${i} de ${pageCount}`, pageWidth - 15, pageHeight - 10, { align: 'right' });
+    }
+};
+
+const generateOrderSummaryPdf = async (order: Order) => {
+  const doc = new jsPDF();
+  await addHeaderAndFooter(doc);
+  doc.setFontSize(18).setFont('helvetica', 'bold').text(`Resumo do Pedido #${String(order.order_number).padStart(4, '0')}`, 15, 45);
+  autoTable(doc, {
+    startY: 50,
+    head: [['CLIENTE', 'VENDEDOR', 'DATA DE EMISSÃO']],
+    body: [[order.customer_name, order.creator?.full_name || 'N/A', formatDate(order.created_at)]],
+    theme: 'striped',
+  });
+
+  const totalValue = order.order_items.reduce((sum, item) => sum + (item.total_value_items || 0), 0);
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 10,
+    head: [['Base', 'Estampa', 'Quantidade', 'Valor Unit.', 'Subtotal']],
+    body: order.order_items.map(item => [
+      item.fabric_type,
+      item.stamp_ref,
+      `${item.quantity_unit}${item.unit_of_measure}`,
+      formatCurrency(item.total_value_items / item.quantity_unit),
+      formatCurrency(item.total_value_items)
+    ]),
+    foot: [['', '', '', 'Total do Pedido:', formatCurrency(totalValue)]],
+    footStyles: { fontStyle: 'bold', halign: 'right' },
+    theme: 'grid',
+  });
+  await addHeaderAndFooter(doc);
+  doc.save(`Resumo_Pedido_${order.order_number}.pdf`);
+};
+
+const generateDownPaymentReceiptPdf = async (order: Order) => {
+  const doc = new jsPDF();
+  await addHeaderAndFooter(doc);
+  const pageWidth = doc.internal.pageSize.width;
+
+  doc.setFontSize(18).setFont('helvetica', 'bold').text(`Recibo de Sinal`, pageWidth / 2, 45, { align: 'center' });
+  const receiptText = `O Estúdio de Estampa MJ confirma o recebimento do comprovante de sinal referente ao Pedido #${String(order.order_number).padStart(4, '0')}.`;
+  doc.setFontSize(11).setFont('helvetica', 'normal').text(doc.splitTextToSize(receiptText, pageWidth - 30), 15, 60);
+
+  if (order.down_payment_proof_url) {
+    try {
+      const qrCodeDataUrl = await QRCode.toDataURL(order.down_payment_proof_url, { width: 80 });
+      doc.addImage(qrCodeDataUrl, 'PNG', pageWidth - 55, 75, 40, 40);
+      doc.setFontSize(7).setTextColor(100).text('Aponte para o comprovante', pageWidth - 35, 120, { align: 'center' });
+    } catch (err) {
+      console.error('Failed to generate QR Code', err);
+    }
+  }
+
+  autoTable(doc, {
+    startY: 130,
+    head: [['CLIENTE', 'DATA DE EMISSÃO']],
+    body: [[order.customer_name, formatDate(order.created_at)]],
+    theme: 'striped',
+  });
+
+  await addHeaderAndFooter(doc);
+  doc.save(`Recibo_Sinal_${order.order_number}.pdf`);
+};
+
 onMounted(async () => {
   const { data } = await supabase.from('profiles').select('full_name, avatar_url');
   if (data) allSellers.value = data;
@@ -382,14 +539,14 @@ onMounted(async () => {
 .sidebar-sticky-content {
   position: sticky;
   top: 80px;
-  min-height: 450px; // Garante altura mínima para o mapa
+  min-height: 450px;
   height: calc(100vh - 112px);
 
-  @media (max-width: 1279px) { // lg breakpoint in vuetify
+  @media (max-width: 1279px) {
     position: relative;
     top: 0;
     margin-top: 1.5rem;
-    min-height: 450px; // Mantém altura mínima em telas menores
+    min-height: 450px;
     height: auto;
   }
 }

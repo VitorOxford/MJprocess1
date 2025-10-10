@@ -116,6 +116,8 @@
 import { ref, watch, reactive } from "vue";
 import { supabase } from "@/api/supabase";
 import { useUserStore } from "@/stores/user";
+// ===== CORREÇÃO (1/3): Importar a store do dashboard =====
+import { useDashboardStore } from "@/stores/dashboard";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, addDays, parseISO } from "date-fns";
@@ -128,6 +130,8 @@ const props = defineProps<{
 const emit = defineEmits(["close", "update-items"]);
 
 const userStore = useUserStore();
+// ===== CORREÇÃO (2/3): Inicializar a store do dashboard =====
+const dashboardStore = useDashboardStore();
 const releasing = reactive<Record<string, boolean>>({});
 const localItems = ref<any[]>([]);
 const loadingItems = ref(false);
@@ -241,6 +245,10 @@ const releaseItemForProduction = async (item: any) => {
     }
 
     emit("update-items");
+
+    // ===== CORREÇÃO (3/3): Atualizar os dados do Kanban de Produção =====
+    await dashboardStore.fetchProductionSchedule();
+
   } catch (err: any) {
     console.error("Erro ao liberar item para produção:", err);
     alert(`Falha ao liberar o item: ${err.message}`);
@@ -402,7 +410,6 @@ const getNextDeliveryDay = (date: Date): Date => {
   }
 };
 
-// ===== INÍCIO DA CORREÇÃO =====
 const generateOpPdf = async (item: any) => {
   const parentOrder = fullOrderDetails.value;
   if (!parentOrder) {
@@ -421,7 +428,6 @@ const generateOpPdf = async (item: any) => {
       .single();
     if (scheduleError || !schedule) throw new Error("Agendamento do item não encontrado.");
 
-    // Lógica para adicionar dias extras com base no estoque
     const hasStockIssues = parentOrder.order_items.some((i: any) => i.has_insufficient_stock || i.status === 'pending_stock');
     const extraDays = hasStockIssues ? 2 : 0;
 
@@ -492,13 +498,12 @@ const generateOpPdf = async (item: any) => {
     const artStartY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    // Adiciona o nome do cliente acima da imagem
     doc.text("ARTE APROVADA", 15, artStartY);
     doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(100);
     doc.text(`Cliente: ${parentOrder.customer_name}`, 15, artStartY + 5);
 
 
-    const artY = artStartY + 10; // Ajusta a posição da imagem
+    const artY = artStartY + 10;
     const maxImgWidth = pageWidth - 30;
     const maxImgHeight = pageHeight - artY - 25;
     const imgProps = doc.getImageProperties(artBase64);
@@ -534,7 +539,6 @@ const generateOpPdf = async (item: any) => {
     );
   }
 };
-// ===== FIM DA CORREÇÃO =====
 </script>
 
 <style scoped lang="scss">

@@ -258,68 +258,66 @@ const closeDialog = () => {
 };
 
 const saveStock = async () => {
-  if (isSaving.value) return;
-  if (!editedItem.value.fabric_type && !isEditing.value) {
-      showSnackbar("O nome do tecido é obrigatório.", 'error');
-      return;
-  }
+    if (isSaving.value) return;
+    if (!editedItem.value.fabric_type && !isEditing.value) {
+        showSnackbar("O nome do tecido é obrigatório.", 'error');
+        return;
+    }
 
-  isSaving.value = true;
+    isSaving.value = true;
 
-  try {
-      const payload = {
-          meters_per_roll: editedItem.value.meters_per_roll,
-          rendimento: editedItem.value.unit_of_measure === 'kg' ? editedItem.value.rendimento : null,
-          low_stock_threshold: editedItem.value.low_stock_threshold,
-      };
+    try {
+        let finalPayload: { [key: string]: any } = {
+            meters_per_roll: editedItem.value.meters_per_roll,
+            rendimento: editedItem.value.unit_of_measure === 'kg' ? editedItem.value.rendimento : null,
+            low_stock_threshold: editedItem.value.low_stock_threshold,
+        };
 
-      if (isEditing.value) {
-          const { error: updateError } = await supabase
-            .from('stock')
-            .update(payload)
-            .eq('id', editedItem.value.id);
-          if (updateError) throw updateError;
+        if (isEditing.value && editedItem.value.id) {
+            // Se houver uma quantidade para adicionar/remover
+            if (editedItem.value.quantity !== null && editedItem.value.quantity !== 0) {
+                const currentStock = editedItem.value.current_stock ?? 0;
+                const newStockValue = currentStock + editedItem.value.quantity;
+                finalPayload.available_meters = newStockValue;
+            }
 
-          if (editedItem.value.quantity !== null && editedItem.value.quantity !== 0) {
-              const { error: rpcError } = await supabase.rpc('increment', {
-                  table_name: 'stock',
-                  row_id: editedItem.value.id,
-                  x: editedItem.value.quantity
-              });
-              if (rpcError) throw rpcError;
+            const { error: updateError } = await supabase
+              .from('stock')
+              .update(finalPayload)
+              .eq('id', editedItem.value.id);
 
-              // ===== INÍCIO DA CORREÇÃO =====
-              // Sincroniza a alteração com o Gestão Click
-              if (editedItem.value.gestao_click_id) {
-                  const currentStock = editedItem.value.current_stock || 0;
-                  const newStock = currentStock + (editedItem.value.quantity || 0);
-                  await gestaoApi.atualizarEstoqueProduto(editedItem.value.gestao_click_id, newStock);
-              }
-              // ===== FIM DA CORREÇÃO =====
-          }
-      } else {
-          // A criação de um novo produto no Gestão Click não é suportada pela API atual
-          // A sincronização deve ser feita do Gestão Click para o MJProcess
-          const { error } = await supabase.from('stock').insert({
-              fabric_type: editedItem.value.fabric_type,
-              available_meters: editedItem.value.quantity || 0,
-              meters_per_roll: editedItem.value.meters_per_roll,
-              unit_of_measure: editedItem.value.unit_of_measure,
-              rendimento: payload.rendimento,
-              low_stock_threshold: payload.low_stock_threshold,
-          });
-          if (error) throw error;
-      }
-      await fetchStock();
-      closeDialog();
-      showSnackbar('Operação no estoque realizada com sucesso!', 'success');
+            if (updateError) throw updateError;
 
-  } catch (err: any) {
-      showSnackbar(`Erro ao salvar no estoque: ${err.message}`, 'error');
-  } finally {
-      isSaving.value = false;
-  }
+            // Sincroniza com Gestão Click se houver ID e alteração de quantidade
+            if (editedItem.value.gestao_click_id && finalPayload.hasOwnProperty('available_meters')) {
+                await gestaoApi.atualizarEstoqueProduto(editedItem.value.gestao_click_id, finalPayload.available_meters);
+            }
+
+        } else {
+            // Criando um novo item
+            const { error } = await supabase.from('stock').insert({
+                fabric_type: editedItem.value.fabric_type,
+                available_meters: editedItem.value.quantity || 0,
+                meters_per_roll: editedItem.value.meters_per_roll,
+                unit_of_measure: editedItem.value.unit_of_measure,
+                rendimento: finalPayload.rendimento,
+                low_stock_threshold: finalPayload.low_stock_threshold,
+            });
+            if (error) throw error;
+        }
+
+        await fetchStock();
+        closeDialog();
+        showSnackbar('Operação no estoque realizada com sucesso!', 'success');
+
+    } catch (err: any) {
+        console.error("Erro detalhado:", err);
+        showSnackbar(`Erro ao salvar no estoque: ${err.message}`, 'error');
+    } finally {
+        isSaving.value = false;
+    }
 };
+
 
 onMounted(() => {
   fetchStock();

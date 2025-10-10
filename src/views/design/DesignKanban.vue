@@ -21,13 +21,13 @@
         ></v-text-field>
         <v-tooltip location="bottom">
             <template #activator="{ props }">
-                 <v-btn v-bind="props" ref="historyButtonRef" icon="mdi-history" variant="text" @click="openHistoryModal"></v-btn>
+                <v-btn v-bind="props" ref="historyButtonRef" icon="mdi-history" variant="text" @click="openHistoryModal"></v-btn>
             </template>
             <span>Histórico de Liberações</span>
         </v-tooltip>
         <v-tooltip location="bottom">
             <template #activator="{ props }">
-                <v-btn v-bind="props" ref="hintButtonRef" :icon="hintsEnabled ? 'mdi-lightbulb-on-outline' : 'mdi-lightbulb-off-outline'" variant="text" @click="toggleHints" :color="hintsEnabled ? 'amber' : ''"/>
+              <v-btn v-bind="props" ref="hintButtonRef" :icon="hintsEnabled ? 'mdi-lightbulb-on-outline' : 'mdi-lightbulb-off-outline'" variant="text" @click="toggleHints" :color="hintsEnabled ? 'amber' : ''"/>
             </template>
             <span>{{ hintsEnabled ? 'Desativar Dicas Visuais' : 'Ativar Dicas Visuais' }}</span>
         </v-tooltip>
@@ -35,7 +35,7 @@
     </v-toolbar>
 
     <div v-if="tutorialStep > 0" class="tutorial-click-overlay" @click="advanceTutorial"></div>
-     <transition name="fade">
+      <transition name="fade">
       <div v-if="tutorialStep > 0" class="tutorial-highlight" :style="highlightStyle"></div>
     </transition>
     <transition name="hint-bounce">
@@ -71,27 +71,32 @@
           >
             <template #item="{ element: item }">
                <div :data-id="item.id" @mousemove="onCardMouseMove">
-                  <v-card class="order-card my-2" variant="flat" @click="openModalForItem(item)">
-                    <div v-if="item.status === 'customer_approval'" class="approval-badge">
+                  <DevelopmentRequestCard
+                    v-if="item.type === 'development'"
+                    :item="item.original"
+                    @open="openModalForItem(item)"
+                  />
+                  <v-card v-else class="order-card my-2" variant="flat" @click="openModalForItem(item)">
+                     <div v-if="item.status === 'customer_approval'" class="approval-badge">
                         <v-icon size="small">mdi-account-clock-outline</v-icon>
                         <v-tooltip activator="parent" location="top">Aguardando aprovação do vendedor</v-tooltip>
-                    </div>
-                     <div class="card-border"></div>
-                     <div class="card-shine"></div>
-                     <v-card-text class="card-content">
-                       <p class="font-weight-bold text-body-1">{{ item.order.customer_name }}</p>
-                       <p class="text-caption text-medium-emphasis mt-1">Ref: {{ item.stamp_ref }}</p>
-                       <v-divider class="my-2"></v-divider>
-                       <v-chip size="small">{{ item.fabric_type }} - {{ Number(item.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) }}m</v-chip>
-                     </v-card-text>
+                     </div>
+                      <div class="card-border"></div>
+                      <div class="card-shine"></div>
+                      <v-card-text class="card-content">
+                        <p class="font-weight-bold text-body-1">{{ item.customer_name }}</p>
+                        <p class="text-caption text-medium-emphasis mt-1">Ref: {{ item.stamp_ref }}</p>
+                        <v-divider class="my-2"></v-divider>
+                        <v-chip size="small">{{ item.fabric_type }} - {{ Number(item.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) }}m</v-chip>
+                      </v-card-text>
                   </v-card>
                </div>
             </template>
           </draggable>
            <div v-if="column.items.length === 0" class="empty-column">
-              <v-icon size="48" class="mb-2 text-grey-darken-2">mdi-tray-arrow-down</v-icon>
-              <span>Nenhum item aqui.</span>
-          </div>
+             <v-icon size="48" class="mb-2 text-grey-darken-2">mdi-tray-arrow-down</v-icon>
+             <span>Nenhum item aqui.</span>
+           </div>
         </div>
       </div>
     </div>
@@ -103,7 +108,7 @@
       @close="closeLaunchModal"
       @sendToSeller="openUploadModal"
       @releaseItem="handleReleaseItem"
-      @itemUpdated="fetchDesignOrders"
+      @itemUpdated="fetchAllData"
     />
     <FileUploadModal
       :show="showUploadModal"
@@ -119,6 +124,12 @@
       @close="showHistoryModal = false"
       @generate-op="generateOpPdf"
     />
+    <DevelopmentDetailModal
+      :show="showDevDetailModal"
+      :request="selectedDevRequest"
+      @close="showDevDetailModal = false"
+      @completed="fetchAllData"
+    />
   </v-container>
 </template>
 
@@ -130,28 +141,35 @@ import draggable from 'vuedraggable';
 import LaunchDetailModal from '@/components/LaunchDetailModal.vue';
 import FileUploadModal from '@/components/FileUploadModal.vue';
 import ReleasedForProductionModal from '../../components/design/ReleasedForProductionModal.vue';
+import DevelopmentRequestCard from '@/components/design/DevelopmentRequestCard.vue';
+// IMPORTAÇÃO DO NOVO MODAL
+import DevelopmentDetailModal from '@/components/design/DevelopmentDetailModal.vue';
 import { format, addDays, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// --- TIPAGEM ---
-type OrderItem = {
-    id: string;
-    status: string;
-    design_tag: 'Desenvolvimento' | 'Alteração' | 'Finalização' | 'Aprovado';
-    order_id: string;
-    order: Order;
-    unit_of_measure: 'metro' | 'kg' | null;
-    quantity_unit: number | null;
-    is_op_generated: boolean;
-    [key: string]: any
+// --- TIPAGEM (sem alterações) ---
+type KanbanCard = {
+  id: string; type: 'order' | 'development'; status: string; design_tag?: 'Desenvolvimento' | 'Alteração' | 'Finalização' | 'Aprovado';
+  customer_name?: string; stamp_ref?: string; fabric_type?: string; quantity_meters?: number; original: any;
 };
-type Order = { id: string; status: string; is_launch: boolean; order_items: OrderItem[]; created_at: string; order_number: number; creator: { full_name: string }; [key: string]: any };
+type OrderItem = {
+  id: string; status: string; design_tag: 'Desenvolvimento' | 'Alteração' | 'Finalização' | 'Aprovado'; order_id: string; order: Order;
+  unit_of_measure: 'metro' | 'kg' | null; quantity_unit: number | null; is_op_generated: boolean; stamp_image_url?: string; [key: string]: any
+};
+type Order = {
+  id: string; status: string; is_launch: boolean; order_items: OrderItem[]; created_at: string; order_number: number;
+  customer_name: string; creator: { full_name: string }; [key: string]: any
+};
+type DevRequest = {
+  id: string; status: string; dev_code: string; design_items: any; profile: { full_name: string }; [key: string]: any
+};
 
 // --- ESTADO ---
 const loading = ref(true);
 const allOrders = ref<Order[]>([]);
+const allDevRequests = ref<DevRequest[]>([]);
 const userStore = useUserStore();
 const showLaunchModal = ref(false);
 const selectedOrder = ref<Order | null>(null);
@@ -160,17 +178,12 @@ const showUploadModal = ref(false);
 const selectedItem = ref<OrderItem | null>(null);
 const uploadModalTitle = ref('');
 const selectedItemId = ref<string | null>(null);
-
 const searchQuery = ref('');
-
-// --- NOVO ESTADO PARA O HISTÓRICO ---
 const showHistoryModal = ref(false);
 const loadingHistory = ref(false);
 const releasedItemsHistory = ref<OrderItem[]>([]);
-
-// ===== ESTADO DO TUTORIAL =====
 const hintsEnabled = ref(JSON.parse(localStorage.getItem('DesignKanbanHints') ?? 'true'));
-const tutorialStep = ref(0); // 0 = inativo, 1 = busca, 2 = histórico, 3 = desativar
+const tutorialStep = ref(0);
 const hintPosition = ref({});
 const highlightStyle = ref({});
 const hintContent = reactive({ icon: '', text: '' });
@@ -178,66 +191,81 @@ const searchFieldRef = ref(null);
 const historyButtonRef = ref(null);
 const hintButtonRef = ref(null);
 const hintBubbleRef = ref<HTMLElement | null>(null);
+// --- NOVO ESTADO PARA O MODAL DE DESENVOLVIMENTO ---
+const showDevDetailModal = ref(false);
+const selectedDevRequest = ref<DevRequest | null>(null);
 
 
-// --- LÓGICA DE DADOS ---
-const fetchDesignOrders = async () => {
+// --- LÓGICA DE DADOS (sem alterações) ---
+const fetchAllData = async () => {
   loading.value = true;
   try {
-    const designStatuses = [
-        'design_pending',
-        'customer_approval',
-        'changes_requested',
-        'approved_by_designer',
-        'approved_by_seller'
-    ];
-
-    const { data, error } = await supabase.from('orders')
-      .select(`
-        id, customer_name, status, is_launch, created_at, order_number,
-        creator:created_by(full_name),
-        designer:designer_id(full_name),
-        order_items!inner(*)
-      `)
+    const designStatuses = ['design_pending', 'customer_approval', 'changes_requested', 'approved_by_designer', 'approved_by_seller'];
+    const { data: orderData, error: orderError } = await supabase.from('orders')
+      .select(`id, customer_name, status, is_launch, created_at, order_number, creator:created_by(full_name), designer:designer_id(full_name), order_items!inner(*)`)
       .in('order_items.status', designStatuses);
+    if (orderError) throw orderError;
+    allOrders.value = (orderData as any[]) || [];
 
-    if (error) throw error;
-    allOrders.value = (data as any[]) || [];
+    const { data: devData, error: devError } = await supabase.from('design_requests')
+      .select(`id, status, dev_code, created_at, general_notes, design_items, profile:created_by(id, full_name, avatar_url)`)
+      .in('status', ['design_pending', 'in_design', 'finalizing']);
+    if (devError) throw devError;
+    allDevRequests.value = (devData as any[]) || [];
+
+  } catch (error) {
+    console.error("Erro ao buscar dados para o Kanban:", error);
   } finally {
     loading.value = false;
   }
 };
 
-const filteredItems = computed((): OrderItem[] => {
-    const allItems = allOrders.value.flatMap(order =>
-        order.order_items.map(item => ({
-            ...item,
-            order: order
-        }))
-    );
-    if (!searchQuery.value) return allItems;
+const allKanbanCards = computed((): KanbanCard[] => {
+  const orderCards: KanbanCard[] = allOrders.value.flatMap(order =>
+    order.order_items.map(item => ({
+      id: item.id, type: 'order', status: item.status, design_tag: item.design_tag,
+      customer_name: order.customer_name, stamp_ref: item.stamp_ref, fabric_type: item.fabric_type, quantity_meters: item.quantity_meters,
+      original: { ...item, order: order }
+    }))
+  );
+  const devCards: KanbanCard[] = allDevRequests.value.map(req => {
+    let parsedDesignItems = [];
+    try {
+      if (typeof req.design_items === 'string') {
+        parsedDesignItems = JSON.parse(req.design_items);
+      } else if (Array.isArray(req.design_items)) {
+        parsedDesignItems = req.design_items;
+      }
+    } catch (e) { console.error(`Falha ao fazer parse dos design_items para a request ${req.dev_code}:`, e); }
+    return {
+      id: req.id, type: 'development', status: req.status, design_tag: 'Desenvolvimento',
+      customer_name: parsedDesignItems.map((di: any) => di.customer_name).join(', '),
+      original: { ...req, design_items: parsedDesignItems }
+    };
+  });
+  return [...orderCards, ...devCards];
+});
 
+const filteredItems = computed((): KanbanCard[] => {
+    if (!searchQuery.value) return allKanbanCards.value;
     const query = searchQuery.value.toLowerCase();
-    return allItems.filter(item =>
-        item.order.customer_name?.toLowerCase().includes(query) ||
-        item.order.creator?.full_name?.toLowerCase().includes(query) ||
-        item.stamp_ref?.toLowerCase().includes(query) ||
-        item.fabric_type?.toLowerCase().includes(query) ||
-        String(item.order.order_number).includes(query)
+    return allKanbanCards.value.filter(card =>
+        card.customer_name?.toLowerCase().includes(query) ||
+        (card.type === 'order' && (
+            String(card.original.order.order_number).includes(query) || card.original.order.creator?.full_name?.toLowerCase().includes(query) || card.stamp_ref?.toLowerCase().includes(query)
+        )) ||
+        (card.type === 'development' && (
+            card.original.dev_code.toLowerCase().includes(query) || card.original.profile?.full_name?.toLowerCase().includes(query)
+        ))
     );
 });
 
-
 const developmentItems = computed(() => filteredItems.value.filter(item => item.status === 'design_pending' && item.design_tag === 'Desenvolvimento'));
-const alterationItems = computed(() => filteredItems.value.filter(item => item.status === 'design_pending' && item.design_tag === 'Alteração'));
-const finalizationItems = computed(() => filteredItems.value.filter(item => item.status === 'design_pending' && item.design_tag === 'Finalização'));
-
+const alterationItems = computed(() => filteredItems.value.filter(item => item.type === 'order' && item.status === 'design_pending' && item.design_tag === 'Alteração'));
+const finalizationItems = computed(() => filteredItems.value.filter(item => item.type === 'order' && item.status === 'design_pending' && item.design_tag === 'Finalização'));
 const approvedItems = computed(() => filteredItems.value.filter(item =>
-    (item.status === 'design_pending' && item.design_tag === 'Aprovado') ||
-    item.status === 'customer_approval' ||
-    item.status === 'approved_by_seller'
+    item.type === 'order' && ( (item.status === 'design_pending' && item.design_tag === 'Aprovado') || item.status === 'customer_approval' || item.status === 'approved_by_seller' )
 ));
-
 
 const columns = computed(() => [
   { id: 1, title: 'Desenvolvimento', icon: 'mdi-lightbulb-on-outline', color: '#40c4ff', items: developmentItems.value },
@@ -246,10 +274,11 @@ const columns = computed(() => [
   { id: 4, title: 'Aprovados', icon: 'mdi-check-decagram', color: '#4CAF50', items: approvedItems.value },
 ]);
 
-// --- MÉTODOS DE INTERAÇÃO ---
 
+// --- MÉTODOS DE INTERAÇÃO (com a nova lógica) ---
 const onCardMouseMove = (e: MouseEvent) => {
   const card = e.currentTarget as HTMLElement;
+  if (!card) return;
   const rect = card.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
@@ -257,10 +286,16 @@ const onCardMouseMove = (e: MouseEvent) => {
   card.style.setProperty('--mouse-y', `${y}px`);
 };
 
-const openModalForItem = (item: OrderItem) => {
-  selectedOrderId.value = item.order_id;
-  selectedItemId.value = item.id;
-  showLaunchModal.value = true;
+// --- MÉTODO ATUALIZADO ---
+const openModalForItem = (item: KanbanCard) => {
+  if (item.type === 'order') {
+    selectedOrderId.value = item.original.order_id;
+    selectedItemId.value = item.id;
+    showLaunchModal.value = true;
+  } else if (item.type === 'development') {
+    selectedDevRequest.value = item.original;
+    showDevDetailModal.value = true;
+  }
 };
 
 const closeLaunchModal = () => {
@@ -268,6 +303,9 @@ const closeLaunchModal = () => {
   selectedOrderId.value = null;
   selectedItemId.value = null;
 };
+// --- FIM DA ATUALIZAÇÃO ---
+
+// O restante das funções (openUploadModal, handleUploadSuccess, etc.) permanece o mesmo
 
 const openUploadModal = (item: OrderItem) => {
     selectedItem.value = item;
@@ -278,7 +316,6 @@ const openUploadModal = (item: OrderItem) => {
 
 const handleUploadSuccess = async (fileUrl: string) => {
     if (!selectedItem.value) return;
-
     const { error: updateOrderError } = await supabase
       .from('orders')
       .update({ designer_id: userStore.profile?.id })
@@ -301,7 +338,7 @@ const updateItemStatus = async (item: OrderItem, newStatus: string, fileUrl?: st
     try {
         const { error } = await supabase.rpc('update_order_item_status', { p_item_id: item.id, p_new_status: newStatus, p_final_art_url: fileUrl || null, p_profile_id: userStore.profile?.id });
         if (error) throw error;
-        await fetchDesignOrders();
+        await fetchAllData();
     } catch (err: any) { console.error("Erro ao atualizar status do item:", err); }
 };
 
@@ -309,16 +346,10 @@ const removeItemFromLocalState = (itemId: string) => {
     let orderIndexToRemove = -1;
     allOrders.value.forEach((order, index) => {
         const itemIndex = order.order_items.findIndex(item => item.id === itemId);
-        if (itemIndex !== -1) {
-            order.order_items.splice(itemIndex, 1);
-        }
-        if (order.order_items.length === 0) {
-            orderIndexToRemove = index;
-        }
+        if (itemIndex !== -1) { order.order_items.splice(itemIndex, 1); }
+        if (order.order_items.length === 0) { orderIndexToRemove = index; }
     });
-    if (orderIndexToRemove !== -1) {
-        allOrders.value.splice(orderIndexToRemove, 1);
-    }
+    if (orderIndexToRemove !== -1) { allOrders.value.splice(orderIndexToRemove, 1); }
 };
 
 const handleReleaseItem = async (item: OrderItem) => {
@@ -329,33 +360,22 @@ const handleReleaseItem = async (item: OrderItem) => {
         });
         if (error) throw error;
         removeItemFromLocalState(item.id);
-        if (selectedOrderId.value) {
-            closeLaunchModal();
-        }
+        if (selectedOrderId.value) { closeLaunchModal(); }
     } catch(err: any) {
         console.error("Erro ao liberar item para produção:", err);
         alert(`Erro ao liberar item: ${err.message}`);
     }
 };
 
-const onDragEnd = async (event: any) => {
-};
+const onDragEnd = async (event: any) => { /* Lógica de arrastar e soltar */ };
 
-// --- NOVOS MÉTODOS PARA HISTÓRICO ---
 const fetchReleasedItemsHistory = async () => {
-    if (!userStore.profile) return [];
+    if (!userStore.profile) return;
     loadingHistory.value = true;
     try {
         const { data, error } = await supabase
             .from('order_items')
-            .select(`
-                *,
-                order:orders!inner(
-                    id, customer_name, created_at, order_number,
-                    creator:created_by(full_name),
-                    order_items(*)
-                )
-            `)
+            .select(`*, order:orders!inner(id, customer_name, created_at, order_number, creator:created_by(full_name), order_items(*))`)
             .eq('order.designer_id', userStore.profile.id)
             .in('status', ['production_queue', 'in_printing', 'in_cutting', 'completed'])
             .order('created_at', { ascending: false, foreignTable: 'orders' })
@@ -379,9 +399,7 @@ const addBusinessDays = (startDate: Date, days: number): Date => {
   let addedDays = 0;
   while (addedDays < days) {
     newDate.setDate(newDate.getDate() + 1);
-    if (newDate.getDay() !== 0) {
-      addedDays++;
-    }
+    if (newDate.getDay() !== 0) { addedDays++; }
   }
   return newDate;
 };
@@ -402,8 +420,7 @@ const imageToBase64 = (url: string): Promise<string> => {
         img.crossOrigin = 'Anonymous';
         img.onload = () => {
             const canvas = document.createElement('canvas');
-            canvas.width = img.width;
-            canvas.height = img.height;
+            canvas.width = img.width; canvas.height = img.height;
             const ctx = canvas.getContext('2d');
             if(ctx) {
               ctx.drawImage(img, 0, 0);
@@ -417,31 +434,22 @@ const imageToBase64 = (url: string): Promise<string> => {
     });
 };
 
-// ===== INÍCIO DA CORREÇÃO =====
 const generateOpPdf = async (item: OrderItem) => {
   try {
     const { data: opNumber, error: rpcError } = await supabase.rpc('generate_op_number', { p_item_id: item.id });
     if (rpcError) throw rpcError;
 
-    const { data: schedule, error: scheduleError } = await supabase
-      .from('production_schedule')
-      .select('scheduled_date')
-      .eq('order_item_id', item.id)
-      .single();
+    const { data: schedule, error: scheduleError } = await supabase.from('production_schedule').select('scheduled_date').eq('order_item_id', item.id).single();
     if (scheduleError) throw scheduleError;
     if (!schedule) throw new Error('Agendamento do item não encontrado.');
 
-    // Verifica se algum item no pedido tem problema de estoque para adicionar dias extras
     const hasStockIssues = item.order.order_items.some((i: any) => i.status === 'pending_stock' || i.has_insufficient_stock);
     const extraDays = hasStockIssues ? 2 : 0;
-
     const completionDate = addBusinessDays(parseISO(schedule.scheduled_date), 3 + extraDays);
     const forecastDate = getNextDeliveryDay(completionDate);
-
     const formattedOpNumber = String(opNumber).padStart(4, '0');
     const formattedForecastDate = format(forecastDate, 'dd/MM/yyyy', { locale: ptBR });
     const formattedOrderNumber = String(item.order.order_number).padStart(4, '0');
-
     const doc = new jsPDF();
     const pageHeight = doc.internal.pageSize.height;
     const pageWidth = doc.internal.pageSize.width;
@@ -455,19 +463,15 @@ const generateOpPdf = async (item: OrderItem) => {
     const logoWidth = 50;
     const logoHeight = (logoProps.height * logoWidth) / logoProps.width;
     doc.addImage(logoBase64, 'PNG', 15, 12, logoWidth, logoHeight);
-
     doc.setFontSize(9); doc.setTextColor(100);
     doc.text(["MR JACKY - 20.631.721/0001-07", "RUA LUIZ MONTANHAN, 1302 TIRO DE GUERRA - TIETE - SP CEP: 18.532-000", "Fone/Celular: (15) 99847-8789 | E-mail: mrjackyfinanceiro@gmail.com"], pageWidth - 15, 15, { align: 'right' });
-
     const itemIndex = item.order.order_items.findIndex((oi: any) => oi.id === item.id) + 1;
     const totalItems = item.order.order_items.length;
     const itemSubtitle = `Item ${itemIndex} de ${totalItems}`;
-
     doc.setFontSize(18); doc.setTextColor(0); doc.text(`OP #${formattedOpNumber}`, 15, 45);
     doc.setFontSize(12); doc.text(`Pedido #${formattedOrderNumber}`, pageWidth - 15, 45, { align: 'right' });
     doc.setFontSize(10); doc.setTextColor(100); doc.text(itemSubtitle, pageWidth - 15, 51, { align: 'right' });
     doc.setLineWidth(0.5); doc.line(15, 55, pageWidth - 15, 55);
-
     autoTable(doc, {
         startY: 60,
         head: [['CLIENTE', 'VENDEDOR', 'EMISSÃO', 'PREVISÃO DE ENTREGA']],
@@ -475,13 +479,11 @@ const generateOpPdf = async (item: OrderItem) => {
         theme: 'striped',
         headStyles: { fillColor: [41, 128, 185] }
     });
-
-    let quantityDisplay = `${item.quantity_meters.toLocaleString('pt-BR')}m`;
+    let quantityDisplay = `${Number(item.quantity_meters).toLocaleString('pt-BR')}m`;
     if (item.unit_of_measure === 'kg') {
       const originalKg = item.quantity_unit?.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) || 'N/A';
-      quantityDisplay = `${originalKg}kg (Rendimento: ~${item.quantity_meters.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}m)`;
+      quantityDisplay = `${originalKg}kg (Rendimento: ~${Number(item.quantity_meters).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}m)`;
     }
-
     autoTable(doc, {
         startY: (doc as any).lastAutoTable.finalY + 10,
         head: [['PRODUTO (BASE)', 'SERVIÇO (ESTAMPA)', 'QUANTIDADE']],
@@ -489,13 +491,11 @@ const generateOpPdf = async (item: OrderItem) => {
         theme: 'grid',
         headStyles: { fillColor: [41, 128, 185] }
     });
-
     const artStartY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(12); doc.setFont('helvetica', 'bold');
     doc.text('ARTE APROVADA', 15, artStartY);
     doc.setFontSize(10).setFont('helvetica', 'normal').setTextColor(100);
     doc.text(`Cliente: ${item.order.customer_name}`, 15, artStartY + 5);
-
     const artY = artStartY + 10;
     const maxImgWidth = pageWidth - 30;
     const maxImgHeight = pageHeight - artY - 25;
@@ -504,66 +504,45 @@ const generateOpPdf = async (item: OrderItem) => {
     const imgWidth = imgProps.width * ratio;
     const imgHeight = imgProps.height * ratio;
     const imgXCentered = (pageWidth - imgWidth) / 2;
-
     doc.setDrawColor(180, 180, 180).setLineWidth(0.5).rect(imgXCentered - 1, artY - 1, imgWidth + 2, imgHeight + 2, 'S');
     doc.addImage(artBase64, 'PNG', imgXCentered, artY, imgWidth, imgHeight);
-
     const footerY = pageHeight - 15;
     doc.setFontSize(9).setTextColor(150).text('OP gerada com MJProcess', pageWidth / 2, footerY, { align: 'center' });
-
     doc.save(`OP-${formattedOpNumber}-${item.order.customer_name}-${item.stamp_ref}.pdf`);
   } catch (error) {
     console.error("Erro ao gerar PDF:", error);
     alert("Não foi possível gerar o PDF. Verifique se as imagens estão acessíveis e tente novamente.");
   }
 };
-// ===== FIM DA CORREÇÃO =====
 
-// ===== LÓGICA DO TUTORIAL =====
 const setHintPosition = async (el: any) => {
   if (!el || !el.$el) return;
   await nextTick();
   const rect = el.$el.getBoundingClientRect();
-
   highlightStyle.value = {
-    top: `${rect.top - 4}px`,
-    left: `${rect.left - 4}px`,
-    width: `${rect.width + 8}px`,
-    height: `${rect.height + 8}px`,
+    top: `${rect.top - 4}px`, left: `${rect.left - 4}px`,
+    width: `${rect.width + 8}px`, height: `${rect.height + 8}px`,
   };
-
   await nextTick();
   const bubbleEl = hintBubbleRef.value;
   if (!bubbleEl) return;
-
   const bubbleRect = bubbleEl.getBoundingClientRect();
   const viewportWidth = window.innerWidth;
   const margin = 16;
-
   let idealLeft = rect.left + (rect.width / 2);
-
-  if (idealLeft - (bubbleRect.width / 2) < margin) {
-    idealLeft = margin + (bubbleRect.width / 2);
-  }
-  if (idealLeft + (bubbleRect.width / 2) > viewportWidth - margin) {
-    idealLeft = viewportWidth - margin - (bubbleRect.width / 2);
-  }
-
+  if (idealLeft - (bubbleRect.width / 2) < margin) { idealLeft = margin + (bubbleRect.width / 2); }
+  if (idealLeft + (bubbleRect.width / 2) > viewportWidth - margin) { idealLeft = viewportWidth - margin - (bubbleRect.width / 2); }
   hintPosition.value = {
-    top: `${rect.bottom + 12}px`,
-    left: `${idealLeft}px`,
-    transform: 'translateX(-50%)',
-    opacity: 1,
+    top: `${rect.bottom + 12}px`, left: `${idealLeft}px`,
+    transform: 'translateX(-50%)', opacity: 1,
   };
 };
 
 const startTutorial = async () => {
     if (!hintsEnabled.value || tutorialStep.value !== 0) return;
     await nextTick();
-
     setTimeout(() => {
-        tutorialStep.value = 1;
-        setHintPosition(searchFieldRef.value);
+        tutorialStep.value = 1; setHintPosition(searchFieldRef.value);
         hintContent.icon = 'mdi-magnify';
         hintContent.text = 'Use a <strong>busca</strong> para filtrar itens por cliente, vendedor, ref., etc.';
     }, 500);
@@ -589,20 +568,18 @@ const advanceTutorial = () => {
 const toggleHints = () => {
   hintsEnabled.value = !hintsEnabled.value;
   localStorage.setItem('DesignKanbanHints', JSON.stringify(hintsEnabled.value));
-  if (!hintsEnabled.value) {
-      tutorialStep.value = 0;
-  }
+  if (!hintsEnabled.value) { tutorialStep.value = 0; }
 };
 
-
 onActivated(() => {
-    fetchDesignOrders();
+    fetchAllData();
     startTutorial();
 });
 onMounted(() => {
-    fetchDesignOrders();
+    fetchAllData();
     startTutorial();
 });
+
 </script>
 
 <style scoped lang="scss">
@@ -612,8 +589,6 @@ onMounted(() => {
   70% { box-shadow: 0 0 0 10px rgba(255, 171, 64, 0); }
   100% { box-shadow: 0 0 0 0 rgba(255, 171, 64, 0); }
 }
-
-/* ===== ESTILOS DO TUTORIAL REFINADOS ===== */
 @keyframes pulse-blue {
   0% { box-shadow: 0 0 0 0 rgba(66, 165, 245, 0.6); }
   70% { box-shadow: 0 0 0 12px rgba(66, 165, 245, 0); }
@@ -669,7 +644,6 @@ onMounted(() => {
     white-space: normal;
     text-align: left;
     position: relative;
-
   }
 }
 
@@ -683,8 +657,6 @@ onMounted(() => {
   0% { opacity: 1; transform: scale(1); }
   100% { opacity: 0; transform: scale(0.9); }
 }
-/* ===== FIM DOS ESTILOS DO TUTORIAL ===== */
-
 
 .design-kanban-page {
   height: calc(100vh - 64px);

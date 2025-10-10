@@ -25,6 +25,12 @@ const routes: Array<RouteRecordRaw> = [
         meta: { requiresAuth: true }
       },
       {
+  path: '/development/new',
+  name: 'NewDevelopmentRequest',
+  component: () => import('@/views/design/NewDevelopmentRequest.vue'),
+  meta: { requiresAuth: true, roles: ['admin', 'vendedor'] },
+},
+      {
         path: 'aprovar-pedidos',
         name: 'Approvals',
         component: () => import('@/views/Approvals.vue'),
